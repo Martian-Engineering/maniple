@@ -407,8 +407,22 @@ async def spawn_session(
                 # Use vertical split for 2nd pane, horizontal for 3rd/4th to create quad-like layout
                 vertical = pane_count < 2
 
+                # Choose the correct split source for proper 2x2 quad layout:
+                # - pane_count=1: split any session vertically → left | right
+                # - pane_count=2: split sessions[0] (left) horizontally → TL, BL | right
+                # - pane_count=3: split sessions[1] (right) horizontally → 2x2 quad
+                if pane_count == 2:
+                    # Split the first session (left pane) to create top-left and bottom-left
+                    split_source = tab.sessions[0]
+                elif pane_count == 3:
+                    # Split the second session (right pane) to complete the 2x2 quad
+                    split_source = tab.sessions[1]
+                else:
+                    # For first split (1→2), use whatever session we have
+                    split_source = source_session
+
                 iterm_session = await split_pane(
-                    source_session,
+                    split_source,
                     vertical=vertical,
                     profile=PROFILE_NAME,
                     profile_customizations=profile_customizations,
