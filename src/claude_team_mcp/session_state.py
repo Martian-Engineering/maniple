@@ -299,18 +299,22 @@ async def wait_for_response(
     timeout: float = 120,
     poll_interval: float = 0.5,
     idle_threshold: float = 2.0,
+    baseline_message_uuid: Optional[str] = None,
 ) -> Optional[Message]:
     """
     Wait for Claude to finish responding.
 
-    Monitors the JSONL file modification time. When it stops changing
-    for idle_threshold seconds, assumes Claude is done.
+    Monitors the JSONL file for a new assistant message. Returns when:
+    1. A new assistant message exists (different from baseline_message_uuid)
+    2. AND the file has been idle for idle_threshold seconds
 
     Args:
         jsonl_path: Path to the session JSONL file
         timeout: Maximum seconds to wait
         poll_interval: Seconds between checks
         idle_threshold: Seconds of no changes before considering complete
+        baseline_message_uuid: UUID of the last assistant message before sending.
+            If provided, waits for a DIFFERENT message to appear.
 
     Returns:
         The last assistant message, or None if timeout
@@ -318,24 +322,38 @@ async def wait_for_response(
     import asyncio
 
     start = time.time()
+    last_mtime = jsonl_path.stat().st_mtime if jsonl_path.exists() else 0.0
     last_change = start
-    last_mtime = 0.0
 
-    # Initial delay for Claude to start responding
-    await asyncio.sleep(1)
+    # Brief initial delay for Claude to start processing
+    await asyncio.sleep(0.5)
 
     while time.time() - start < timeout:
         try:
             stat = jsonl_path.stat()
             current_mtime = stat.st_mtime
 
+            # Track file modifications
             if current_mtime > last_mtime:
                 last_mtime = current_mtime
                 last_change = time.time()
-            elif time.time() - last_change > idle_threshold:
-                # No changes for idle_threshold seconds - Claude is done
+
+            # Check if idle long enough
+            idle_time = time.time() - last_change
+            if idle_time >= idle_threshold:
+                # Parse and check for new response
                 state = parse_session(jsonl_path)
-                return state.last_assistant_message
+                last_msg = state.last_assistant_message
+
+                if last_msg:
+                    # If no baseline provided, return any assistant message
+                    if baseline_message_uuid is None:
+                        return last_msg
+                    # If baseline provided, only return if it's a NEW message
+                    if last_msg.uuid != baseline_message_uuid:
+                        return last_msg
+                    # Same message as baseline - keep waiting for new one
+
         except FileNotFoundError:
             pass
 

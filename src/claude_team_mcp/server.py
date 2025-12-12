@@ -285,6 +285,14 @@ async def send_message(
         # Update status to busy
         registry.update_status(session_id, SessionStatus.BUSY)
 
+        # Capture baseline state before sending (for response detection)
+        baseline_uuid = None
+        jsonl_path = session.get_jsonl_path()
+        if jsonl_path and jsonl_path.exists():
+            state = session.get_conversation_state()
+            if state and state.last_assistant_message:
+                baseline_uuid = state.last_assistant_message.uuid
+
         # Send the message to the terminal
         await send_prompt(session.iterm_session, message, submit=True)
 
@@ -296,12 +304,12 @@ async def send_message(
 
         # Optionally wait for response
         if wait_for_response:
-            jsonl_path = session.get_jsonl_path()
             if jsonl_path and jsonl_path.exists():
                 response = await wait_for_resp(
                     jsonl_path=jsonl_path,
                     timeout=timeout,
                     idle_threshold=2.0,
+                    baseline_message_uuid=baseline_uuid,
                 )
                 if response:
                     result["response"] = response.content
