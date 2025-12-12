@@ -78,6 +78,8 @@ async def send_prompt(session: "iterm2.Session", text: str, submit: bool = True)
     For multi-line text, iTerm2 uses bracketed paste mode which wraps the
     content in escape sequences. A delay is needed after pasting multi-line
     content before sending Enter to ensure the paste operation completes.
+    The delay scales with text length since longer pastes take more time
+    for the terminal to process.
 
     Args:
         session: iTerm2 session object
@@ -88,11 +90,24 @@ async def send_prompt(session: "iterm2.Session", text: str, submit: bool = True)
 
     await session.async_send_text(text)
     if submit:
-        # Always add a small delay before sending Enter to ensure the text paste
-        # is fully processed by iTerm2. This is critical in async contexts (like
-        # MCP servers) where the event loop may schedule Enter before the paste
-        # completes. Multi-line text needs more time due to bracketed paste mode.
-        delay = 0.1 if "\n" in text else 0.05
+        # Calculate delay based on text characteristics. Longer text and more
+        # lines require more time for iTerm2's bracketed paste mode to process.
+        # Without adequate delay, the Enter key arrives before paste completes,
+        # resulting in the prompt not being submitted.
+        line_count = text.count("\n")
+        char_count = len(text)
+
+        if line_count > 0:
+            # Multi-line text: base delay + scaling factors for lines and chars.
+            # - Base: 0.1s minimum for bracketed paste mode overhead
+            # - Per line: 0.01s to account for line processing
+            # - Per 1000 chars: 0.05s for large text buffers
+            # Capped at 2.0s to avoid excessive waits on huge pastes.
+            delay = min(2.0, 0.1 + (line_count * 0.01) + (char_count / 1000 * 0.05))
+        else:
+            # Single-line text: minimal delay, just enough for event loop sync
+            delay = 0.05
+
         await asyncio.sleep(delay)
         await session.async_send_text(KEYS["enter"])
 

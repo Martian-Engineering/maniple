@@ -221,6 +221,14 @@ def monitor():
 ### "Enter isn't working"
 Use `\x0d`, not `\n`. See Key Discoveries #1.
 
+For long pastes (multi-line text), the delay before Enter must scale with
+text length. iTerm2's bracketed paste mode needs time to process large buffers.
+The `send_prompt()` function handles this automatically with a formula:
+- Base: 0.1s for bracketed paste overhead
+- +0.01s per line
+- +0.05s per 1000 characters
+- Maximum: 2.0s
+
 ### "Can't find session JSONL"
 Check the slug conversion. Run:
 ```python
