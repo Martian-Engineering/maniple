@@ -858,7 +858,7 @@ async def close_session(
     Returns:
         Dict with success status
     """
-    from .iterm_utils import send_key
+    from .iterm_utils import send_key, close_pane
 
     app_ctx = ctx.request_context.lifespan_context
     registry = app_ctx.registry
@@ -885,6 +885,9 @@ async def close_session(
         await send_prompt(session.iterm_session, "/exit", submit=True)
         await asyncio.sleep(1.0)
 
+        # Close the iTerm2 pane/window
+        await close_pane(session.iterm_session, force=force)
+
         # Update status
         registry.update_status(session_id, SessionStatus.CLOSED)
 
@@ -894,7 +897,7 @@ async def close_session(
         return {
             "success": True,
             "session_id": session_id,
-            "message": "Session closed and removed from registry",
+            "message": "Session closed, pane terminated, and removed from registry",
         }
 
     except Exception as e:

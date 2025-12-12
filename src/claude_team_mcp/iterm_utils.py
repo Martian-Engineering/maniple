@@ -163,6 +163,24 @@ async def split_pane(
     return await session.async_split_pane(vertical=vertical, before=before)
 
 
+async def close_pane(session: "iterm2.Session", force: bool = False) -> bool:
+    """
+    Close an iTerm2 session/pane.
+
+    Uses the iTerm2 async_close() API to terminate the pane. If the pane is the
+    last one in a tab/window, the tab/window will also close.
+
+    Args:
+        session: The iTerm2 session to close
+        force: If True, forcefully close even if processes are running
+
+    Returns:
+        True if the pane was closed successfully
+    """
+    await session.async_close(force=force)
+    return True
+
+
 # =============================================================================
 # Claude Session Control
 # =============================================================================
