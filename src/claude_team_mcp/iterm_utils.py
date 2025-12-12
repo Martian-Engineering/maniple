@@ -456,10 +456,11 @@ async def create_multi_claude_layout(
     # Create the pane layout
     panes = await create_multi_pane_layout(connection, layout)
 
-    # Start Claude in each pane that has a project assigned
-    for pane_name, project_path in projects.items():
+    # Start Claude in all panes in parallel.
+    # Each start_claude_in_session call uses wait_for_shell_ready() internally
+    # which provides proper readiness detection, so no sleeps between starts needed.
+    async def start_claude_for_pane(pane_name: str, project_path: str) -> None:
         session = panes[pane_name]
-        # Get env vars for this pane if provided
         pane_env = project_envs.get(pane_name) if project_envs else None
         await start_claude_in_session(
             session=session,
@@ -467,8 +468,11 @@ async def create_multi_claude_layout(
             dangerously_skip_permissions=skip_permissions,
             env=pane_env,
         )
-        # Brief pause between starts to avoid overwhelming iTerm
-        await asyncio.sleep(0.5)
+
+    await asyncio.gather(*[
+        start_claude_for_pane(pane_name, project_path)
+        for pane_name, project_path in projects.items()
+    ])
 
     # Return only the panes that were used
     return {name: panes[name] for name in projects.keys()}

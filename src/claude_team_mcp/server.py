@@ -389,23 +389,25 @@ async def spawn_team(
             project_envs=project_envs if project_envs else None,
         )
 
-        # Register all sessions and build result
-        result_sessions = {}
+        # Register all sessions first (this is quick, no I/O)
+        managed_sessions = {}
         for pane_name, iterm_session in pane_sessions.items():
-            # Register in our session registry
             managed = registry.add(
                 iterm_session=iterm_session,
                 project_path=resolved_projects[pane_name],
                 name=f"{layout}_{pane_name}",  # e.g., "quad_top_left"
             )
+            managed_sessions[pane_name] = managed
 
-            # Try to discover Claude session ID
-            await asyncio.sleep(1)
+        # Single batch sleep to give Claude time to create session files.
+        # This replaces sequential 1s sleeps per session.
+        await asyncio.sleep(1)
+
+        # Discover Claude sessions and update status for all
+        result_sessions = {}
+        for pane_name, managed in managed_sessions.items():
             managed.discover_claude_session()
-
-            # Update status to ready
             registry.update_status(managed.session_id, SessionStatus.READY)
-
             result_sessions[pane_name] = managed.to_dict()
 
         return {
