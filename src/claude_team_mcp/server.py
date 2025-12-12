@@ -6,19 +6,19 @@ Allows a "manager" Claude Code session to spawn and coordinate multiple
 "worker" Claude Code sessions.
 """
 
-import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from mcp.server.fastmcp import FastMCP
+
+from .registry import SessionRegistry
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("claude-team-mcp")
 
@@ -26,21 +26,6 @@ logger = logging.getLogger("claude-team-mcp")
 # =============================================================================
 # Application Context
 # =============================================================================
-
-@dataclass
-class ManagedSession:
-    """
-    Represents a spawned Claude Code session.
-
-    Tracks the iTerm2 session object, project path, and Claude session ID
-    discovered from the JSONL file.
-    """
-    session_id: str  # Our assigned ID (e.g., "worker-1")
-    iterm_session: object  # iterm2.Session (typed as object to avoid import issues at definition)
-    project_path: str
-    claude_session_id: Optional[str] = None  # Discovered from JSONL
-    name: Optional[str] = None  # Optional friendly name
-    status: str = "spawning"  # spawning, ready, busy, closed
 
 
 @dataclass
@@ -51,20 +36,16 @@ class AppContext:
     Maintains the iTerm2 connection and registry of managed sessions.
     This is the persistent state that makes the MCP server useful.
     """
+
     iterm_connection: object  # iterm2.Connection
     iterm_app: object  # iterm2.App
-    sessions: dict[str, ManagedSession] = field(default_factory=dict)
-    _session_counter: int = 0
-
-    def next_session_id(self) -> str:
-        """Generate the next session ID."""
-        self._session_counter += 1
-        return f"worker-{self._session_counter}"
+    registry: SessionRegistry
 
 
 # =============================================================================
 # Lifespan Management
 # =============================================================================
+
 
 @asynccontextmanager
 async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
@@ -97,10 +78,11 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
         logger.error("Make sure iTerm2 is running and Python API is enabled")
         raise RuntimeError("Could not connect to iTerm2") from e
 
-    # Create application context
+    # Create application context with session registry
     ctx = AppContext(
         iterm_connection=connection,
         iterm_app=app,
+        registry=SessionRegistry(),
     )
 
     try:
@@ -108,8 +90,8 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     finally:
         # Cleanup: close any remaining sessions gracefully
         logger.info("Claude Team MCP Server shutting down...")
-        if ctx.sessions:
-            logger.info(f"Cleaning up {len(ctx.sessions)} managed session(s)...")
+        if ctx.registry.count() > 0:
+            logger.info(f"Cleaning up {ctx.registry.count()} managed session(s)...")
         logger.info("Shutdown complete")
 
 
@@ -126,6 +108,7 @@ mcp = FastMCP(
 # =============================================================================
 # Tool Implementations (Placeholders - will be implemented in separate tasks)
 # =============================================================================
+
 
 @mcp.tool()
 async def spawn_session(
@@ -278,6 +261,7 @@ async def close_session(
 # =============================================================================
 # Server Entry Point
 # =============================================================================
+
 
 def run_server():
     """Run the MCP server with stdio transport."""
