@@ -14,8 +14,8 @@ First, analyze the tasks to understand:
 
 ### 2. Worktree Setup
 For each task that's ready to start:
-1. Create a dedicated git worktree: `git worktree add ../<project>-<issue-id> -b <issue-id>/<short-description>`
-2. Track the worktree path for later cleanup
+1. Create a dedicated git worktree: `git worktree add .worktrees/<issue-id> -b <issue-id>/<short-description>`
+2. Track the worktree path for later cleanup (the `.worktrees/` directory is gitignored)
 
 ### 3. Spawn Workers
 Use the claude-team MCP tools to spawn workers:
@@ -51,9 +51,9 @@ After each worker completes:
 1. Verify they committed their work (check git log in worktree)
 2. Close the session using `close_session`
 3. Merge the worktree branch: `git merge <branch-name>`
-4. Remove the worktree: `git worktree remove <path>`
+4. Remove the worktree: `git worktree remove .worktrees/<issue-id>`
 5. Delete the branch: `git branch -d <branch-name>`
-6. Close the beads issue if not already closed: `bd close <id>`
+6. Close the beads issue if not already closed: `bd --no-db close <id>`
 
 Handle any merge conflicts by resolving them or asking for guidance.
 
