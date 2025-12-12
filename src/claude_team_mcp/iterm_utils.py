@@ -173,6 +173,7 @@ async def start_claude_in_session(
     resume_session: Optional[str] = None,
     wait_seconds: float = 3.0,
     dangerously_skip_permissions: bool = False,
+    env: Optional[dict[str, str]] = None,
 ) -> None:
     """
     Start Claude Code in an existing iTerm2 session.
@@ -185,6 +186,7 @@ async def start_claude_in_session(
         resume_session: Optional session ID to resume
         wait_seconds: Time to wait for Claude to initialize
         dangerously_skip_permissions: If True, start with --dangerously-skip-permissions
+        env: Optional dict of environment variables to set before running claude
     """
     import asyncio
 
@@ -198,6 +200,12 @@ async def start_claude_in_session(
         cmd += " --dangerously-skip-permissions"
     if resume_session:
         cmd += f" --resume {resume_session}"
+
+    # Prepend environment variables if provided
+    if env:
+        env_exports = " ".join(f"{k}={v}" for k, v in env.items())
+        cmd = f"{env_exports} {cmd}"
+
     await send_prompt(session, cmd)
 
     # Wait for Claude to initialize
@@ -295,6 +303,7 @@ async def create_multi_claude_layout(
     projects: dict[str, str],
     layout: str,
     skip_permissions: bool = False,
+    project_envs: Optional[dict[str, dict[str, str]]] = None,
 ) -> dict[str, "iterm2.Session"]:
     """
     Create a multi-pane window and start Claude Code in each pane.
@@ -309,6 +318,8 @@ async def create_multi_claude_layout(
             'top_left', 'top_right', 'bottom_left', 'bottom_right')
         layout: Layout type (vertical, horizontal, quad, triple_vertical)
         skip_permissions: If True, start Claude with --dangerously-skip-permissions
+        project_envs: Optional dict mapping pane names to env var dicts. Each
+            pane can have its own environment variables set before starting Claude.
 
     Returns:
         Dict mapping pane names to iTerm2 sessions (after Claude is started)
@@ -335,10 +346,13 @@ async def create_multi_claude_layout(
     # Start Claude in each pane that has a project assigned
     for pane_name, project_path in projects.items():
         session = panes[pane_name]
+        # Get env vars for this pane if provided
+        pane_env = project_envs.get(pane_name) if project_envs else None
         await start_claude_in_session(
             session=session,
             project_path=project_path,
             dangerously_skip_permissions=skip_permissions,
+            env=pane_env,
         )
         # Brief pause between starts to avoid overwhelming iTerm
         await asyncio.sleep(0.5)

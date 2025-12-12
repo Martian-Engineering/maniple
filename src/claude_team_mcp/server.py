@@ -9,6 +9,7 @@ Allows a "manager" Claude Code session to spawn and coordinate multiple
 import asyncio
 import logging
 import os
+import subprocess
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -34,6 +35,78 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("claude-team-mcp")
+
+
+# =============================================================================
+# Worktree Detection
+# =============================================================================
+
+
+def get_worktree_beads_dir(project_path: str) -> str | None:
+    """
+    Detect if project_path is a git worktree and return the main repo's .beads dir.
+
+    Git worktrees have .git as a file (not a directory) pointing to the main repo.
+    The `git rev-parse --git-common-dir` command returns the path to the shared
+    .git directory, which we can use to find the main repo.
+
+    Args:
+        project_path: Absolute path to the project directory
+
+    Returns:
+        Path to the main repo's .beads directory if:
+        - project_path is a git worktree
+        - The main repo has a .beads directory
+        Otherwise returns None.
+    """
+    try:
+        # Run git rev-parse --git-common-dir to get the shared .git directory
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=project_path,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+
+        if result.returncode != 0:
+            # Not a git repo or git command failed
+            return None
+
+        git_common_dir = result.stdout.strip()
+
+        # If the result is just ".git", this is the main repo (not a worktree)
+        if git_common_dir == ".git":
+            return None
+
+        # git_common_dir is the path to the shared .git directory
+        # The main repo is the parent of .git
+        # Handle both absolute and relative paths
+        if not os.path.isabs(git_common_dir):
+            git_common_dir = os.path.join(project_path, git_common_dir)
+
+        git_common_dir = os.path.normpath(git_common_dir)
+
+        # Main repo is the parent directory of .git
+        main_repo = os.path.dirname(git_common_dir)
+
+        # Check if the main repo has a .beads directory
+        beads_dir = os.path.join(main_repo, ".beads")
+        if os.path.isdir(beads_dir):
+            logger.info(
+                f"Detected git worktree. Setting BEADS_DIR={beads_dir} "
+                f"for project {project_path}"
+            )
+            return beads_dir
+
+        return None
+
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Timeout checking git worktree status for {project_path}")
+        return None
+    except Exception as e:
+        logger.warning(f"Error checking git worktree status for {project_path}: {e}")
+        return None
 
 
 # =============================================================================
@@ -195,12 +268,19 @@ async def spawn_session(
             name=session_name,
         )
 
+        # Check if this is a git worktree and set BEADS_DIR if needed
+        env = None
+        beads_dir = get_worktree_beads_dir(resolved_path)
+        if beads_dir:
+            env = {"BEADS_DIR": beads_dir}
+
         # Start Claude Code in the session
         await start_claude_in_session(
             session=iterm_session,
             project_path=resolved_path,
             wait_seconds=4.0,
             dangerously_skip_permissions=skip_permissions,
+            env=env,
         )
 
         # Try to discover the Claude session ID from JSONL
@@ -278,13 +358,19 @@ async def spawn_team(
             f"Valid names: {list(expected_panes)}"
         }
 
-    # Validate all project paths exist
+    # Validate all project paths exist and detect worktrees
     resolved_projects = {}
+    project_envs: dict[str, dict[str, str]] = {}
     for pane_name, project_path in projects.items():
         resolved = os.path.abspath(os.path.expanduser(project_path))
         if not os.path.isdir(resolved):
             return {"error": f"Project path does not exist for '{pane_name}': {resolved}"}
         resolved_projects[pane_name] = resolved
+
+        # Check for worktree and set BEADS_DIR if needed
+        beads_dir = get_worktree_beads_dir(resolved)
+        if beads_dir:
+            project_envs[pane_name] = {"BEADS_DIR": beads_dir}
 
     try:
         # Create the multi-pane layout and start Claude in each pane
@@ -293,6 +379,7 @@ async def spawn_team(
             projects=resolved_projects,
             layout=layout,
             skip_permissions=skip_permissions,
+            project_envs=project_envs if project_envs else None,
         )
 
         # Register all sessions and build result
