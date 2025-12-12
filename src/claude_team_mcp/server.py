@@ -128,6 +128,7 @@ async def spawn_session(
     session_name: str | None = None,
     layout: str = "new_window",
     skip_permissions: bool = False,
+    split_from_session: str | None = None,
 ) -> dict:
     """
     Spawn a new Claude Code session in iTerm2.
@@ -140,6 +141,8 @@ async def spawn_session(
         session_name: Optional friendly name for the session
         layout: How to create the session - "new_window", "split_vertical", or "split_horizontal"
         skip_permissions: If True, start Claude with --dangerously-skip-permissions flag
+        split_from_session: For split layouts, ID of existing managed session to split from.
+            If not provided, splits the currently active iTerm window.
 
     Returns:
         Dict with session_id, status, and project_path
@@ -161,16 +164,25 @@ async def spawn_session(
             window = await create_window(connection)
             iterm_session = window.current_tab.current_session
         elif layout in ("split_vertical", "split_horizontal"):
-            # Split the current window's active session
-            current_window = app.current_terminal_window
-            if current_window is None:
-                # No window exists, create one
-                window = await create_window(connection)
-                iterm_session = window.current_tab.current_session
+            vertical = layout == "split_vertical"
+
+            # Determine which session to split from
+            if split_from_session:
+                # Split from a specific managed session
+                source_session = registry.get(split_from_session)
+                if not source_session:
+                    return {"error": f"split_from_session not found: {split_from_session}"}
+                iterm_session = await split_pane(source_session.iterm_session, vertical=vertical)
             else:
-                current_session = current_window.current_tab.current_session
-                vertical = layout == "split_vertical"
-                iterm_session = await split_pane(current_session, vertical=vertical)
+                # Split the current window's active session (original behavior)
+                current_window = app.current_terminal_window
+                if current_window is None:
+                    # No window exists, create one
+                    window = await create_window(connection)
+                    iterm_session = window.current_tab.current_session
+                else:
+                    current_session = current_window.current_tab.current_session
+                    iterm_session = await split_pane(current_session, vertical=vertical)
         else:
             return {"error": f"Invalid layout: {layout}. Use: new_window, split_vertical, split_horizontal"}
 
