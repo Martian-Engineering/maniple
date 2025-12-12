@@ -21,13 +21,14 @@ scripts/                       # Utility scripts
 tests/                         # Pytest unit tests
 ```
 
-## Scripts
+## Makefile Targets
 
-### Install Slash Commands
 ```bash
-uv run scripts/install-commands.py           # Interactive install
-uv run scripts/install-commands.py --force   # Overwrite without prompting
-uv run scripts/install-commands.py --dry-run # Preview changes
+make help                  # Show available targets
+make install-commands      # Install slash commands to ~/.claude/commands/
+make install-commands-force # Overwrite existing commands
+make test                  # Run pytest
+make sync                  # Sync dependencies
 ```
 
 ## Key Modules
