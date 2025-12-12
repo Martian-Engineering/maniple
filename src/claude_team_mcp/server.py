@@ -20,8 +20,11 @@ from mcp.server.session import ServerSession
 
 from .iterm_utils import (
     LAYOUT_PANE_NAMES,
+    MAX_PANES_PER_TAB,
+    count_panes_in_tab,
     create_multi_claude_layout,
     create_window,
+    find_available_window,
     read_screen_text,
     send_prompt,
     split_pane,
@@ -211,6 +214,8 @@ async def spawn_session(
     layout: str = "new_window",
     skip_permissions: bool = False,
     split_from_session: str | None = None,
+    auto_layout: bool = True,
+    max_panes_per_tab: int = MAX_PANES_PER_TAB,
 ) -> dict:
     """
     Spawn a new Claude Code session in iTerm2.
@@ -221,10 +226,16 @@ async def spawn_session(
     Args:
         project_path: Directory where Claude Code should run
         session_name: Optional friendly name for the session
-        layout: How to create the session - "new_window", "split_vertical", or "split_horizontal"
+        layout: How to create the session - "new_window", "split_vertical", "split_horizontal",
+            or "auto" (default "new_window"). When "auto" or auto_layout=True, intelligently
+            reuses existing windows with available pane slots.
         skip_permissions: If True, start Claude with --dangerously-skip-permissions flag
         split_from_session: For split layouts, ID of existing managed session to split from.
             If not provided, splits the currently active iTerm window.
+        auto_layout: If True (default), automatically find windows with room when layout
+            is "new_window". Set to False to always create new windows.
+        max_panes_per_tab: Maximum panes per tab before considering it full (default 4).
+            Only used when auto_layout is True.
 
     Returns:
         Dict with session_id, status, and project_path
@@ -240,13 +251,49 @@ async def spawn_session(
         return {"error": f"Project path does not exist: {resolved_path}"}
 
     try:
+        # Normalize "auto" layout to "new_window" with auto_layout=True
+        effective_layout = layout
+        if layout == "auto":
+            effective_layout = "new_window"
+            auto_layout = True
+
         # Create iTerm2 session based on layout
-        if layout == "new_window":
-            # Create a new window
-            window = await create_window(connection)
-            iterm_session = window.current_tab.current_session
-        elif layout in ("split_vertical", "split_horizontal"):
-            vertical = layout == "split_vertical"
+        layout_info = {}  # Track how the session was created for the response
+
+        if effective_layout == "new_window":
+            if auto_layout:
+                # Try to find an existing window with room for more panes
+                available = await find_available_window(app, max_panes=max_panes_per_tab)
+                if available:
+                    window, tab, source_session = available
+                    pane_count = count_panes_in_tab(tab)
+                    # Smart split direction: alternate between vertical and horizontal
+                    # for a balanced grid layout (1->2: V, 2->3: H, 3->4: V)
+                    vertical = (pane_count % 2) == 1
+                    iterm_session = await split_pane(source_session, vertical=vertical)
+                    layout_info = {
+                        "layout_used": "auto_split",
+                        "split_direction": "vertical" if vertical else "horizontal",
+                        "panes_in_tab": pane_count + 1,
+                        "reused_window": True,
+                    }
+                else:
+                    # No available window, create a new one
+                    window = await create_window(connection)
+                    iterm_session = window.current_tab.current_session
+                    layout_info = {
+                        "layout_used": "new_window",
+                        "panes_in_tab": 1,
+                        "reused_window": False,
+                    }
+            else:
+                # Create a new window (original behavior)
+                window = await create_window(connection)
+                iterm_session = window.current_tab.current_session
+                layout_info = {"layout_used": "new_window", "panes_in_tab": 1}
+
+        elif effective_layout in ("split_vertical", "split_horizontal"):
+            vertical = effective_layout == "split_vertical"
 
             # Determine which session to split from
             if split_from_session:
@@ -255,6 +302,10 @@ async def spawn_session(
                 if not source_session:
                     return {"error": f"split_from_session not found: {split_from_session}"}
                 iterm_session = await split_pane(source_session.iterm_session, vertical=vertical)
+                layout_info = {
+                    "layout_used": effective_layout,
+                    "split_from": split_from_session,
+                }
             else:
                 # Split the current window's active session (original behavior)
                 current_window = app.current_terminal_window
@@ -262,11 +313,13 @@ async def spawn_session(
                     # No window exists, create one
                     window = await create_window(connection)
                     iterm_session = window.current_tab.current_session
+                    layout_info = {"layout_used": "new_window", "reason": "no_existing_window"}
                 else:
                     current_session = current_window.current_tab.current_session
                     iterm_session = await split_pane(current_session, vertical=vertical)
+                    layout_info = {"layout_used": effective_layout}
         else:
-            return {"error": f"Invalid layout: {layout}. Use: new_window, split_vertical, split_horizontal"}
+            return {"error": f"Invalid layout: {layout}. Use: new_window, auto, split_vertical, split_horizontal"}
 
         # Register the session before starting Claude (so we track it even if startup fails)
         managed = registry.add(
@@ -297,7 +350,10 @@ async def spawn_session(
         # Update status to ready
         registry.update_status(managed.session_id, SessionStatus.READY)
 
-        return managed.to_dict()
+        # Include layout info in response
+        result = managed.to_dict()
+        result.update(layout_info)
+        return result
 
     except Exception as e:
         logger.error(f"Failed to spawn session: {e}")

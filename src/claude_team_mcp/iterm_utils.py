@@ -480,6 +480,96 @@ async def create_multi_claude_layout(
     return {name: panes[name] for name in projects.keys()}
 
 
+# =============================================================================
+# Window/Pane Introspection
+# =============================================================================
+
+
+MAX_PANES_PER_TAB = 4  # Maximum panes before considering tab "full"
+
+
+def count_panes_in_tab(tab: "iterm2.Tab") -> int:
+    """
+    Count the number of panes (sessions) in a tab.
+
+    Args:
+        tab: iTerm2 tab object
+
+    Returns:
+        Number of sessions in the tab
+    """
+    return len(tab.sessions)
+
+
+def count_panes_in_window(window: "iterm2.Window") -> int:
+    """
+    Count total panes across all tabs in a window.
+
+    Note: For smart layout purposes, we typically care about individual tabs
+    since panes are split within a tab. Use count_panes_in_tab() for that.
+
+    Args:
+        window: iTerm2 window object
+
+    Returns:
+        Total number of sessions across all tabs in the window
+    """
+    total = 0
+    for tab in window.tabs:
+        total += len(tab.sessions)
+    return total
+
+
+async def find_available_window(
+    app: "iterm2.App",
+    max_panes: int = MAX_PANES_PER_TAB,
+) -> Optional[tuple["iterm2.Window", "iterm2.Tab", "iterm2.Session"]]:
+    """
+    Find a window with an available tab that has room for more panes.
+
+    Searches all terminal windows for a tab with fewer than max_panes sessions.
+    Returns the window, tab, and a session in that tab that can be split.
+
+    Args:
+        app: iTerm2 app object
+        max_panes: Maximum panes before considering a tab full (default 4)
+
+    Returns:
+        Tuple of (window, tab, session) if found, None if all tabs are full
+    """
+    for window in app.terminal_windows:
+        for tab in window.tabs:
+            pane_count = count_panes_in_tab(tab)
+            if pane_count < max_panes:
+                # Return the current session in this tab as the split target
+                current_session = tab.current_session
+                if current_session:
+                    return (window, tab, current_session)
+    return None
+
+
+async def get_window_for_session(
+    app: "iterm2.App",
+    session: "iterm2.Session",
+) -> Optional["iterm2.Window"]:
+    """
+    Find the window containing a given session.
+
+    Args:
+        app: iTerm2 app object
+        session: The session to find
+
+    Returns:
+        The window containing the session, or None if not found
+    """
+    for window in app.terminal_windows:
+        for tab in window.tabs:
+            for s in tab.sessions:
+                if s.session_id == session.session_id:
+                    return window
+    return None
+
+
 async def find_claude_session(
     app: "iterm2.App",
     project_path: str,
