@@ -1,3 +1,80 @@
+# Claude Team MCP Server
+
+An MCP server that enables a "manager" Claude Code session to spawn and orchestrate multiple "worker" Claude Code sessions via iTerm2.
+
+## Project Structure
+
+```
+src/claude_team_mcp/           # Main MCP server package
+├── server.py                  # FastMCP server with all 13 MCP tool implementations
+├── registry.py                # Session tracking (ManagedSession, SessionRegistry)
+├── session_state.py           # JSONL parsing for Claude conversation logs
+├── iterm_utils.py             # Low-level iTerm2 API wrappers
+├── task_completion.py         # Multi-strategy task completion detection
+├── profile.py                 # iTerm2 profile/theme management
+├── colors.py                  # Golden ratio tab color generation
+└── formatting.py              # Title/badge formatting utilities
+
+tests/                         # Pytest unit tests
+```
+
+## Key Modules
+
+| Module | Purpose |
+|--------|---------|
+| `server.py` | Entry point; defines all MCP tools (`spawn_session`, `send_message`, `get_response`, etc.) |
+| `registry.py` | Tracks managed sessions, states: SPAWNING → READY → BUSY → CLOSED |
+| `session_state.py` | Parses Claude's JSONL files at `~/.claude/projects/{slug}/{session}.jsonl` |
+| `iterm_utils.py` | Terminal control: `send_text`, `send_prompt`, window/pane creation |
+| `task_completion.py` | Detects completion via markers, git commits, beads issues, idle time |
+| `profile.py` | Auto dark/light mode, screen dimensions, font configuration |
+
+## Critical Implementation Details
+
+### Enter Key Handling
+**Use `\x0d` (carriage return) for Enter, NOT `\n`**
+- `\n` creates a newline in input buffer but doesn't submit
+- `\x0d` triggers actual Enter keypress
+- Multi-line text requires delays before Enter (bracketed paste mode)
+
+### JSONL Session Discovery
+Claude stores conversations at:
+```
+~/.claude/projects/{project-slug}/{session-id}.jsonl
+```
+Where `{project-slug}` = project path with `/` → `-` (e.g., `/Users/josh/code` → `-Users-josh-code`)
+
+### Completion Detection Strategies
+1. **Convention markers**: `TASK_COMPLETE`, `TASK_FAILED` in conversation
+2. **Natural language**: Pattern matching for completion phrases
+3. **Git commits**: New commits since task started
+4. **Beads issues**: Issue status changed to closed
+5. **Idle detection**: No JSONL file changes for threshold period
+
+### Layout Options
+- `new_window`: Fresh iTerm2 window
+- `split_vertical` / `split_horizontal`: Split existing pane
+- `quad`: 4-pane grid [top_left, top_right, bottom_left, bottom_right]
+- `auto_layout`: Smart reuse of windows with < 4 panes
+
+## Running & Testing
+
+```bash
+# Sync dependencies
+uv sync
+
+# Run tests
+uv run pytest
+
+# Run server directly (debugging)
+uv run python -m claude_team_mcp
+```
+
+## Requirements
+- macOS with iTerm2 (Python API enabled)
+- Python 3.11+
+- uv package manager
+
 ## Development Workflow
 
 This project uses **Beads** for issue tracking instead of markdown todos. Key commands:
