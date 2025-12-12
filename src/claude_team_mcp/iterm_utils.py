@@ -204,6 +204,149 @@ async def start_claude_in_session(
     await asyncio.sleep(wait_seconds)
 
 
+# =============================================================================
+# Multi-Pane Layouts
+# =============================================================================
+
+# Valid pane names for each layout type
+LAYOUT_PANE_NAMES = {
+    "vertical": ["left", "right"],
+    "horizontal": ["top", "bottom"],
+    "quad": ["top_left", "top_right", "bottom_left", "bottom_right"],
+    "triple_vertical": ["left", "middle", "right"],
+}
+
+
+async def create_multi_pane_layout(
+    connection: "iterm2.Connection",
+    layout: str,
+) -> dict[str, "iterm2.Session"]:
+    """
+    Create a new iTerm2 window with a multi-pane layout.
+
+    Creates a window and splits it into panes according to the specified layout.
+    Returns a mapping of pane names to iTerm2 sessions.
+
+    Args:
+        connection: iTerm2 connection object
+        layout: Layout type - one of:
+            - "vertical": 2 panes side by side (left, right)
+            - "horizontal": 2 panes stacked (top, bottom)
+            - "quad": 4 panes in 2x2 grid (top_left, top_right, bottom_left, bottom_right)
+            - "triple_vertical": 3 panes side by side (left, middle, right)
+
+    Returns:
+        Dict mapping pane names to iTerm2 sessions
+
+    Raises:
+        ValueError: If layout is not recognized
+    """
+    if layout not in LAYOUT_PANE_NAMES:
+        raise ValueError(
+            f"Unknown layout: {layout}. Valid: {list(LAYOUT_PANE_NAMES.keys())}"
+        )
+
+    # Create window with initial session
+    window = await create_window(connection)
+    initial_session = window.current_tab.current_session
+
+    panes: dict[str, "iterm2.Session"] = {}
+
+    if layout == "vertical":
+        # Split into left and right
+        panes["left"] = initial_session
+        panes["right"] = await split_pane(initial_session, vertical=True)
+
+    elif layout == "horizontal":
+        # Split into top and bottom
+        panes["top"] = initial_session
+        panes["bottom"] = await split_pane(initial_session, vertical=False)
+
+    elif layout == "quad":
+        # Create 2x2 grid:
+        # 1. Split vertically: left | right
+        # 2. Split left horizontally: top_left / bottom_left
+        # 3. Split right horizontally: top_right / bottom_right
+        left = initial_session
+        right = await split_pane(left, vertical=True)
+
+        # Split the left column
+        panes["top_left"] = left
+        panes["bottom_left"] = await split_pane(left, vertical=False)
+
+        # Split the right column
+        panes["top_right"] = right
+        panes["bottom_right"] = await split_pane(right, vertical=False)
+
+    elif layout == "triple_vertical":
+        # Create 3 vertical panes: left | middle | right
+        # 1. Split initial into 2
+        # 2. Split right pane into 2 more
+        panes["left"] = initial_session
+        right_section = await split_pane(initial_session, vertical=True)
+        panes["middle"] = right_section
+        panes["right"] = await split_pane(right_section, vertical=True)
+
+    return panes
+
+
+async def create_multi_claude_layout(
+    connection: "iterm2.Connection",
+    projects: dict[str, str],
+    layout: str,
+    skip_permissions: bool = False,
+) -> dict[str, "iterm2.Session"]:
+    """
+    Create a multi-pane window and start Claude Code in each pane.
+
+    High-level primitive that combines create_multi_pane_layout with
+    starting Claude in each pane.
+
+    Args:
+        connection: iTerm2 connection object
+        projects: Dict mapping pane names to project paths. Keys must match
+            the expected pane names for the layout (e.g., for 'quad':
+            'top_left', 'top_right', 'bottom_left', 'bottom_right')
+        layout: Layout type (vertical, horizontal, quad, triple_vertical)
+        skip_permissions: If True, start Claude with --dangerously-skip-permissions
+
+    Returns:
+        Dict mapping pane names to iTerm2 sessions (after Claude is started)
+
+    Raises:
+        ValueError: If layout is invalid or project keys don't match layout panes
+    """
+    import asyncio
+
+    # Validate pane names match the layout
+    expected_panes = set(LAYOUT_PANE_NAMES.get(layout, []))
+    provided_panes = set(projects.keys())
+
+    if not provided_panes.issubset(expected_panes):
+        invalid = provided_panes - expected_panes
+        raise ValueError(
+            f"Invalid pane names for layout '{layout}': {invalid}. "
+            f"Valid names: {expected_panes}"
+        )
+
+    # Create the pane layout
+    panes = await create_multi_pane_layout(connection, layout)
+
+    # Start Claude in each pane that has a project assigned
+    for pane_name, project_path in projects.items():
+        session = panes[pane_name]
+        await start_claude_in_session(
+            session=session,
+            project_path=project_path,
+            dangerously_skip_permissions=skip_permissions,
+        )
+        # Brief pause between starts to avoid overwhelming iTerm
+        await asyncio.sleep(0.5)
+
+    # Return only the panes that were used
+    return {name: panes[name] for name in projects.keys()}
+
+
 async def find_claude_session(
     app: "iterm2.App",
     project_path: str,

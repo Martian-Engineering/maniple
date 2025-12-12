@@ -18,6 +18,8 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 
 from .iterm_utils import (
+    LAYOUT_PANE_NAMES,
+    create_multi_claude_layout,
     create_window,
     read_screen_text,
     send_prompt,
@@ -212,6 +214,118 @@ async def spawn_session(
 
     except Exception as e:
         logger.error(f"Failed to spawn session: {e}")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def spawn_team(
+    ctx: Context[ServerSession, AppContext],
+    projects: dict[str, str],
+    layout: str = "quad",
+    skip_permissions: bool = False,
+) -> dict:
+    """
+    Spawn multiple Claude Code sessions in a multi-pane layout.
+
+    Creates a new iTerm2 window with the specified pane layout and starts
+    Claude Code in each pane. All sessions are registered for management.
+
+    Args:
+        projects: Dict mapping pane names to project paths. Keys must match
+            the layout's pane names:
+            - "vertical": ["left", "right"]
+            - "horizontal": ["top", "bottom"]
+            - "quad": ["top_left", "top_right", "bottom_left", "bottom_right"]
+            - "triple_vertical": ["left", "middle", "right"]
+        layout: Layout type - "vertical", "horizontal", "quad", or "triple_vertical"
+        skip_permissions: If True, start Claude with --dangerously-skip-permissions
+
+    Returns:
+        Dict with:
+            - sessions: Dict mapping pane names to session info (id, status, project_path)
+            - layout: The layout used
+            - count: Number of sessions created
+
+    Example:
+        spawn_team(
+            projects={
+                "top_left": "/path/to/frontend",
+                "top_right": "/path/to/backend",
+                "bottom_left": "/path/to/api",
+                "bottom_right": "/path/to/tests"
+            },
+            layout="quad"
+        )
+    """
+    app_ctx = ctx.request_context.lifespan_context
+    connection = app_ctx.iterm_connection
+    registry = app_ctx.registry
+
+    # Validate layout
+    if layout not in LAYOUT_PANE_NAMES:
+        return {
+            "error": f"Invalid layout: {layout}. "
+            f"Valid layouts: {list(LAYOUT_PANE_NAMES.keys())}"
+        }
+
+    # Validate pane names
+    expected_panes = set(LAYOUT_PANE_NAMES[layout])
+    provided_panes = set(projects.keys())
+    if not provided_panes.issubset(expected_panes):
+        invalid = provided_panes - expected_panes
+        return {
+            "error": f"Invalid pane names for layout '{layout}': {list(invalid)}. "
+            f"Valid names: {list(expected_panes)}"
+        }
+
+    # Validate all project paths exist
+    resolved_projects = {}
+    for pane_name, project_path in projects.items():
+        resolved = os.path.abspath(os.path.expanduser(project_path))
+        if not os.path.isdir(resolved):
+            return {"error": f"Project path does not exist for '{pane_name}': {resolved}"}
+        resolved_projects[pane_name] = resolved
+
+    try:
+        # Create the multi-pane layout and start Claude in each pane
+        pane_sessions = await create_multi_claude_layout(
+            connection=connection,
+            projects=resolved_projects,
+            layout=layout,
+            skip_permissions=skip_permissions,
+        )
+
+        # Register all sessions and build result
+        result_sessions = {}
+        for pane_name, iterm_session in pane_sessions.items():
+            # Register in our session registry
+            managed = registry.add(
+                iterm_session=iterm_session,
+                project_path=resolved_projects[pane_name],
+                name=f"{layout}_{pane_name}",  # e.g., "quad_top_left"
+            )
+
+            # Try to discover Claude session ID
+            await asyncio.sleep(1)
+            managed.discover_claude_session()
+
+            # Update status to ready
+            registry.update_status(managed.session_id, SessionStatus.READY)
+
+            result_sessions[pane_name] = managed.to_dict()
+
+        return {
+            "sessions": result_sessions,
+            "layout": layout,
+            "count": len(result_sessions),
+        }
+
+    except ValueError as e:
+        # Layout or pane name validation errors from the primitive
+        logger.error(f"Validation error in spawn_team: {e}")
+        return {"error": str(e)}
+    except Exception as e:
+        logger.error(f"Failed to spawn team: {e}")
         return {"error": str(e)}
 
 
