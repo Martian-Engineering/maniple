@@ -21,7 +21,7 @@ An MCP server that allows one Claude Code session to spawn and manage a team of 
 
 ```bash
 # Clone the repository
-cd /path/to/claude-iterm-controller
+cd /path/to/claude-team
 
 # Install with uv
 uv sync
@@ -38,13 +38,11 @@ Add to your Claude Code MCP settings. You can configure this at:
   "mcpServers": {
     "claude-team": {
       "command": "uv",
-      "args": ["run", "--directory", "/Users/YOUR_USERNAME/Projects/claude-iterm-controller", "python", "-m", "claude_team_mcp"]
+      "args": ["run", "--directory", "/path/to/claude-team", "python", "-m", "claude_team_mcp"]
     }
   }
 }
 ```
-
-**Important**: Replace `/Users/YOUR_USERNAME/Projects/claude-iterm-controller` with the actual path to this repository.
 
 After adding the configuration, restart Claude Code for it to take effect.
 
