@@ -2,7 +2,7 @@
   "mcpServers": {
     "claude-team": {
       "command": "uv",
-      "args": ["run", "--directory", "/Users/phaedrus/Projects/claude-iterm-controller", "python", "-m", "claude_team_mcp"]
+      "args": ["run", "--directory", "/Users/phaedrus/Projects/claude-team", "python", "-m", "claude_team_mcp"]
     }
   }
 }

@@ -47,6 +47,7 @@ htmlcov/
 # Local environment
 .env
 .env.local
+.mcp.json
 
 # Git worktrees (internal)
 .worktrees/
