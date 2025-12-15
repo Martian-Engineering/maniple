@@ -49,16 +49,8 @@ Periodically check on workers using `get_session_status`:
 ### 5. Completion & Cleanup
 After each worker completes:
 1. Verify they committed their work (check git log in worktree)
-2. Close the session using `close_session`
-3. Merge the worktree branch: `git merge <branch-name>`
-4. Remove the worktree: `git worktree remove .worktrees/<issue-id>`
-5. Delete the branch: `git branch -d <branch-name>`
-6. Close the beads issue if not already closed: `bd --no-db close <id>`
-
-Handle any merge conflicts by resolving them or asking for guidance.
-
-### 6. Summary
-When all tasks are complete, provide a summary:
-- Which issues were completed
-- Any issues encountered
-- Final git log showing merged commits
+2. Close the beads issue if not already closed: `bd --no-db close <id>`
+3. When all tasks are complete, provide a summary:
+  - Which issues were completed
+  - Any issues encountered
+  - Final git log showing merged commits
