@@ -95,7 +95,9 @@ class ManagedSession:
         Try to discover the Claude session ID from JSONL files.
 
         Looks for recently modified session files in the project's
-        Claude directory.
+        Claude directory. Note: This finds the most recently modified
+        JSONL, which may not be correct when multiple sessions exist.
+        Prefer discover_claude_session_by_marker() for accurate correlation.
 
         Returns:
             Session ID if found, None otherwise
@@ -105,13 +107,44 @@ class ManagedSession:
             self.claude_session_id = session_id
         return session_id
 
+    def discover_claude_session_by_marker(self, max_age_seconds: int = 120) -> Optional[str]:
+        """
+        Discover the Claude session ID by searching for this session's marker.
+
+        This is more accurate than discover_claude_session() when multiple
+        sessions exist for the same project. Requires that a marker message
+        was previously sent to the session.
+
+        Args:
+            max_age_seconds: Only check JSONL files modified within this time
+
+        Returns:
+            Claude session ID if found, None otherwise
+        """
+        from .session_state import find_jsonl_by_marker
+
+        claude_session_id = find_jsonl_by_marker(
+            self.project_path,
+            self.session_id,
+            max_age_seconds=max_age_seconds,
+        )
+        if claude_session_id:
+            self.claude_session_id = claude_session_id
+        return claude_session_id
+
     def get_jsonl_path(self):
         """
         Get the path to this session's JSONL file.
 
+        Automatically tries to discover the session if not already known.
+
         Returns:
-            Path object, or None if claude_session_id not discovered
+            Path object, or None if session cannot be discovered
         """
+        # Auto-discover if not already known
+        if not self.claude_session_id:
+            self.discover_claude_session()
+
         if not self.claude_session_id:
             return None
         return get_project_dir(self.project_path) / f"{self.claude_session_id}.jsonl"

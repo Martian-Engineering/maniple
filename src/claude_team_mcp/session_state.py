@@ -31,10 +31,25 @@ class Message:
     content: str  # Extracted text content
     timestamp: datetime
     tool_uses: list = field(default_factory=list)
+    thinking: Optional[str] = None  # Thinking block content if present
 
     def __repr__(self) -> str:
         preview = self.content[:40] + "..." if len(self.content) > 40 else self.content
         return f"Message({self.role}: {preview!r})"
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        result = {
+            "uuid": self.uuid,
+            "role": self.role,
+            "content": self.content,
+            "timestamp": self.timestamp.isoformat(),
+        }
+        if self.tool_uses:
+            result["tool_uses"] = self.tool_uses
+        if self.thinking:
+            result["thinking"] = self.thinking
+        return result
 
 
 @dataclass
@@ -170,6 +185,113 @@ def get_project_dir(project_path: str) -> Path:
 
 
 # =============================================================================
+# Session Markers for JSONL Correlation
+# =============================================================================
+
+# Marker format for correlating iTerm sessions with JSONL files
+MARKER_PREFIX = "<!claude-team-session:"
+MARKER_SUFFIX = "!>"
+
+
+def generate_marker_message(session_id: str) -> str:
+    """
+    Generate a marker message to send to a session for JSONL correlation.
+
+    The marker is used to identify which JSONL file belongs to which
+    iTerm session when multiple sessions exist for the same project.
+
+    Args:
+        session_id: The managed session ID (e.g., "worker-1")
+
+    Returns:
+        A message string to send to the session
+    """
+    marker = f"{MARKER_PREFIX}{session_id}{MARKER_SUFFIX}"
+    return (
+        f"{marker}\n\n"
+        "The above is a marker that assists Claude Teams in locating your session - "
+        "respond with ONLY the word 'Identified!' and nothing further. "
+        "Please forgive the interruption."
+    )
+
+
+def extract_marker_session_id(text: str) -> Optional[str]:
+    """
+    Extract a session ID from marker text if present.
+
+    Args:
+        text: Text that may contain a marker
+
+    Returns:
+        The session ID from the marker, or None if no marker found
+    """
+    start = text.find(MARKER_PREFIX)
+    if start == -1:
+        return None
+    start += len(MARKER_PREFIX)
+    end = text.find(MARKER_SUFFIX, start)
+    if end == -1:
+        return None
+    return text[start:end]
+
+
+def find_jsonl_by_marker(
+    project_path: str,
+    session_id: str,
+    max_age_seconds: int = 120,
+) -> Optional[str]:
+    """
+    Find a JSONL file that contains a specific session marker.
+
+    Scans recent JSONL files in the project directory looking for
+    the session marker, which correlates the JSONL to an iTerm session.
+
+    Args:
+        project_path: Absolute path to the project
+        session_id: The session ID to search for in markers
+        max_age_seconds: Only check files modified within this many seconds
+
+    Returns:
+        The Claude session ID (JSONL filename stem) if found, None otherwise
+    """
+    import time
+
+    project_dir = get_project_dir(project_path)
+    if not project_dir.exists():
+        return None
+
+    marker = f"{MARKER_PREFIX}{session_id}{MARKER_SUFFIX}"
+    now = time.time()
+
+    # Check recent JSONL files
+    for f in project_dir.glob("*.jsonl"):
+        # Skip agent files
+        if f.name.startswith("agent-"):
+            continue
+
+        # Skip old files
+        if now - f.stat().st_mtime > max_age_seconds:
+            continue
+
+        # Search for marker in file (check last portion for efficiency)
+        try:
+            # Read last 50KB of file (marker should be near the end)
+            file_size = f.stat().st_size
+            read_size = min(file_size, 50000)
+            with open(f, "r") as fp:
+                if file_size > read_size:
+                    fp.seek(file_size - read_size)
+                content = fp.read()
+
+            if marker in content:
+                return f.stem
+        except Exception:
+            continue
+
+    return None
+
+
+# =============================================================================
 # Session Discovery
 # =============================================================================
 
@@ -273,13 +395,15 @@ def parse_session(jsonl_path: Path) -> SessionState:
             role = message_data.get("role", "")
             raw_content = message_data.get("content", [])
 
-            # Extract text content
+            # Extract text content, tool uses, and thinking blocks
             if isinstance(raw_content, str):
                 text_content = raw_content
                 tool_uses = []
+                thinking_content = None
             else:
                 text_parts = []
                 tool_uses = []
+                thinking_parts = []
                 for item in raw_content:
                     if isinstance(item, dict):
                         if item.get("type") == "text":
@@ -292,7 +416,10 @@ def parse_session(jsonl_path: Path) -> SessionState:
                                     "input": item.get("input", {}),
                                 }
                             )
+                        elif item.get("type") == "thinking":
+                            thinking_parts.append(item.get("thinking", ""))
                 text_content = "\n".join(text_parts)
+                thinking_content = "\n".join(thinking_parts) if thinking_parts else None
 
             # Parse timestamp
             try:
@@ -310,6 +437,7 @@ def parse_session(jsonl_path: Path) -> SessionState:
                     content=text_content,
                     timestamp=ts,
                     tool_uses=tool_uses,
+                    thinking=thinking_content,
                 )
             )
 

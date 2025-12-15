@@ -221,6 +221,67 @@ class AppContext:
 # =============================================================================
 
 
+async def refresh_iterm_connection() -> tuple["iterm2.Connection", "iterm2.App"]:
+    """
+    Create a fresh iTerm2 connection.
+
+    The iTerm2 Python API uses websockets with ping_interval=None, meaning
+    connections can go stale without any keepalive mechanism. This function
+    creates a new connection when needed.
+
+    Returns:
+        Tuple of (connection, app)
+
+    Raises:
+        RuntimeError: If connection fails
+    """
+    import iterm2
+
+    logger.debug("Creating fresh iTerm2 connection...")
+    try:
+        connection = await iterm2.Connection.async_create()
+        app = await iterm2.async_get_app(connection)
+        logger.debug("Fresh iTerm2 connection established")
+        return connection, app
+    except Exception as e:
+        logger.error(f"Failed to refresh iTerm2 connection: {e}")
+        raise RuntimeError("Could not connect to iTerm2") from e
+
+
+async def ensure_connection(app_ctx: "AppContext") -> tuple["iterm2.Connection", "iterm2.App"]:
+    """
+    Ensure we have a working iTerm2 connection, refreshing if stale.
+
+    The iTerm2 websocket connection can go stale due to lack of keepalive
+    (ping_interval=None in the iterm2 library). This function tests the
+    connection and refreshes it if needed.
+
+    Args:
+        app_ctx: The application context containing connection and app
+
+    Returns:
+        Tuple of (connection, app) - either existing or refreshed
+    """
+    import iterm2
+
+    connection = app_ctx.iterm_connection
+    app = app_ctx.iterm_app
+
+    # Test if connection is still alive by trying a simple operation
+    try:
+        # async_get_app is a lightweight call that tests the connection
+        app = await iterm2.async_get_app(connection)
+        return connection, app
+    except Exception as e:
+        logger.warning(f"iTerm2 connection appears stale ({e}), refreshing...")
+        # Connection is dead, create a new one
+        connection, app = await refresh_iterm_connection()
+        # Update the context with fresh connection
+        app_ctx.iterm_connection = connection
+        app_ctx.iterm_app = app
+        return connection, app
+
+
 @asynccontextmanager
 async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     """
@@ -228,6 +289,11 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
 
     Connects to iTerm2 on startup and maintains the connection
     for the duration of the server's lifetime.
+
+    Note: The iTerm2 Python API uses websockets with ping_interval=None,
+    meaning connections can go stale. Individual tool functions should use
+    ensure_connection() before making iTerm2 API calls that use the
+    connection directly.
     """
     logger.info("Claude Team MCP Server starting...")
 
@@ -328,9 +394,10 @@ async def spawn_session(
     import iterm2
 
     app_ctx = ctx.request_context.lifespan_context
-    connection = app_ctx.iterm_connection
-    app = app_ctx.iterm_app
     registry = app_ctx.registry
+
+    # Ensure we have a fresh connection (websocket can go stale)
+    connection, app = await ensure_connection(app_ctx)
 
     # Validate project path
     resolved_path = os.path.abspath(os.path.expanduser(project_path))
@@ -528,9 +595,21 @@ async def spawn_session(
             env=env,
         )
 
-        # Try to discover the Claude session ID from JSONL
-        await asyncio.sleep(1)  # Give Claude a moment to create the session file
-        managed.discover_claude_session()
+        # Send marker message for JSONL correlation
+        from .session_state import generate_marker_message
+
+        marker_message = generate_marker_message(managed.session_id)
+        await send_prompt(iterm_session, marker_message, submit=True)
+
+        # Wait for marker to be logged, then discover by marker
+        await asyncio.sleep(2)  # Give Claude time to process and log the marker
+        if not managed.discover_claude_session_by_marker():
+            # Fallback to old discovery if marker not found
+            logger.warning(
+                f"Marker-based discovery failed for {managed.session_id}, "
+                "falling back to timestamp-based discovery"
+            )
+            managed.discover_claude_session()
 
         # Update status to ready
         registry.update_status(managed.session_id, SessionStatus.READY)
@@ -600,8 +679,10 @@ async def spawn_team(
     import iterm2
 
     app_ctx = ctx.request_context.lifespan_context
-    connection = app_ctx.iterm_connection
     registry = app_ctx.registry
+
+    # Ensure we have a fresh connection (websocket can go stale)
+    connection, _ = await ensure_connection(app_ctx)
 
     # Validate layout
     if layout not in LAYOUT_PANE_NAMES:
@@ -740,14 +821,26 @@ async def spawn_team(
             )
             managed_sessions[pane_name] = managed
 
-        # Single batch sleep to give Claude time to create session files.
-        # This replaces sequential 1s sleeps per session.
-        await asyncio.sleep(1)
+        # Send marker messages to all sessions for JSONL correlation
+        from .session_state import generate_marker_message
 
-        # Discover Claude sessions and update status for all
+        for pane_name, managed in managed_sessions.items():
+            marker_message = generate_marker_message(managed.session_id)
+            await send_prompt(pane_sessions[pane_name], marker_message, submit=True)
+
+        # Wait for markers to be logged
+        await asyncio.sleep(2)
+
+        # Discover Claude sessions by marker and update status
         result_sessions = {}
         for pane_name, managed in managed_sessions.items():
-            managed.discover_claude_session()
+            if not managed.discover_claude_session_by_marker():
+                # Fallback to old discovery if marker not found
+                logger.warning(
+                    f"Marker-based discovery failed for {managed.session_id}, "
+                    "falling back to timestamp-based discovery"
+                )
+                managed.discover_claude_session()
             registry.update_status(managed.session_id, SessionStatus.READY)
             result_sessions[pane_name] = managed.to_dict()
 
@@ -891,8 +984,11 @@ async def send_message(
                 beads_issue_id=beads_issue_id,
             )
 
+        # Append hint about bd_help tool to help workers understand beads
+        message_with_hint = message + WORKER_MESSAGE_HINT
+
         # Send the message to the terminal
-        await send_prompt(session.iterm_session, message, submit=True)
+        await send_prompt(session.iterm_session, message_with_hint, submit=True)
 
         result = {
             "success": True,
@@ -1041,8 +1137,11 @@ async def broadcast_message(
                 if state and state.last_assistant_message:
                     baseline_uuid = state.last_assistant_message.uuid
 
+            # Append hint about bd_help tool to help workers understand beads
+            message_with_hint = message + WORKER_MESSAGE_HINT
+
             # Send the message to the terminal
-            await send_prompt(session.iterm_session, message, submit=True)
+            await send_prompt(session.iterm_session, message_with_hint, submit=True)
 
             result = {
                 "success": True,
@@ -1193,6 +1292,257 @@ async def get_response(
     }
 
 
+# Default page size for conversation history
+CONVERSATION_PAGE_SIZE = 5
+
+# Hint appended to messages sent to workers
+WORKER_MESSAGE_HINT = "\n\n---\n(Note: Use the `bd_help` tool for guidance on using beads to track progress and add comments.)"
+
+# Condensed beads help text for workers
+BEADS_HELP_TEXT = """# Beads Quick Reference
+
+Beads is a lightweight issue tracker. Use it to track progress and communicate with the coordinator.
+
+## Essential Commands
+
+```bash
+bd list                              # List all issues
+bd ready                             # Show unblocked work
+bd show <issue-id>                   # Show issue details
+bd update <id> --status in_progress  # Mark as in-progress
+bd comment <id> "message"            # Add progress note (IMPORTANT!)
+bd close <id>                        # Close when complete
+```
+
+## Status Values
+- `open` - Not started
+- `in_progress` - Currently working
+- `closed` - Complete
+
+## Priority Levels
+- `P0` - Critical
+- `P1` - High
+- `P2` - Medium
+- `P3` - Low
+
+## Types
+- `task` - Standard work item
+- `bug` - Something broken
+- `feature` - New functionality
+- `epic` - Large multi-task effort
+- `chore` - Maintenance work
+
+## As a Worker
+
+**IMPORTANT**: You should NOT close beads unless explicitly told to. Instead:
+
+1. Mark your issue as in-progress when starting:
+   ```bash
+   bd update <issue-id> --status in_progress
+   ```
+
+2. Add comments to document your progress:
+   ```bash
+   bd comment <issue-id> "Completed the API endpoint, now working on tests"
+   bd comment <issue-id> "Found edge case - handling null values in response"
+   ```
+
+3. When finished, add a final summary comment:
+   ```bash
+   bd comment <issue-id> "COMPLETE: Implemented feature X. Changes in src/foo.py and tests/test_foo.py. Ready for review."
+   ```
+
+4. The coordinator will review and close the bead.
+
+## Creating New Issues (if needed)
+
+```bash
+bd create --title "Bug: X doesn't work" --type bug --priority P1 --description "Details..."
+```
+
+## Searching
+
+```bash
+bd search "keyword"          # Search by text
+bd list --status open        # Filter by status
+bd list --type bug           # Filter by type
+bd blocked                   # Show blocked issues
+```
+"""
+
+
+@mcp.tool()
+async def bd_help() -> dict:
+    """
+    Get a quick reference guide for using Beads issue tracking.
+
+    Returns condensed documentation on beads commands, workflow patterns,
+    and best practices for worker sessions. Call this tool when you need
+    guidance on tracking progress, adding comments, or managing issues.
+
+    Returns:
+        Dict with help text and key command examples
+    """
+    return {
+        "help": BEADS_HELP_TEXT,
+        "quick_commands": {
+            "list_issues": "bd list",
+            "show_ready": "bd ready",
+            "show_issue": "bd show <issue-id>",
+            "start_work": "bd update <id> --status in_progress",
+            "add_comment": 'bd comment <id> "progress message"',
+            "close_issue": "bd close <id>",
+            "search": "bd search <query>",
+        },
+        "worker_tip": (
+            "As a worker, add comments to track progress rather than closing issues. "
+            "The coordinator will close issues after reviewing your work."
+        ),
+    }
+
+
+@mcp.tool()
+async def get_conversation_history(
+    ctx: Context[ServerSession, AppContext],
+    session_id: str,
+    pages: int = 1,
+    offset: int = 0,
+) -> dict:
+    """
+    Get conversation history from a Claude Code session with reverse pagination.
+
+    Returns messages from the session's JSONL file, paginated from the end
+    (most recent first by default). Each message includes text content,
+    tool use names/inputs, and thinking blocks.
+
+    Pagination works from the end of the conversation:
+    - pages=1, offset=0: Returns the most recent page (default)
+    - pages=3, offset=0: Returns the last 3 pages in chronological order
+    - pages=2, offset=1: Returns 2 pages, skipping the most recent page
+
+    Page size is 5 messages (each user or assistant message counts as 1).
+
+    Args:
+        session_id: ID of the target session
+        pages: Number of pages to return (default 1)
+        offset: Number of pages to skip from the end (default 0 = most recent)
+
+    Returns:
+        Dict with:
+            - messages: List of message dicts in chronological order
+            - page_info: Pagination metadata (total_messages, total_pages, etc.)
+            - session_id: The session ID
+    """
+    app_ctx = ctx.request_context.lifespan_context
+    registry = app_ctx.registry
+
+    # Validate inputs
+    if pages < 1:
+        return error_response(
+            "pages must be at least 1",
+            hint="Use pages=1 to get the most recent page",
+        )
+    if offset < 0:
+        return error_response(
+            "offset must be non-negative",
+            hint="Use offset=0 for most recent, offset=1 to skip most recent page, etc.",
+        )
+
+    # Look up session
+    session = registry.get(session_id)
+    if not session:
+        return error_response(
+            f"Session not found: {session_id}",
+            hint=HINTS["session_not_found"],
+        )
+
+    jsonl_path = session.get_jsonl_path()
+    if not jsonl_path or not jsonl_path.exists():
+        return error_response(
+            "No JSONL session file found - Claude may not have started yet",
+            hint=HINTS["no_jsonl_file"],
+            session_id=session_id,
+            status=session.status.value,
+        )
+
+    # Parse the session state
+    state = session.get_conversation_state()
+    if not state:
+        return error_response(
+            "Could not parse session state",
+            hint="The JSONL file may be corrupted. Try closing and spawning a new session",
+            session_id=session_id,
+            status=session.status.value,
+        )
+
+    # Get all messages (user and assistant with content)
+    all_messages = state.conversation
+    total_messages = len(all_messages)
+    total_pages = (total_messages + CONVERSATION_PAGE_SIZE - 1) // CONVERSATION_PAGE_SIZE
+
+    if total_messages == 0:
+        return {
+            "session_id": session_id,
+            "messages": [],
+            "page_info": {
+                "total_messages": 0,
+                "total_pages": 0,
+                "page_size": CONVERSATION_PAGE_SIZE,
+                "pages_returned": 0,
+                "offset": offset,
+            },
+        }
+
+    # Calculate which messages to return using reverse pagination
+    # offset=0 means start from the end, offset=1 means skip 1 page from end, etc.
+    messages_to_skip_from_end = offset * CONVERSATION_PAGE_SIZE
+    messages_to_take = pages * CONVERSATION_PAGE_SIZE
+
+    # Calculate start and end indices
+    # We're working backwards from the end
+    end_index = total_messages - messages_to_skip_from_end
+    start_index = max(0, end_index - messages_to_take)
+
+    # Handle edge cases
+    if end_index <= 0:
+        return {
+            "session_id": session_id,
+            "messages": [],
+            "page_info": {
+                "total_messages": total_messages,
+                "total_pages": total_pages,
+                "page_size": CONVERSATION_PAGE_SIZE,
+                "pages_returned": 0,
+                "offset": offset,
+                "note": f"Offset {offset} is beyond available messages",
+            },
+        }
+
+    # Slice messages (already in chronological order)
+    selected_messages = all_messages[start_index:end_index]
+
+    # Convert to dicts
+    message_dicts = [msg.to_dict() for msg in selected_messages]
+
+    # Calculate actual pages returned
+    pages_returned = (len(selected_messages) + CONVERSATION_PAGE_SIZE - 1) // CONVERSATION_PAGE_SIZE
+
+    return {
+        "session_id": session_id,
+        "messages": message_dicts,
+        "page_info": {
+            "total_messages": total_messages,
+            "total_pages": total_pages,
+            "page_size": CONVERSATION_PAGE_SIZE,
+            "pages_returned": pages_returned,
+            "messages_returned": len(selected_messages),
+            "offset": offset,
+            "start_index": start_index,
+            "end_index": end_index,
+        },
+    }
+
+
 @mcp.tool()
 async def get_session_status(
     ctx: Context[ServerSession, AppContext],
@@ -1295,8 +1645,10 @@ async def discover_sessions(
     )
 
     app_ctx = ctx.request_context.lifespan_context
-    app = app_ctx.iterm_app
     registry = app_ctx.registry
+
+    # Ensure we have a fresh connection (websocket can go stale)
+    _, app = await ensure_connection(app_ctx)
 
     discovered = []
 
@@ -1421,8 +1773,10 @@ async def import_session(
     from .session_state import CLAUDE_PROJECTS_DIR, find_active_session
 
     app_ctx = ctx.request_context.lifespan_context
-    app = app_ctx.iterm_app
     registry = app_ctx.registry
+
+    # Ensure we have a fresh connection (websocket can go stale)
+    _, app = await ensure_connection(app_ctx)
 
     # Check if already managed
     for managed in registry.list_all():
@@ -1494,8 +1848,21 @@ async def import_session(
         name=session_name,
     )
 
-    # Try to discover Claude session ID from JSONL
-    managed.discover_claude_session()
+    # Send marker message for JSONL correlation
+    from .session_state import generate_marker_message
+
+    marker_message = generate_marker_message(managed.session_id)
+    await send_prompt(target_session, marker_message, submit=True)
+
+    # Wait for marker to be logged, then discover by marker
+    await asyncio.sleep(2)
+    if not managed.discover_claude_session_by_marker():
+        # Fallback to old discovery if marker not found
+        logger.warning(
+            f"Marker-based discovery failed for {managed.session_id}, "
+            "falling back to timestamp-based discovery"
+        )
+        managed.discover_claude_session()
 
     # Update status to ready (it's already running)
     registry.update_status(managed.session_id, SessionStatus.READY)
