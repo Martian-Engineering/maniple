@@ -390,6 +390,71 @@ async def wait_for_shell_ready(
     return False
 
 
+async def wait_for_claude_ready(
+    session: "iterm2.Session",
+    timeout_seconds: float = 15.0,
+    poll_interval: float = 0.2,
+    stable_count: int = 2,
+) -> bool:
+    """
+    Wait for Claude Code's TUI to be ready to accept input.
+
+    Polls the screen content and waits for Claude's prompt to appear.
+    Claude is considered ready when the screen shows either:
+    - A line starting with '>' (Claude's input prompt)
+    - A status line containing 'tokens' (bottom status bar)
+
+    Args:
+        session: iTerm2 session to monitor
+        timeout_seconds: Maximum time to wait for Claude readiness
+        poll_interval: Time between screen content checks
+        stable_count: Number of consecutive stable reads before considering ready
+
+    Returns:
+        True if Claude became ready, False if timeout was reached
+    """
+    import asyncio
+    import time
+
+    start_time = time.monotonic()
+    last_content = None
+    stable_reads = 0
+
+    while (time.monotonic() - start_time) < timeout_seconds:
+        try:
+            content = await read_screen_text(session)
+            lines = content.split('\n')
+
+            # Check if content is stable (same as last read)
+            if content == last_content:
+                stable_reads += 1
+            else:
+                stable_reads = 0
+                last_content = content
+
+            # Only check for Claude readiness after content has stabilized
+            if stable_reads >= stable_count:
+                for line in lines:
+                    stripped = line.strip()
+                    # Check for Claude's input prompt (starts with >)
+                    if stripped.startswith('>'):
+                        logger.debug("Claude ready: found '>' prompt")
+                        return True
+                    # Check for status bar (contains 'tokens')
+                    if 'tokens' in stripped:
+                        logger.debug("Claude ready: found status bar with 'tokens'")
+                        return True
+
+        except Exception as e:
+            # Screen read failed, retry
+            logger.debug(f"Screen read failed during Claude ready check: {e}")
+
+        await asyncio.sleep(poll_interval)
+
+    logger.warning(f"Timeout waiting for Claude TUI readiness ({timeout_seconds}s)")
+    return False
+
+
 # =============================================================================
 # JSONL Session Detection
 # =============================================================================
@@ -449,29 +514,44 @@ async def wait_for_jsonl_session(
     projects_dir = get_claude_projects_dir()
     slug_dir = projects_dir / slug
 
-    start_time = time.monotonic()
+    start_time_monotonic = time.monotonic()
+    start_time_real = time.time()  # For comparing with file mtime
     poll_interval_sec = poll_interval_ms / 1000.0
 
-    # Track files that existed before we started polling so we can detect new ones
-    existing_files: set[str] = set()
+    # Track files and their mtimes before we started, so we can detect new/modified ones
+    existing_files: dict[str, float] = {}
     if slug_dir.exists():
-        existing_files = {f.name for f in slug_dir.glob("*.jsonl")}
+        for f in slug_dir.glob("*.jsonl"):
+            try:
+                existing_files[f.name] = f.stat().st_mtime
+            except OSError:
+                pass
 
-    while (time.monotonic() - start_time) < timeout_seconds:
+    while (time.monotonic() - start_time_monotonic) < timeout_seconds:
         try:
             if slug_dir.exists():
-                # Look for JSONL files
+                # Look for JSONL files that are new or modified since we started
                 for jsonl_file in slug_dir.glob("*.jsonl"):
-                    # Check if this is a new file or existing file with content
                     try:
-                        file_size = jsonl_file.stat().st_size
+                        stat = jsonl_file.stat()
+                        file_size = stat.st_size
+                        file_mtime = stat.st_mtime
+
                         if file_size >= min_file_size:
-                            # File exists and has content - Claude has initialized
-                            logger.debug(
-                                f"Found JSONL session file: {jsonl_file} "
-                                f"(size={file_size} bytes)"
+                            # Check if this is a new file or modified since we started
+                            is_new = jsonl_file.name not in existing_files
+                            is_modified = (
+                                not is_new
+                                and file_mtime > existing_files[jsonl_file.name]
                             )
-                            return jsonl_file
+
+                            if is_new or is_modified:
+                                logger.debug(
+                                    f"Found JSONL session file: {jsonl_file} "
+                                    f"(size={file_size} bytes, "
+                                    f"{'new' if is_new else 'modified'})"
+                                )
+                                return jsonl_file
                     except OSError:
                         # File may have been deleted/moved, continue checking
                         continue
@@ -543,12 +623,20 @@ async def start_claude_in_session(
     combined_cmd = f"cd {project_path} && {cmd}"
     await send_prompt(session, combined_cmd)
 
-    # Wait for Claude to initialize by polling for JSONL session file creation.
-    # This replaces the previous hardcoded sleep with active detection.
+    # Wait for Claude's TUI to be ready by polling terminal for prompt/status bar.
+    # This is more reliable than JSONL detection since JSONL is created before TUI.
+    await wait_for_claude_ready(
+        session,
+        timeout_seconds=jsonl_timeout_seconds,
+        poll_interval=jsonl_poll_interval_ms / 1000.0,
+    )
+
+    # Now find the JSONL session file for identification purposes.
+    # The file should exist at this point since Claude's TUI is up.
     jsonl_path = await wait_for_jsonl_session(
         project_path=project_path,
         poll_interval_ms=jsonl_poll_interval_ms,
-        timeout_seconds=jsonl_timeout_seconds,
+        timeout_seconds=2.0,  # Short timeout since Claude is already running
     )
 
     return jsonl_path
