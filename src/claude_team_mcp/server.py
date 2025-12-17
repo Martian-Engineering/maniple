@@ -797,34 +797,23 @@ async def check_blockers(
     blockers = []
     for session in sessions:
         state = session.get_conversation_state()
-        if not state or not state.jsonl_path:
+        if not state:
             continue
 
-        # Read recent messages
-        try:
-            messages = state.get_recent_messages(limit=20)
-            for msg in messages:
-                if msg.get("role") != "assistant":
-                    continue
-                content = msg.get("content", "")
-                if isinstance(content, list):
-                    # Handle content blocks
-                    content = " ".join(
-                        block.get("text", "")
-                        for block in content
-                        if isinstance(block, dict) and block.get("type") == "text"
-                    )
-                matches = blocker_pattern.findall(content)
-                for reason in matches:
-                    blockers.append({
-                        "session_id": session.session_id,
-                        "name": session.name,
-                        "reason": reason.strip(),
-                        "message_uuid": msg.get("uuid"),
-                    })
-        except Exception:
-            # Skip sessions we can't read
-            continue
+        # Check recent messages (last 20)
+        recent_messages = state.messages[-20:] if state.messages else []
+        for msg in recent_messages:
+            if msg.role != "assistant":
+                continue
+            # Message.content is already extracted text
+            matches = blocker_pattern.findall(msg.content)
+            for reason in matches:
+                blockers.append({
+                    "session_id": session.session_id,
+                    "name": session.name,
+                    "reason": reason.strip(),
+                    "message_uuid": msg.uuid,
+                })
 
     return {
         "blockers": blockers,
