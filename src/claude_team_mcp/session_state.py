@@ -105,10 +105,11 @@ def get_project_slug(project_path: str) -> str:
     """
     Convert a filesystem path to Claude's project directory slug.
 
-    Claude replaces / with - to create directory names.
+    Claude replaces both / and . with - to create directory names.
     Example: /Users/josh/code -> -Users-josh-code
+    Example: /path/.worktrees/foo -> -path--worktrees-foo
     """
-    return project_path.replace("/", "-")
+    return project_path.replace("/", "-").replace(".", "-")
 
 
 def unslugify_path(slug: str) -> str | None:

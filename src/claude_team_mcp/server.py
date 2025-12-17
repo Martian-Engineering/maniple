@@ -7,9 +7,11 @@ Allows a "manager" Claude Code session to spawn and coordinate multiple
 """
 
 import asyncio
+import hashlib
 import logging
 import os
 import subprocess
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -364,7 +366,6 @@ async def spawn_team(
     custom_prompt: str | None = None,
     include_beads_instructions: bool = True,
     use_worktrees: bool = False,
-    branch: str | None = None,
 ) -> dict:
     """
     Spawn multiple Claude Code sessions in a multi-pane layout.
@@ -414,11 +415,8 @@ async def spawn_team(
             appends beads quick reference to your custom prompt.
         use_worktrees: If True, create an isolated git worktree for each worker.
             Workers will operate in their own working directory while sharing
-            the same repository history. Useful for parallel work that might
-            have conflicting file changes.
-        branch: Branch name to use for worktrees. If the branch doesn't exist,
-            it will be created from HEAD. If not specified, worktrees will
-            use detached HEAD mode.
+            the same repository history. Each worker gets a branch named
+            "{worker_name}-{hash}" (e.g., "Mark-a1b2c3") for uniqueness.
 
     Returns:
         Dict with:
@@ -555,11 +553,17 @@ async def spawn_team(
         if use_worktrees:
             for pane_name, project_path in list(resolved_projects.items()):
                 worker_name = pane_to_iconic[pane_name]
+                # Each worker gets their own branch with a unique hash suffix
+                # to avoid conflicts if names are recycled across spawns
+                unique_seed = f"{worker_name}-{time.time()}-{pane_name}"
+                short_hash = hashlib.sha256(unique_seed.encode()).hexdigest()[:6]
+                worker_branch = f"{worker_name}-{short_hash}"
+                worktree_dir_name = f"{worker_name}-{short_hash}"
                 try:
                     worktree_path = create_worktree(
                         repo_path=Path(project_path),
-                        worktree_name=worker_name,
-                        branch=branch,
+                        worktree_name=worktree_dir_name,
+                        branch=worker_branch,
                     )
                     worktree_paths[pane_name] = worktree_path
                     # Update resolved_projects so Claude starts in the worktree
@@ -610,11 +614,12 @@ async def spawn_team(
         managed_sessions = {}
         for pane_name, iterm_session in pane_sessions.items():
             iconic_name = pane_to_iconic[pane_name]
+            # Use resolved_projects which has worktree paths if created
+            # Claude creates JSONL based on working directory, so we need
+            # to use the worktree path for JSONL lookup to work correctly
             managed = registry.add(
                 iterm_session=iterm_session,
-                # Use original project path (not worktree) for registry
-                # This preserves the main repo path for JSONL lookup and cleanup
-                project_path=original_projects[pane_name],
+                project_path=resolved_projects[pane_name],
                 name=iconic_name,  # e.g., "Groucho", "John"
             )
             # Store worktree path if one was created for this session
@@ -1583,7 +1588,7 @@ async def discover_sessions(
                 - project_path: Detected project path (if found)
                 - claude_session_id: Matched JSONL session ID (if found)
                 - model: Detected model (Opus/Sonnet/Haiku if visible)
-                - screen_preview: Last few lines of screen content
+                - last_assistant_preview: Preview of last assistant message (if JSONL found)
                 - already_managed: True if this session is already in our registry
             - count: Total number of Claude sessions found
             - unmanaged_count: Number not yet imported into registry
@@ -1591,7 +1596,9 @@ async def discover_sessions(
     from .session_state import (
         CLAUDE_PROJECTS_DIR,
         find_active_session,
+        get_project_dir,
         list_sessions,
+        parse_session,
         unslugify_path,
     )
 
@@ -1672,16 +1679,29 @@ async def discover_sessions(
                             project_path, max_age_seconds=3600  # Within last hour
                         )
 
-                    # Get last few lines as preview
-                    preview_lines = [l for l in lines if l][-5:]
-                    screen_preview = "\n".join(preview_lines)
+                    # Get last assistant message preview from JSONL if available
+                    last_assistant_preview = None
+                    if project_path and claude_session_id:
+                        try:
+                            jsonl_path = get_project_dir(project_path) / f"{claude_session_id}.jsonl"
+                            if jsonl_path.exists():
+                                state = parse_session(jsonl_path)
+                                if state.last_assistant_message:
+                                    content = state.last_assistant_message.content
+                                    last_assistant_preview = (
+                                        content[:200] + "..."
+                                        if len(content) > 200
+                                        else content
+                                    )
+                        except Exception as e:
+                            logger.debug(f"Could not get conversation preview: {e}")
 
                     discovered.append({
                         "iterm_session_id": iterm_session.session_id,
                         "project_path": project_path,
                         "claude_session_id": claude_session_id,
                         "model": detected_model,
-                        "screen_preview": screen_preview,
+                        "last_assistant_preview": last_assistant_preview,
                         "already_managed": iterm_session.session_id in managed_iterm_ids,
                     })
 
