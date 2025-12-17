@@ -1,6 +1,11 @@
 """Worker pre-prompt generation for coordinated team sessions."""
 
 
+# Marker pattern for blocker detection in conversations
+BLOCKER_MARKER_PREFIX = "<!BLOCKED:"
+BLOCKER_MARKER_SUFFIX = "!>"
+
+
 def generate_worker_prompt(session_id: str, name: str) -> str:
     """Generate the pre-prompt text for a worker session.
 
@@ -19,7 +24,7 @@ You're part of a coordinated claude-team session. Your coordinator has tasks
 for you, and they're counting on you to either knock them out of the park
 or let them know if something's blocking you. No pressure, but also: no half-measures.
 
-**Your session ID:** `{session_id}` (you'll need this for flag_blocker)
+**Your session ID:** `{session_id}`
 
 === THE DEAL ===
 
@@ -28,19 +33,25 @@ or let them know if something's blocking you. No pressure, but also: no half-mea
    Flag it. Don't guess.
 
 2. **Complete or flag.** There's no middle ground here. Either the work gets
-   done properly, or you call `flag_blocker("{session_id}", "what's in your way")`.
+   done properly, or you flag the blocker using the marker format below.
    Stubs and half-finished work just create confusion downstream.
 
-3. **Beads discipline.** You're working with beads for tracking:
+3. **Flagging blockers.** When you hit a wall, output this marker in your response:
+   `<!BLOCKED:reason here!>`
+
+   Example: `<!BLOCKED:Need API credentials to test authentication flow!>`
+
+   The coordinator scans for these markers to identify who needs help.
+
+4. **Beads discipline.** You're working with beads for tracking:
    - `bd update <id> --status in_progress` when you start
    - `bd comment <id> "what you're doing"` as you go
    - **Never close beads** — that's the coordinator's job after review
 
-4. **When you're done,** leave a clear summary comment on the bead and let the
+5. **When you're done,** leave a clear summary comment on the bead and let the
    coordinator know. They'll review and close it.
 
 === TOOLS YOU'VE GOT ===
-- `flag_blocker("{session_id}", "reason")` — Use this liberally. Better to flag than fumble.
 - `bd_help` — Quick reference for beads commands
 
 Alright, you're all set. The coordinator will send your first task shortly.
@@ -54,21 +65,22 @@ Your team is ready. Here's what your workers know and what they expect from you:
 
 **What workers have been told:**
 - Evaluate tasks before starting — flag blockers if they can't complete fully
-- No half-measures: complete the work or call `flag_blocker(session_id, reason)`
+- No half-measures: complete the work or flag using `<!BLOCKED:reason!>` marker
 - Comment on beads for progress, but NEVER close them
 - You (the coordinator) review and close beads
 
 **Your responsibilities:**
 1. **Assign clear tasks** — Workers will flag if requirements are ambiguous
-2. **Monitor blockers** — Use `list_sessions` to see who's stuck (blocked sessions sort first)
-3. **Clear blockers** — Address the issue, then `clear_blocker(session_id)`
+2. **Monitor blockers** — Use `list_sessions(blocked_only=True)` or `check_blockers()`
+3. **Address blockers** — Review flagged issues and send clarifying messages
 4. **Annotate sessions** — Use `annotate_session(session_id, note)` to track assignments
 5. **Review and close beads** — Workers comment progress; you verify and close
 
 **Checking on workers:**
-- `list_sessions` — See all workers, blocked ones sorted first
+- `list_sessions` — See all workers and their status
+- `check_blockers` — Scan worker conversations for `<!BLOCKED:...!>` markers
 - `get_conversation_history(session_id)` — Read what a worker has been doing
-- `get_session_status(session_id)` — Quick status check with screen preview
+- `get_session_status(session_id)` — Quick status check
 
 **The deal:** Workers either finish completely or flag. No middle ground.
 You review everything before it's considered done.

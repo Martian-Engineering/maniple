@@ -44,11 +44,11 @@ class TestGenerateWorkerPrompt:
         assert "bd update" in prompt
         assert "bd comment" in prompt
 
-    def test_includes_flag_blocker_command(self):
-        """Prompt should mention flag_blocker with session ID."""
+    def test_includes_blocker_marker_format(self):
+        """Prompt should explain the <!BLOCKED:reason!> marker format."""
         prompt = generate_worker_prompt("my-session-id", "Worker")
-        assert "flag_blocker" in prompt
-        assert 'flag_blocker("my-session-id"' in prompt
+        assert "<!BLOCKED:" in prompt
+        assert "!>" in prompt
 
     def test_includes_never_close_beads_instruction(self):
         """Prompt should instruct workers not to close beads."""
@@ -60,11 +60,11 @@ class TestGenerateWorkerPrompt:
         prompt = generate_worker_prompt("test", "Worker")
         assert "bd_help" in prompt
 
-    def test_session_id_appears_multiple_times(self):
-        """Session ID should appear in marker and flag_blocker example."""
+    def test_session_id_appears_in_prompt(self):
+        """Session ID should appear in the prompt (marker and reference)."""
         prompt = generate_worker_prompt("unique-id-12345", "Worker")
-        # Should appear at least twice: in marker and in flag_blocker example
-        assert prompt.count("unique-id-12345") >= 2
+        # Should appear at least once in the marker
+        assert "unique-id-12345" in prompt
 
     def test_different_sessions_produce_different_prompts(self):
         """Different session IDs should produce different prompts."""
@@ -105,10 +105,10 @@ class TestGetCoordinatorGuidance:
         guidance = get_coordinator_guidance()
         assert "list_sessions" in guidance
 
-    def test_mentions_clear_blocker(self):
-        """Guidance should mention clear_blocker command."""
+    def test_mentions_check_blockers(self):
+        """Guidance should mention check_blockers command."""
         guidance = get_coordinator_guidance()
-        assert "clear_blocker" in guidance
+        assert "check_blockers" in guidance
 
     def test_mentions_annotate_session(self):
         """Guidance should mention annotate_session command."""

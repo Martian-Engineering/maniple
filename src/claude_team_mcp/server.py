@@ -755,6 +755,85 @@ async def list_sessions(
 
 
 @mcp.tool()
+async def check_blockers(
+    ctx: Context[ServerSession, AppContext],
+    session_ids: list[str] | None = None,
+) -> dict:
+    """
+    Scan worker conversations for blocker markers.
+
+    Workers flag blockers by including `<!BLOCKED:reason!>` in their responses.
+    This tool scans recent conversation history for these markers.
+
+    Args:
+        session_ids: Optional list of session IDs to check. If not provided,
+            checks all active sessions.
+
+    Returns:
+        Dict with:
+            - blockers: List of detected blockers, each containing:
+                - session_id: The session ID
+                - name: The worker's name
+                - reason: The blocker reason from the marker
+                - message_uuid: UUID of the message containing the blocker
+            - checked_count: Number of sessions scanned
+            - blocked_count: Number of sessions with blockers
+    """
+    import re
+
+    app_ctx = ctx.request_context.lifespan_context
+    registry = app_ctx.registry
+
+    # Get sessions to check
+    if session_ids:
+        sessions = [registry.get(sid) for sid in session_ids]
+        sessions = [s for s in sessions if s is not None]
+    else:
+        sessions = registry.list_all()
+
+    # Pattern to match <!BLOCKED:reason!>
+    blocker_pattern = re.compile(r"<!BLOCKED:(.+?)!>", re.DOTALL)
+
+    blockers = []
+    for session in sessions:
+        state = session.get_conversation_state()
+        if not state or not state.jsonl_path:
+            continue
+
+        # Read recent messages
+        try:
+            messages = state.get_recent_messages(limit=20)
+            for msg in messages:
+                if msg.get("role") != "assistant":
+                    continue
+                content = msg.get("content", "")
+                if isinstance(content, list):
+                    # Handle content blocks
+                    content = " ".join(
+                        block.get("text", "")
+                        for block in content
+                        if isinstance(block, dict) and block.get("type") == "text"
+                    )
+                matches = blocker_pattern.findall(content)
+                for reason in matches:
+                    blockers.append({
+                        "session_id": session.session_id,
+                        "name": session.name,
+                        "reason": reason.strip(),
+                        "message_uuid": msg.get("uuid"),
+                    })
+        except Exception:
+            # Skip sessions we can't read
+            continue
+
+    return {
+        "blockers": blockers,
+        "checked_count": len(sessions),
+        "blocked_count": len(set(b["session_id"] for b in blockers)),
+    }
+
+
+@mcp.tool()
 async def send_message(
     ctx: Context[ServerSession, AppContext],
     session_id: str,
@@ -1484,91 +1563,6 @@ async def annotate_session(
         "session_id": session_id,
         "annotation": annotation,
         "message": "Annotation saved",
-    }
-
-
-@mcp.tool()
-async def flag_blocker(
-    ctx: Context[ServerSession, AppContext],
-    session_id: str,
-    reason: str,
-) -> dict:
-    """
-    Flag a session as blocked with a reason.
-
-    Workers should call this when they cannot complete their assigned task
-    due to missing information, unclear requirements, external dependencies,
-    or other blockers. The coordinator will see this and can address it.
-
-    Args:
-        session_id: The worker's session ID (provided in their pre-prompt)
-        reason: Clear description of what's blocking progress
-
-    Returns:
-        Confirmation that the blocker was recorded
-    """
-    app_ctx = ctx.request_context.lifespan_context
-    registry = app_ctx.registry
-
-    session = registry.get(session_id)
-    if not session:
-        return error_response(
-            f"Session not found: {session_id}",
-            hint=HINTS["session_not_found"],
-        )
-
-    session.set_blocker(reason)
-
-    return {
-        "success": True,
-        "session_id": session_id,
-        "blocker_reason": reason,
-        "message": "Blocker flagged. The coordinator has been notified.",
-    }
-
-
-@mcp.tool()
-async def clear_blocker(
-    ctx: Context[ServerSession, AppContext],
-    session_id: str,
-) -> dict:
-    """
-    Clear the blocker status from a session.
-
-    Coordinators call this after addressing a worker's blocker.
-    This signals to the worker that they can proceed.
-
-    Args:
-        session_id: The session ID to clear the blocker from
-
-    Returns:
-        Confirmation that the blocker was cleared
-    """
-    app_ctx = ctx.request_context.lifespan_context
-    registry = app_ctx.registry
-
-    session = registry.get(session_id)
-    if not session:
-        return error_response(
-            f"Session not found: {session_id}",
-            hint=HINTS["session_not_found"],
-        )
-
-    if not session.is_blocked():
-        return {
-            "success": True,
-            "session_id": session_id,
-            "message": "Session was not blocked",
-        }
-
-    previous_reason = session.blocker_reason
-    session.clear_blocker()
-
-    return {
-        "success": True,
-        "session_id": session_id,
-        "cleared_reason": previous_reason,
-        "message": "Blocker cleared. Worker can proceed.",
     }
 
 
