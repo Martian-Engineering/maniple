@@ -19,6 +19,20 @@ An MCP server that allows one Claude Code session to spawn and manage a team of 
 
 ## Installation
 
+### As Claude Code Plugin (recommended)
+
+```bash
+# Add the Martian Engineering marketplace
+/plugin marketplace add Martian-Engineering/claude-team
+
+# Install the plugin
+/plugin install claude-team@martian-engineering
+```
+
+This automatically configures the MCP server - no manual setup needed.
+
+### From PyPI
+
 ```bash
 uvx --from claude-team-mcp claude-team
 ```
