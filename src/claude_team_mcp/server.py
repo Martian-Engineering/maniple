@@ -939,11 +939,6 @@ async def send_message(
                 )
                 if response:
                     result["response"] = response.content
-                    result["response_preview"] = (
-                        response.content[:500] + "..."
-                        if len(response.content) > 500
-                        else response.content
-                    )
                 else:
                     result["response"] = None
                     result["timeout"] = True
@@ -1087,11 +1082,6 @@ async def broadcast_message(
                     )
                     if response:
                         result["response"] = response.content
-                        result["response_preview"] = (
-                            response.content[:500] + "..."
-                            if len(response.content) > 500
-                            else response.content
-                        )
                     else:
                         result["response"] = None
                         result["timeout"] = True
@@ -1208,11 +1198,6 @@ async def get_response(
         "status": session.status.value,
         "is_processing": state.is_processing if state else False,
         "last_response": last_msg.content if last_msg else None,
-        "last_response_preview": (
-            last_msg.content[:500] + "..."
-            if last_msg and len(last_msg.content) > 500
-            else (last_msg.content if last_msg else None)
-        ),
         "message_id": last_msg.uuid if last_msg else None,
         "tool_uses": [t.get("name") for t in (last_msg.tool_uses if last_msg else [])],
         "message_count": state.message_count if state else 0,
