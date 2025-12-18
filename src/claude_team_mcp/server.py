@@ -34,7 +34,7 @@ from .iterm_utils import (
     split_pane,
     start_claude_in_session,
 )
-from .names import NAME_SETS, pick_names
+from .names import pick_names_for_count
 from .profile import PROFILE_NAME, get_or_create_profile
 from .registry import SessionRegistry, SessionStatus, TaskInfo
 from .task_completion import (
@@ -361,7 +361,6 @@ async def spawn_team(
     projects: dict[str, str],
     layout: str = "auto",
     skip_permissions: bool = False,
-    name_set: str | None = None,
     custom_names: list[str] | None = None,
     custom_prompt: str | None = None,
     include_beads_instructions: bool = True,
@@ -405,10 +404,9 @@ async def spawn_team(
             - 3 projects: "triple_vertical"
             - 4+ projects: "quad"
         skip_permissions: If True, start Claude with --dangerously-skip-permissions
-        name_set: Name set for iconic worker names (e.g., "beatles", "marx_brothers").
-            If None, picks a random set. Available sets: beatles, marx_brothers, tmnt,
-            three_stooges, spice_girls, abbott_costello, breakfast_club, ocean_eleven.
-        custom_names: Override with custom names list. Takes precedence over name_set.
+        custom_names: (Optional) Override automatic name selection with explicit names.
+            Leave empty to auto-select a size-matched iconic group (e.g., Beatles for 4,
+            Three Stooges for 3, Simon & Garfunkel for 2).
         custom_prompt: If provided, sends this prompt to workers instead of the
             standard pre-prompt (activates custom mode).
         include_beads_instructions: For custom mode only - if True (default),
@@ -432,12 +430,12 @@ async def spawn_team(
     Example (standard mode):
         spawn_team(
             projects={
-                "top_left": "/path/to/frontend",
-                "top_right": "/path/to/backend",
+                "left": "/path/to/frontend",
+                "right": "/path/to/backend",
             },
             layout="vertical",
-            name_set="beatles"
         )
+        # Automatically picks a duo like Simon & Garfunkel or Tom & Jerry
         # Returns coordinator_guidance with worker management instructions
 
     Example (custom mode):
@@ -486,13 +484,6 @@ async def spawn_team(
             hint=f"Valid pane names for '{layout}' are: {', '.join(expected_panes)}",
         )
 
-    # Validate name_set if provided
-    if name_set is not None and name_set not in NAME_SETS:
-        return error_response(
-            f"Invalid name_set: {name_set}",
-            hint=f"Valid name sets are: {', '.join(NAME_SETS.keys())}",
-        )
-
     # Validate all project paths exist and detect worktrees
     resolved_projects = {}
     project_envs: dict[str, dict[str, str]] = {}
@@ -528,14 +519,8 @@ async def spawn_team(
             iconic_names = custom_names
             used_name_set = "custom"
         else:
-            iconic_names = pick_names(project_count, name_set)
-            # Determine which set was used (for return value)
-            if name_set:
-                used_name_set = name_set
-            else:
-                # pick_names chose randomly, we need to figure out which set
-                # For simplicity, just report as "random"
-                used_name_set = "random"
+            # Auto-select a size-matched set based on worker count
+            used_name_set, iconic_names = pick_names_for_count(project_count)
 
         # Map pane names to iconic names (in layout order)
         pane_to_iconic: dict[str, str] = {}
