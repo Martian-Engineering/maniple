@@ -1,0 +1,15 @@
+{
+  "name": "claude-team",
+  "version": "0.1.0",
+  "description": "MCP server for spawning and orchestrating multiple Claude Code sessions via iTerm2",
+  "author": {
+    "name": "Josh Lehman",
+    "email": "josh@martianengineering.com",
+    "url": "https://github.com/Martian-Engineering"
+  },
+  "homepage": "https://github.com/Martian-Engineering/claude-team",
+  "repository": "https://github.com/Martian-Engineering/claude-team",
+  "license": "MIT",
+  "keywords": ["mcp", "iterm2", "orchestration", "multi-agent"],
+  "mcpServers": "./.mcp.json"
+}
