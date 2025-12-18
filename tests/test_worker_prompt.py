@@ -5,7 +5,6 @@ import pytest
 from claude_team_mcp.worker_prompt import (
     generate_worker_prompt,
     get_coordinator_guidance,
-    COORDINATOR_GUIDANCE,
 )
 
 
@@ -90,11 +89,6 @@ class TestGetCoordinatorGuidance:
         assert isinstance(guidance, str)
         assert len(guidance) > 0
 
-    def test_returns_coordinator_guidance_constant(self):
-        """Should return the COORDINATOR_GUIDANCE constant."""
-        guidance = get_coordinator_guidance()
-        assert guidance == COORDINATOR_GUIDANCE
-
     def test_contains_coordinator_marker(self):
         """Guidance should identify the coordinator role."""
         guidance = get_coordinator_guidance()
@@ -131,18 +125,36 @@ class TestGetCoordinatorGuidance:
         assert "close bead" in guidance.lower() or "close" in guidance
 
 
-class TestCoordinatorGuidanceConstant:
-    """Tests for the COORDINATOR_GUIDANCE constant."""
+class TestWorktreeMode:
+    """Tests for worktree-aware prompt generation."""
 
-    def test_is_non_empty_string(self):
-        """COORDINATOR_GUIDANCE should be a non-empty string."""
-        assert isinstance(COORDINATOR_GUIDANCE, str)
-        assert len(COORDINATOR_GUIDANCE) > 100
+    def test_worker_prompt_without_worktree_no_commit(self):
+        """Worker prompt without worktree should not mention committing."""
+        prompt = generate_worker_prompt("test", "Worker", use_worktree=False)
+        assert "Commit when done" not in prompt
 
-    def test_contains_worker_expectations(self):
+    def test_worker_prompt_with_worktree_includes_commit(self):
+        """Worker prompt with worktree should instruct committing."""
+        prompt = generate_worker_prompt("test", "Worker", use_worktree=True)
+        assert "Commit when done" in prompt
+        assert "cherry-pick" in prompt
+
+    def test_coordinator_guidance_without_worktree_no_commit(self):
+        """Coordinator guidance without worktree should not mention commit."""
+        guidance = get_coordinator_guidance(use_worktree=False)
+        assert "cherry-picking" not in guidance
+
+    def test_coordinator_guidance_with_worktree_includes_commit(self):
+        """Coordinator guidance with worktree should mention commit."""
+        guidance = get_coordinator_guidance(use_worktree=True)
+        assert "cherry-picking" in guidance
+
+    def test_coordinator_guidance_contains_expectations(self):
         """Should describe what workers have been told."""
-        assert "What workers have been told" in COORDINATOR_GUIDANCE
+        guidance = get_coordinator_guidance()
+        assert "What workers have been told" in guidance
 
-    def test_contains_coordinator_responsibilities(self):
+    def test_coordinator_guidance_contains_responsibilities(self):
         """Should list coordinator responsibilities."""
-        assert "responsibilities" in COORDINATOR_GUIDANCE.lower()
+        guidance = get_coordinator_guidance()
+        assert "responsibilities" in guidance.lower()

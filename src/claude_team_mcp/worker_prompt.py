@@ -6,16 +6,25 @@ BLOCKER_MARKER_PREFIX = "<!BLOCKED:"
 BLOCKER_MARKER_SUFFIX = "!>"
 
 
-def generate_worker_prompt(session_id: str, name: str) -> str:
+def generate_worker_prompt(session_id: str, name: str, use_worktree: bool = False) -> str:
     """Generate the pre-prompt text for a worker session.
 
     Args:
         session_id: The unique identifier for this worker session
         name: The friendly name assigned to this worker
+        use_worktree: Whether this worker is in an isolated worktree
 
     Returns:
         The formatted pre-prompt string to inject into the worker session
     """
+    commit_section = ""
+    if use_worktree:
+        commit_section = """
+6. **Commit when done.** You're in an isolated worktree branch — commit your
+   completed work so it can be easily cherry-picked. Use a clear commit message
+   summarizing what you did. Don't push; the coordinator handles that.
+"""
+
     return f'''<!claude-team-session:{session_id}!>
 
 Hey {name}! Welcome to the team.
@@ -50,7 +59,7 @@ or let them know if something's blocking you. No pressure, but also: no half-mea
 
 5. **When you're done,** leave a clear summary comment on the bead and let the
    coordinator know. They'll review and close it.
-
+{commit_section}
 === TOOLS YOU'VE GOT ===
 - `bd_help` — Quick reference for beads commands
 
@@ -58,7 +67,17 @@ Alright, you're all set. The coordinator will send your first task shortly.
 '''
 
 
-COORDINATOR_GUIDANCE = """
+def get_coordinator_guidance(use_worktree: bool = False) -> str:
+    """Get the coordinator guidance text to include in spawn_team response.
+
+    Args:
+        use_worktree: Whether workers are in isolated worktrees
+    """
+    worktree_line = ""
+    if use_worktree:
+        worktree_line = "\n- Commit when done (for easy cherry-picking back to main)"
+
+    return f"""
 === YOU ARE THE COORDINATOR ===
 
 Your team is ready. Here's what your workers know and what they expect from you:
@@ -67,7 +86,7 @@ Your team is ready. Here's what your workers know and what they expect from you:
 - Evaluate tasks before starting — flag blockers if they can't complete fully
 - No half-measures: complete the work or flag using `<!BLOCKED:reason!>` marker
 - Comment on beads for progress, but NEVER close them
-- You (the coordinator) review and close beads
+- You (the coordinator) review and close beads{worktree_line}
 
 **Your responsibilities:**
 1. **Assign clear tasks** — Workers will flag if requirements are ambiguous
@@ -85,8 +104,3 @@ Your team is ready. Here's what your workers know and what they expect from you:
 **The deal:** Workers either finish completely or flag. No middle ground.
 You review everything before it's considered done.
 """
-
-
-def get_coordinator_guidance() -> str:
-    """Get the coordinator guidance text to include in spawn_team response."""
-    return COORDINATOR_GUIDANCE

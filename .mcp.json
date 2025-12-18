@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "claude-team": {
-      "command": "uv",
-      "args": ["run", "--directory", "/Users/rabsef-bicrym/Development/tools/claude-team", "python", "-m", "claude_team_mcp"]
-    }
-  }
-}

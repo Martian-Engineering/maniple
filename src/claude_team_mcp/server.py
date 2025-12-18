@@ -630,7 +630,9 @@ async def spawn_team(
 
             if is_standard_mode:
                 # Standard mode: send worker pre-prompt with coordination workflow
-                worker_prompt = generate_worker_prompt(managed.session_id, iconic_name)
+                worker_prompt = generate_worker_prompt(
+                    managed.session_id, iconic_name, use_worktree=use_worktrees
+                )
             else:
                 # Custom mode: use the provided custom_prompt
                 worker_prompt = custom_prompt
@@ -668,7 +670,7 @@ async def spawn_team(
 
         # Include coordinator guidance only in standard mode
         if is_standard_mode:
-            result["coordinator_guidance"] = get_coordinator_guidance()
+            result["coordinator_guidance"] = get_coordinator_guidance(use_worktrees)
         else:
             result["coordinator_guidance"] = None
 
