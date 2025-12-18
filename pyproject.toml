@@ -6,23 +6,38 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [
-    { name = "Josh Lehman" }
+    { name = "Josh Lehman", email = "josh@martianengineering.com" }
 ]
-keywords = ["mcp", "claude", "iterm2", "ai", "automation"]
+maintainers = [
+    { name = "Josh Lehman", email = "josh@martianengineering.com" }
+]
+keywords = ["mcp", "claude", "claude-code", "iterm2", "ai", "automation", "multi-agent", "orchestration", "anthropic"]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    "Environment :: MacOS X",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
+    "Typing :: Typed",
 ]
 
 dependencies = [
     "mcp>=1.0.0",
     "iterm2>=2.7",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Martian-Engineering/claude-team"
+Repository = "https://github.com/Martian-Engineering/claude-team"
+Documentation = "https://github.com/Martian-Engineering/claude-team#readme"
+Issues = "https://github.com/Martian-Engineering/claude-team/issues"
+Changelog = "https://github.com/Martian-Engineering/claude-team/releases"
 
 [project.optional-dependencies]
 dev = [
