@@ -48,5 +48,8 @@ htmlcov/
 .env
 .env.local
 
+# Claude Code local settings (contains local MCP overrides)
+.claude.json
+
 # Git worktrees (internal)
 .worktrees/
