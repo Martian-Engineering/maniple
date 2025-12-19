@@ -12,6 +12,7 @@ import logging
 import os
 import subprocess
 import time
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -530,6 +531,12 @@ async def spawn_team(
                 pane_to_iconic[pane_name] = iconic_names[name_index % len(iconic_names)]
                 name_index += 1
 
+        # Pre-generate session IDs for each pane
+        # These will be used as Stop hook markers and for registry registration
+        pane_session_ids: dict[str, str] = {}
+        for pane_name in projects:
+            pane_session_ids[pane_name] = str(uuid.uuid4())[:8]
+
         # Create worktrees if requested
         # Track original project paths and worktree paths separately
         original_projects = dict(resolved_projects)  # Preserve original paths
@@ -585,6 +592,7 @@ async def spawn_team(
             pane_customizations[pane_name] = customization
 
         # Create the multi-pane layout and start Claude in each pane
+        # Pass pre-generated session IDs as marker IDs for Stop hook injection
         pane_sessions = await create_multi_claude_layout(
             connection=connection,
             projects=resolved_projects,
@@ -593,12 +601,15 @@ async def spawn_team(
             project_envs=project_envs if project_envs else None,
             profile=PROFILE_NAME,
             pane_customizations=pane_customizations,
+            pane_marker_ids=pane_session_ids,
         )
 
         # Register all sessions (this is quick, no I/O)
+        # Use the pre-generated session IDs that were baked into Stop hooks
         managed_sessions = {}
         for pane_name, iterm_session in pane_sessions.items():
             iconic_name = pane_to_iconic[pane_name]
+            session_id = pane_session_ids[pane_name]
             # Use resolved_projects which has worktree paths if created
             # Claude creates JSONL based on working directory, so we need
             # to use the worktree path for JSONL lookup to work correctly
@@ -606,6 +617,7 @@ async def spawn_team(
                 iterm_session=iterm_session,
                 project_path=resolved_projects[pane_name],
                 name=iconic_name,  # e.g., "Groucho", "John"
+                session_id=session_id,  # Use pre-generated ID from Stop hook
             )
             # Store worktree path if one was created for this session
             if pane_name in worktree_paths:
@@ -1979,8 +1991,9 @@ async def get_task_status(
         task_description=session.current_task.description,
     )
 
-    # Get session state
+    # Get session state and JSONL path
     session_state = session.get_conversation_state()
+    jsonl_path = session.get_jsonl_path()
 
     # Run detection
     result = await detect_task_completion(
@@ -1991,6 +2004,7 @@ async def get_task_status(
         check_git=check_git,
         check_beads=check_beads,
         check_screen=check_screen,
+        jsonl_path=jsonl_path,
     )
 
     # If completed/failed with high confidence, archive the task

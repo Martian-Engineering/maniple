@@ -483,6 +483,217 @@ def watch_session(jsonl_path: Path, poll_interval: float = 0.5) -> Iterator[Sess
 # Response Waiting
 # =============================================================================
 
+# =============================================================================
+# Stop Hook Detection
+# =============================================================================
+
+# Marker format for Stop hook completion detection
+STOP_HOOK_MARKER_PREFIX = "[worker-done:"
+STOP_HOOK_MARKER_SUFFIX = "]"
+
+
+@dataclass
+class StopHookEntry:
+    """A stop_hook_summary entry from the JSONL."""
+    timestamp: datetime
+    marker_id: Optional[str]  # The session ID from the marker, if found
+    hook_count: int
+    commands: list[str]  # The hook commands that ran
+
+
+def extract_stop_hook_marker(command: str) -> Optional[str]:
+    """
+    Extract the marker ID from a Stop hook command.
+
+    The marker format is: echo [worker-done:SESSION_ID]
+
+    Args:
+        command: The hook command string
+
+    Returns:
+        The session/marker ID if found, None otherwise
+    """
+    start = command.find(STOP_HOOK_MARKER_PREFIX)
+    if start == -1:
+        return None
+    start += len(STOP_HOOK_MARKER_PREFIX)
+    end = command.find(STOP_HOOK_MARKER_SUFFIX, start)
+    if end == -1:
+        return None
+    return command[start:end]
+
+
+def parse_stop_hook_entries(jsonl_path: Path) -> list[StopHookEntry]:
+    """
+    Parse all stop_hook_summary entries from a JSONL file.
+
+    Stop hook summaries are logged with:
+    - type: "system"
+    - subtype: "stop_hook_summary"
+    - hookInfos: list of {command: "..."}
+    - timestamp: ISO timestamp
+
+    Args:
+        jsonl_path: Path to the session JSONL file
+
+    Returns:
+        List of StopHookEntry objects, ordered by timestamp
+    """
+    entries = []
+
+    try:
+        with open(jsonl_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                # Look for stop_hook_summary entries
+                if entry.get("type") != "system":
+                    continue
+                if entry.get("subtype") != "stop_hook_summary":
+                    continue
+
+                # Parse timestamp
+                try:
+                    ts = datetime.fromisoformat(
+                        entry.get("timestamp", "").replace("Z", "+00:00")
+                    )
+                except (ValueError, AttributeError):
+                    ts = datetime.now()
+
+                # Extract commands from hookInfos
+                hook_infos = entry.get("hookInfos", [])
+                commands = [h.get("command", "") for h in hook_infos if h.get("command")]
+
+                # Try to find marker in any command
+                marker_id = None
+                for cmd in commands:
+                    marker_id = extract_stop_hook_marker(cmd)
+                    if marker_id:
+                        break
+
+                entries.append(StopHookEntry(
+                    timestamp=ts,
+                    marker_id=marker_id,
+                    hook_count=entry.get("hookCount", len(commands)),
+                    commands=commands,
+                ))
+
+    except FileNotFoundError:
+        return []
+
+    return sorted(entries, key=lambda e: e.timestamp)
+
+
+def get_last_stop_hook_for_session(
+    jsonl_path: Path,
+    session_id: str,
+) -> Optional[StopHookEntry]:
+    """
+    Find the most recent stop_hook_summary entry for a specific session.
+
+    Args:
+        jsonl_path: Path to the session JSONL file
+        session_id: The session ID to look for in markers
+
+    Returns:
+        The most recent StopHookEntry matching the session ID, or None
+    """
+    entries = parse_stop_hook_entries(jsonl_path)
+    for entry in reversed(entries):
+        if entry.marker_id == session_id:
+            return entry
+    return None
+
+
+def is_session_stopped(
+    jsonl_path: Path,
+    session_id: str,
+) -> bool:
+    """
+    Check if a session has stopped (completed work) based on Stop hook detection.
+
+    A session is considered stopped if:
+    1. There is a stop_hook_summary entry with the session's marker
+    2. That entry is the last meaningful entry in the JSONL (no user/assistant
+       messages with content exist after it)
+
+    This provides reliable completion detection without relying on idle time
+    or explicit TASK_COMPLETE markers.
+
+    Args:
+        jsonl_path: Path to the session JSONL file
+        session_id: The session ID to check
+
+    Returns:
+        True if the session has stopped, False if still working or no data
+    """
+    # Find the last stop hook for this session
+    stop_entry = get_last_stop_hook_for_session(jsonl_path, session_id)
+    if not stop_entry:
+        return False
+
+    stop_timestamp = stop_entry.timestamp
+
+    # Check if any user/assistant messages exist after the stop hook
+    try:
+        with open(jsonl_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                # Only check user and assistant messages with content
+                entry_type = entry.get("type", "")
+                if entry_type not in ("user", "assistant"):
+                    continue
+
+                # Check if this message has actual content
+                message = entry.get("message", {})
+                content = message.get("content", "")
+                if isinstance(content, list):
+                    # Check if any content block has text
+                    has_text = any(
+                        c.get("type") == "text" and c.get("text")
+                        for c in content
+                        if isinstance(c, dict)
+                    )
+                    if not has_text:
+                        continue
+                elif not content:
+                    continue
+
+                # Parse timestamp and compare
+                try:
+                    msg_ts = datetime.fromisoformat(
+                        entry.get("timestamp", "").replace("Z", "+00:00")
+                    )
+                except (ValueError, AttributeError):
+                    continue
+
+                # If any message with content exists after the stop hook,
+                # the session is still working
+                if msg_ts > stop_timestamp:
+                    return False
+
+    except FileNotFoundError:
+        return False
+
+    # No messages after the stop hook - session is stopped
+    return True
+
+
 async def wait_for_response(
     jsonl_path: Path,
     timeout: float = 120,

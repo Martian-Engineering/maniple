@@ -394,6 +394,35 @@ async def wait_for_shell_ready(
 # Claude Session Control
 # =============================================================================
 
+def build_stop_hook_settings(marker_id: str) -> str:
+    """
+    Build the --settings JSON for Stop hook injection.
+
+    The hook embeds a marker in the command text itself, which gets logged
+    to the JSONL in the stop_hook_summary's hookInfos array. This provides
+    reliable completion detection without needing stderr or exit code hacks.
+
+    Args:
+        marker_id: Unique ID to embed in the marker (typically session_id)
+
+    Returns:
+        JSON string suitable for --settings flag
+    """
+    import json
+
+    settings = {
+        "hooks": {
+            "Stop": [{
+                "hooks": [{
+                    "type": "command",
+                    "command": f"echo [worker-done:{marker_id}]"
+                }]
+            }]
+        }
+    }
+    return json.dumps(settings, separators=(',', ':'))
+
+
 async def start_claude_in_session(
     session: "iterm2.Session",
     project_path: str,
@@ -402,6 +431,7 @@ async def start_claude_in_session(
     dangerously_skip_permissions: bool = False,
     env: Optional[dict[str, str]] = None,
     shell_ready_timeout: float = 10.0,
+    stop_hook_marker_id: Optional[str] = None,
 ) -> None:
     """
     Start Claude Code in an existing iTerm2 session.
@@ -417,6 +447,8 @@ async def start_claude_in_session(
         dangerously_skip_permissions: If True, start with --dangerously-skip-permissions
         env: Optional dict of environment variables to set before running claude
         shell_ready_timeout: Max seconds to wait for shell prompt before each command
+        stop_hook_marker_id: If provided, inject a Stop hook that logs this marker
+            to the JSONL for completion detection
     """
     import asyncio
 
@@ -435,6 +467,9 @@ async def start_claude_in_session(
         cmd += " --dangerously-skip-permissions"
     if resume_session:
         cmd += f" --resume {resume_session}"
+    if stop_hook_marker_id:
+        settings_json = build_stop_hook_settings(stop_hook_marker_id)
+        cmd += f" --settings '{settings_json}'"
 
     # Prepend environment variables if provided
     if env:
@@ -600,6 +635,7 @@ async def create_multi_claude_layout(
     project_envs: Optional[dict[str, dict[str, str]]] = None,
     profile: Optional[str] = None,
     pane_customizations: Optional[dict[str, "iterm2.LocalWriteOnlyProfile"]] = None,
+    pane_marker_ids: Optional[dict[str, str]] = None,
 ) -> dict[str, "iterm2.Session"]:
     """
     Create a multi-pane window and start Claude Code in each pane.
@@ -619,6 +655,9 @@ async def create_multi_claude_layout(
         profile: Optional profile name to use for all panes
         pane_customizations: Optional dict mapping pane names to LocalWriteOnlyProfile
             objects with per-pane customizations (tab color, badge, etc.)
+        pane_marker_ids: Optional dict mapping pane names to marker IDs for Stop hook
+            injection. Each worker will have a Stop hook that logs its marker ID
+            to the JSONL for completion detection.
 
     Returns:
         Dict mapping pane names to iTerm2 sessions (after Claude is started)
@@ -653,11 +692,13 @@ async def create_multi_claude_layout(
     async def start_claude_for_pane(pane_name: str, project_path: str) -> None:
         session = panes[pane_name]
         pane_env = project_envs.get(pane_name) if project_envs else None
+        marker_id = pane_marker_ids.get(pane_name) if pane_marker_ids else None
         await start_claude_in_session(
             session=session,
             project_path=project_path,
             dangerously_skip_permissions=skip_permissions,
             env=pane_env,
+            stop_hook_marker_id=marker_id,
         )
 
     await asyncio.gather(*[
