@@ -1,174 +1,141 @@
 """
-Tests for task completion detection.
+Tests for task completion detection (Stop hook based).
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+import json
 
 from claude_team_mcp.task_completion import (
     TaskStatus,
     TaskCompletionInfo,
-    TaskContext,
-    detect_markers_in_message,
-    detect_from_conversation,
-    detect_from_screen,
-    COMPLETION_MARKERS,
-    FAILURE_MARKERS,
+    detect_completion,
 )
-from claude_team_mcp.session_state import Message, SessionState
-from pathlib import Path
 
 
-class TestMarkerDetection:
-    """Test convention-based marker detection."""
+class TestStopHookDetection:
+    """Test Stop hook-based completion detection."""
 
-    def test_explicit_completion_marker(self):
-        """Test detection of explicit TASK_COMPLETE marker."""
-        content = "I have finished the work.\n\nTASK_COMPLETE"
-        status, confidence, marker = detect_markers_in_message(content)
-        assert status == TaskStatus.COMPLETED
-        assert confidence >= 0.9
-        assert marker == "TASK_COMPLETE"
+    def _write_jsonl(self, entries: list[dict]) -> Path:
+        """Write test JSONL entries to a temp file."""
+        f = NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False)
+        for entry in entries:
+            f.write(json.dumps(entry) + "\n")
+        f.close()
+        return Path(f.name)
 
-    def test_explicit_failure_marker(self):
-        """Test detection of explicit TASK_FAILED marker."""
-        content = "I could not complete the task due to errors.\n\nTASK_FAILED"
-        status, confidence, marker = detect_markers_in_message(content)
-        assert status == TaskStatus.FAILED
-        assert confidence >= 0.9
-        assert marker == "TASK_FAILED"
-
-    def test_natural_language_completion(self):
-        """Test detection of natural language completion patterns."""
-        content = "I've completed the task successfully."
-        status, confidence, marker = detect_markers_in_message(content)
-        assert status == TaskStatus.COMPLETED
-        assert confidence >= 0.7
-
-    def test_natural_language_failure(self):
-        """Test detection of natural language failure patterns."""
-        content = "I cannot complete this task due to missing dependencies."
-        status, confidence, marker = detect_markers_in_message(content)
-        assert status == TaskStatus.FAILED
-        assert confidence >= 0.7
-
-    def test_no_markers_found(self):
-        """Test when no completion markers are found."""
-        content = "Let me analyze the code and make some changes."
-        status, confidence, marker = detect_markers_in_message(content)
-        assert status == TaskStatus.UNKNOWN
-        assert confidence == 0.0
-
-    def test_all_completion_markers(self):
-        """Test all explicit completion markers are detected."""
-        for marker in COMPLETION_MARKERS:
-            content = f"Work done.\n{marker}"
-            status, conf, detected = detect_markers_in_message(content)
-            assert status == TaskStatus.COMPLETED, f"Failed for marker: {marker}"
-
-    def test_all_failure_markers(self):
-        """Test all explicit failure markers are detected."""
-        for marker in FAILURE_MARKERS:
-            content = f"Work failed.\n{marker}"
-            status, conf, detected = detect_markers_in_message(content)
-            assert status == TaskStatus.FAILED, f"Failed for marker: {marker}"
-
-
-class TestConversationDetection:
-    """Test detection from conversation state."""
-
-    def _make_message(self, role: str, content: str, uuid: str = "msg-1") -> Message:
-        """Helper to create a test message."""
-        return Message(
-            uuid=uuid,
-            parent_uuid=None,
-            role=role,
-            content=content,
-            timestamp=datetime.now(),
-            tool_uses=[],
-        )
-
-    def _make_state(self, messages: list[Message]) -> SessionState:
-        """Helper to create a test session state."""
-        return SessionState(
-            session_id="test-session",
-            project_path="/test/path",
-            jsonl_path=Path("/test/path/session.jsonl"),
-            messages=messages,
-        )
-
-    def test_detect_completion_in_last_message(self):
-        """Test completion detection in most recent assistant message."""
-        messages = [
-            self._make_message("user", "Please implement the feature", "u-1"),
-            self._make_message("assistant", "Done! TASK_COMPLETE", "a-1"),
+    def test_completed_when_stop_hook_fired(self):
+        """Test detection when Stop hook has fired with no subsequent messages."""
+        session_id = "abc123"
+        entries = [
+            {
+                "type": "user",
+                "message": {"content": "Do something"},
+                "timestamp": "2025-01-01T10:00:00Z",
+                "uuid": "u1",
+            },
+            {
+                "type": "assistant",
+                "message": {"content": "Done."},
+                "timestamp": "2025-01-01T10:00:05Z",
+                "uuid": "a1",
+            },
+            {
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "hookInfos": [{"command": f"echo [worker-done:{session_id}]"}],
+                "timestamp": "2025-01-01T10:00:06Z",
+                "uuid": "s1",
+            },
         ]
-        state = self._make_state(messages)
+        jsonl_path = self._write_jsonl(entries)
 
-        result = detect_from_conversation(state)
-        assert result is not None
+        result = detect_completion(jsonl_path, session_id)
         assert result.status == TaskStatus.COMPLETED
-        assert result.confidence >= 0.9
+        assert result.detection_method == "stop_hook"
 
-    def test_detect_failure_in_conversation(self):
-        """Test failure detection in conversation."""
-        messages = [
-            self._make_message("user", "Please fix the bug", "u-1"),
-            self._make_message(
-                "assistant",
-                "I encountered errors. TASK_FAILED",
-                "a-1"
-            ),
+        # Cleanup
+        jsonl_path.unlink()
+
+    def test_in_progress_when_no_stop_hook(self):
+        """Test detection when no Stop hook has fired."""
+        session_id = "abc123"
+        entries = [
+            {
+                "type": "user",
+                "message": {"content": "Do something"},
+                "timestamp": "2025-01-01T10:00:00Z",
+                "uuid": "u1",
+            },
+            {
+                "type": "assistant",
+                "message": {"content": "Working on it..."},
+                "timestamp": "2025-01-01T10:00:05Z",
+                "uuid": "a1",
+            },
         ]
-        state = self._make_state(messages)
+        jsonl_path = self._write_jsonl(entries)
 
-        result = detect_from_conversation(state)
-        assert result is not None
-        assert result.status == TaskStatus.FAILED
+        result = detect_completion(jsonl_path, session_id)
+        assert result.status == TaskStatus.IN_PROGRESS
 
-    def test_no_detection_in_neutral_conversation(self):
-        """Test no detection when conversation has no markers."""
-        messages = [
-            self._make_message("user", "What files are here?", "u-1"),
-            self._make_message("assistant", "I found several files.", "a-1"),
+        jsonl_path.unlink()
+
+    def test_in_progress_when_message_after_stop_hook(self):
+        """Test detection when user sent message after Stop hook (new task)."""
+        session_id = "abc123"
+        entries = [
+            {
+                "type": "assistant",
+                "message": {"content": "Done."},
+                "timestamp": "2025-01-01T10:00:05Z",
+                "uuid": "a1",
+            },
+            {
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "hookInfos": [{"command": f"echo [worker-done:{session_id}]"}],
+                "timestamp": "2025-01-01T10:00:06Z",
+                "uuid": "s1",
+            },
+            {
+                "type": "user",
+                "message": {"content": "Now do something else"},
+                "timestamp": "2025-01-01T10:00:10Z",
+                "uuid": "u2",
+            },
         ]
-        state = self._make_state(messages)
+        jsonl_path = self._write_jsonl(entries)
 
-        result = detect_from_conversation(state)
-        assert result is None
+        result = detect_completion(jsonl_path, session_id)
+        assert result.status == TaskStatus.IN_PROGRESS
 
-    def test_baseline_filtering(self):
-        """Test that messages before baseline are ignored."""
-        messages = [
-            self._make_message("assistant", "TASK_COMPLETE", "old-msg"),
-            self._make_message("user", "Now do this other task", "u-1"),
-            self._make_message("assistant", "Working on it...", "a-1"),
+        jsonl_path.unlink()
+
+    def test_unknown_when_no_jsonl(self):
+        """Test detection when JSONL file doesn't exist."""
+        result = detect_completion(Path("/nonexistent/path.jsonl"), "abc123")
+        assert result.status == TaskStatus.UNKNOWN
+
+    def test_wrong_session_id_not_detected(self):
+        """Test that Stop hook for different session ID is not detected."""
+        entries = [
+            {
+                "type": "system",
+                "subtype": "stop_hook_summary",
+                "hookInfos": [{"command": "echo [worker-done:other-session]"}],
+                "timestamp": "2025-01-01T10:00:06Z",
+                "uuid": "s1",
+            },
         ]
-        state = self._make_state(messages)
+        jsonl_path = self._write_jsonl(entries)
 
-        # With baseline set to old-msg, only messages after should be checked
-        result = detect_from_conversation(state, since_message_uuid="old-msg")
-        # The "Working on it..." message doesn't have markers
-        assert result is None
+        result = detect_completion(jsonl_path, "my-session")
+        assert result.status == TaskStatus.IN_PROGRESS
 
-
-class TestTaskContext:
-    """Test TaskContext creation and usage."""
-
-    def test_task_context_creation(self):
-        """Test TaskContext can be created with required fields."""
-        ctx = TaskContext(
-            session_id="worker-1",
-            project_path="/path/to/project",
-            started_at=datetime.now(),
-            baseline_message_uuid="msg-123",
-            beads_issue_id="a60",
-            task_description="Implement the feature",
-        )
-
-        assert ctx.session_id == "worker-1"
-        assert ctx.project_path == "/path/to/project"
-        assert ctx.beads_issue_id == "a60"
+        jsonl_path.unlink()
 
 
 class TestTaskCompletionInfo:
@@ -178,131 +145,13 @@ class TestTaskCompletionInfo:
         """Test TaskCompletionInfo serializes correctly."""
         info = TaskCompletionInfo(
             status=TaskStatus.COMPLETED,
-            confidence=0.95,
-            detection_method="convention_markers",
-            details={"marker": "TASK_COMPLETE"},
+            detection_method="stop_hook",
+            details={"session_id": "abc123"},
         )
 
         result = info.to_dict()
         assert result["status"] == "completed"
-        assert result["confidence"] == 0.95
-        assert result["detection_method"] == "convention_markers"
+        assert result["detection_method"] == "stop_hook"
         assert "detected_at" in result
-
-
-class TestScreenDetection:
-    """Test screen-based completion detection."""
-
-    def test_screen_convention_marker_completion(self):
-        """Test that TASK_COMPLETE on screen is detected with high confidence."""
-        import asyncio
-
-        async def mock_read_screen(_session):
-            return "Some output\nMore output\nTASK_COMPLETE\n> "
-
-        async def run_test():
-            return await detect_from_screen(None, mock_read_screen)
-
-        result = asyncio.run(run_test())
-        assert result is not None
-        assert result.status == TaskStatus.COMPLETED
-        assert result.confidence >= 0.9
-        assert result.detection_method == "screen_convention_marker"
-        assert result.details["matched_marker"] == "TASK_COMPLETE"
-
-    def test_screen_convention_marker_failure(self):
-        """Test that TASK_FAILED on screen is detected with high confidence."""
-        import asyncio
-
-        async def mock_read_screen(_session):
-            return "Error occurred\nTASK_FAILED\n> "
-
-        async def run_test():
-            return await detect_from_screen(None, mock_read_screen)
-
-        result = asyncio.run(run_test())
-        assert result is not None
-        assert result.status == TaskStatus.FAILED
-        assert result.confidence >= 0.9
-        assert result.detection_method == "screen_convention_marker"
-        assert result.details["matched_marker"] == "TASK_FAILED"
-
-    def test_screen_all_completion_markers(self):
-        """Test all completion markers are detected on screen with high confidence."""
-        import asyncio
-
-        for marker in COMPLETION_MARKERS:
-            async def mock_read_screen(_session, m=marker):
-                return f"Output\n{m}\n> "
-
-            async def run_test():
-                return await detect_from_screen(None, mock_read_screen)
-
-            result = asyncio.run(run_test())
-            assert result is not None, f"Failed for marker: {marker}"
-            assert result.status == TaskStatus.COMPLETED, f"Failed for marker: {marker}"
-            assert result.confidence >= 0.9, f"Low confidence for marker: {marker}"
-            assert result.detection_method == "screen_convention_marker"
-
-    def test_screen_all_failure_markers(self):
-        """Test all failure markers are detected on screen with high confidence."""
-        import asyncio
-
-        for marker in FAILURE_MARKERS:
-            async def mock_read_screen(_session, m=marker):
-                return f"Output\n{m}\n> "
-
-            async def run_test():
-                return await detect_from_screen(None, mock_read_screen)
-
-            result = asyncio.run(run_test())
-            assert result is not None, f"Failed for marker: {marker}"
-            assert result.status == TaskStatus.FAILED, f"Failed for marker: {marker}"
-            assert result.confidence >= 0.9, f"Low confidence for marker: {marker}"
-            assert result.detection_method == "screen_convention_marker"
-
-    def test_screen_generic_patterns_lower_confidence(self):
-        """Test that generic patterns like 'done' have lower confidence."""
-        import asyncio
-
-        async def mock_read_screen(_session):
-            return "Build succeeded\ndone\n> "
-
-        async def run_test():
-            return await detect_from_screen(None, mock_read_screen)
-
-        result = asyncio.run(run_test())
-        assert result is not None
-        assert result.status == TaskStatus.COMPLETED
-        # Generic patterns should have lower confidence than convention markers
-        assert result.confidence < 0.9
-        assert result.detection_method == "screen_parsing"
-
-    def test_screen_no_markers(self):
-        """Test no detection when screen has no markers."""
-        import asyncio
-
-        async def mock_read_screen(_session):
-            return "Working on it...\nMaking changes...\n> "
-
-        async def run_test():
-            return await detect_from_screen(None, mock_read_screen)
-
-        result = asyncio.run(run_test())
-        assert result is None
-
-    def test_screen_failure_marker_priority_over_completion(self):
-        """Test that failure markers are checked before completion markers."""
-        import asyncio
-
-        async def mock_read_screen(_session):
-            # TASK_FAILED should be detected even if success patterns present
-            return "Build passed\nTASK_FAILED\n> "
-
-        async def run_test():
-            return await detect_from_screen(None, mock_read_screen)
-
-        result = asyncio.run(run_test())
-        assert result is not None
-        assert result.status == TaskStatus.FAILED
-        assert result.confidence >= 0.9
+        # No confidence field anymore
+        assert "confidence" not in result

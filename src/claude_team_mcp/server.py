@@ -39,11 +39,9 @@ from .names import pick_names_for_count
 from .profile import PROFILE_NAME, get_or_create_profile
 from .registry import SessionRegistry, SessionStatus, TaskInfo
 from .task_completion import (
-    TaskContext,
-    TaskCompletionInfo,
     TaskStatus,
-    detect_task_completion,
-    wait_for_task_completion,
+    detect_completion,
+    wait_for_completion as wait_for_completion_impl,
 )
 from .worker_prompt import generate_worker_prompt, get_coordinator_guidance
 from .worktree import WorktreeError, create_worktree, remove_worktree
@@ -1932,142 +1930,24 @@ async def close_session(
 async def get_task_status(
     ctx: Context[ServerSession, AppContext],
     session_id: str,
-    check_git: bool = True,
-    check_beads: bool = True,
-    check_screen: bool = True,
 ) -> dict:
     """
     Get the completion status of a delegated task.
 
-    Uses multiple detection methods to determine if a task is complete:
-    - Convention markers: Looks for TASK_COMPLETE, TASK_FAILED, etc. in conversation
-    - Git commits: Checks for new commits since task started
-    - Beads issues: Checks if linked beads issue was closed
-    - Screen parsing: Looks for completion patterns in terminal output
-    - Idle detection: Checks if session has been idle (suggesting completion)
+    Uses Stop hook detection to determine if a task is complete. When Claude
+    finishes responding, the Stop hook fires and logs a marker to the JSONL.
+    This is authoritative — either done or not done.
 
     Args:
         session_id: ID of the session to check
-        check_git: Whether to check for git commits
-        check_beads: Whether to check beads issue status
-        check_screen: Whether to parse screen content
 
     Returns:
         Dict with:
-            - status: "pending", "in_progress", "completed", "failed", or "unknown"
-            - confidence: 0.0 to 1.0 confidence in the detection
-            - detection_method: Which method detected the status
+            - status: "in_progress", "completed", or "unknown"
+            - detection_method: "stop_hook"
             - details: Additional information about the detection
             - has_active_task: Whether a task is currently being tracked
     """
-    app_ctx = ctx.request_context.lifespan_context
-    registry = app_ctx.registry
-
-    # Look up session
-    session = registry.get(session_id)
-    if not session:
-        return error_response(
-            f"Session not found: {session_id}",
-            hint=HINTS["session_not_found"],
-        )
-
-    # Check if there's an active task
-    if not session.current_task:
-        return error_response(
-            "No active task being tracked",
-            hint=HINTS["no_active_task"],
-            session_id=session_id,
-            has_active_task=False,
-            status=TaskStatus.UNKNOWN.value,
-        )
-
-    # Build task context
-    task_ctx = TaskContext(
-        session_id=session_id,
-        project_path=session.project_path,
-        started_at=session.current_task.started_at,
-        baseline_message_uuid=session.current_task.baseline_message_uuid,
-        beads_issue_id=session.current_task.beads_issue_id,
-        task_description=session.current_task.description,
-    )
-
-    # Get session state and JSONL path
-    session_state = session.get_conversation_state()
-    jsonl_path = session.get_jsonl_path()
-
-    # Run detection
-    result = await detect_task_completion(
-        task_ctx=task_ctx,
-        session_state=session_state,
-        iterm_session=session.iterm_session,
-        read_screen_func=read_screen_text,
-        check_git=check_git,
-        check_beads=check_beads,
-        check_screen=check_screen,
-        jsonl_path=jsonl_path,
-    )
-
-    # If completed/failed with high confidence, archive the task
-    if result.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
-        if result.confidence >= 0.7:
-            session.complete_task()
-            registry.update_status(session_id, SessionStatus.READY)
-
-    return {
-        "session_id": session_id,
-        "has_active_task": session.current_task is not None,
-        "task_id": session.current_task.task_id if session.current_task else None,
-        "task_description": (
-            session.current_task.description[:100] + "..."
-            if session.current_task and len(session.current_task.description) > 100
-            else (session.current_task.description if session.current_task else None)
-        ),
-        **result.to_dict(),
-    }
-
-
-@mcp.tool()
-async def wait_for_completion(
-    ctx: Context[ServerSession, AppContext],
-    session_id: str,
-    timeout: float = 300.0,
-    poll_interval: float = 2.0,
-    idle_threshold: float = 30.0,
-    check_git: bool = True,
-    check_beads: bool = True,
-) -> dict:
-    """
-    Wait for a delegated task to complete.
-
-    Polls the session state and other signals until completion is detected
-    or timeout is reached. This is useful for synchronous workflows where
-    you need to wait for a worker to finish.
-
-    Detection is based on:
-    - Convention markers (TASK_COMPLETE, etc.) in conversation
-    - Git commits in the project
-    - Beads issue status changes
-    - Screen content patterns
-    - Session idle time
-
-    Args:
-        session_id: ID of the session to wait on
-        timeout: Maximum seconds to wait (default 5 minutes)
-        poll_interval: Seconds between checks (default 2)
-        idle_threshold: Seconds of inactivity to consider "complete" (default 30)
-        check_git: Whether to check for git commits
-        check_beads: Whether to check beads issue status
-
-    Returns:
-        Dict with:
-            - status: Final task status
-            - confidence: Confidence in the detection
-            - detection_method: Which method detected completion
-            - details: Additional information
-            - waited_seconds: How long we actually waited
-    """
-    import time
-
     app_ctx = ctx.request_context.lifespan_context
     registry = app_ctx.registry
 
@@ -2093,46 +1973,104 @@ async def wait_for_completion(
     jsonl_path = session.get_jsonl_path()
     if not jsonl_path:
         return error_response(
-            "No JSONL session file found - cannot track conversation state",
+            "No JSONL session file found",
+            hint=HINTS["no_jsonl_file"],
+            session_id=session_id,
+            status=TaskStatus.UNKNOWN.value,
+        )
+
+    # Run detection
+    result = detect_completion(jsonl_path, session_id)
+
+    # If completed, archive the task
+    if result.status == TaskStatus.COMPLETED:
+        session.complete_task()
+        registry.update_status(session_id, SessionStatus.READY)
+
+    return {
+        "session_id": session_id,
+        "has_active_task": session.current_task is not None,
+        "task_id": session.current_task.task_id if session.current_task else None,
+        "task_description": (
+            session.current_task.description[:100] + "..."
+            if session.current_task and len(session.current_task.description) > 100
+            else (session.current_task.description if session.current_task else None)
+        ),
+        **result.to_dict(),
+    }
+
+
+@mcp.tool()
+async def wait_for_completion(
+    ctx: Context[ServerSession, AppContext],
+    session_id: str,
+    timeout: float = 300.0,
+    poll_interval: float = 2.0,
+) -> dict:
+    """
+    Wait for a delegated task to complete.
+
+    Polls until the Stop hook fires or timeout is reached. When Claude finishes
+    responding, the Stop hook fires immediately — no guessing, no heuristics.
+
+    Args:
+        session_id: ID of the session to wait on
+        timeout: Maximum seconds to wait (default 5 minutes)
+        poll_interval: Seconds between checks (default 2)
+
+    Returns:
+        Dict with:
+            - status: "completed" or "in_progress" (if timeout)
+            - detection_method: "stop_hook"
+            - details: Additional information
+            - waited_seconds: How long we actually waited
+    """
+    app_ctx = ctx.request_context.lifespan_context
+    registry = app_ctx.registry
+
+    # Look up session
+    session = registry.get(session_id)
+    if not session:
+        return error_response(
+            f"Session not found: {session_id}",
+            hint=HINTS["session_not_found"],
+        )
+
+    # Check if there's an active task
+    if not session.current_task:
+        return error_response(
+            "No active task being tracked",
+            hint=HINTS["no_active_task"],
+            session_id=session_id,
+            has_active_task=False,
+            status=TaskStatus.UNKNOWN.value,
+        )
+
+    # Get JSONL path
+    jsonl_path = session.get_jsonl_path()
+    if not jsonl_path:
+        return error_response(
+            "No JSONL session file found",
             hint=HINTS["no_jsonl_file"],
             session_id=session_id,
         )
 
-    # Build task context
-    task_ctx = TaskContext(
-        session_id=session_id,
-        project_path=session.project_path,
-        started_at=session.current_task.started_at,
-        baseline_message_uuid=session.current_task.baseline_message_uuid,
-        beads_issue_id=session.current_task.beads_issue_id,
-        task_description=session.current_task.description,
-    )
-
-    start_time = time.time()
-
     # Wait for completion
-    result = await wait_for_task_completion(
-        task_ctx=task_ctx,
+    result = await wait_for_completion_impl(
         jsonl_path=jsonl_path,
+        session_id=session_id,
         timeout=timeout,
         poll_interval=poll_interval,
-        idle_threshold=idle_threshold,
-        iterm_session=session.iterm_session,
-        read_screen_func=read_screen_text,
     )
 
-    elapsed = time.time() - start_time
-
-    # If completed/failed with good confidence, archive the task
-    if result.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
-        if result.confidence >= 0.7:
-            completed_task = session.complete_task()
-            registry.update_status(session_id, SessionStatus.READY)
+    # If completed, archive the task
+    if result.status == TaskStatus.COMPLETED:
+        session.complete_task()
+        registry.update_status(session_id, SessionStatus.READY)
 
     return {
         "session_id": session_id,
         "task_id": session.current_task.task_id if session.current_task else None,
-        "waited_seconds": round(elapsed, 1),
         **result.to_dict(),
     }
 
