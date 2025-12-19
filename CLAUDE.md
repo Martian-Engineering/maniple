@@ -58,11 +58,10 @@ Claude stores conversations at:
 Where `{project-slug}` = project path with `/` → `-` (e.g., `/Users/josh/code` → `-Users-josh-code`)
 
 ### Completion Detection Strategies
-1. **Convention markers**: `TASK_COMPLETE`, `TASK_FAILED` in conversation
-2. **Natural language**: Pattern matching for completion phrases
-3. **Git commits**: New commits since task started
-4. **Beads issues**: Issue status changed to closed
-5. **Idle detection**: No JSONL file changes for threshold period
+1. **Stop hooks** (primary): Automatic detection when Claude finishes responding — highest confidence
+2. **Git commits**: New commits since task started
+3. **Beads issues**: Issue status changed to closed
+4. **Idle detection**: Fallback when other signals unavailable
 
 ### Layout Options
 - `new_window`: Fresh iTerm2 window

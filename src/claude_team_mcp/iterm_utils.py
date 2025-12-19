@@ -7,10 +7,9 @@ from the original primitives.py for use in the MCP server.
 
 import logging
 import re
+import subprocess
 from typing import Optional, Callable
 from pathlib import Path
-
-from .subprocess_cache import cached_system_profiler
 
 logger = logging.getLogger("claude-team-mcp.iterm_utils")
 
@@ -162,14 +161,15 @@ def _calculate_screen_frame() -> tuple[float, float, float, float]:
         Tuple of (x, y, width, height) in points for the window frame.
     """
     try:
-        # Use cached system_profiler to avoid repeated slow calls
-        stdout = cached_system_profiler("SPDisplaysDataType")
-        if stdout is None:
-            logger.warning("system_profiler failed, using default frame")
-            return (0.0, 25.0, 1400.0, 900.0)
+        result = subprocess.run(
+            ["system_profiler", "SPDisplaysDataType"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
 
         # Parse resolution from output like "Resolution: 3840 x 2160"
-        match = re.search(r"Resolution: (\d+) x (\d+)", stdout)
+        match = re.search(r"Resolution: (\d+) x (\d+)", result.stdout)
         if not match:
             logger.warning("Could not parse screen resolution, using defaults")
             return (0.0, 25.0, 1400.0, 900.0)
@@ -177,7 +177,7 @@ def _calculate_screen_frame() -> tuple[float, float, float, float]:
         screen_w, screen_h = int(match.group(1)), int(match.group(2))
 
         # Detect Retina display (2x scale factor)
-        scale = 2 if "Retina" in stdout else 1
+        scale = 2 if "Retina" in result.stdout else 1
         logical_w = screen_w // scale
         logical_h = screen_h // scale
 
@@ -194,6 +194,9 @@ def _calculate_screen_frame() -> tuple[float, float, float, float]:
         )
         return (x, y, width, height)
 
+    except subprocess.TimeoutExpired:
+        logger.warning("system_profiler timed out, using default frame")
+        return (0.0, 25.0, 1400.0, 900.0)
     except Exception as e:
         logger.warning(f"Failed to calculate screen frame: {e}")
         return (0.0, 25.0, 1400.0, 900.0)
@@ -235,9 +238,9 @@ async def create_window(
     if is_fullscreen:
         logger.info("Window opened in fullscreen, exiting fullscreen mode")
         await window.async_set_fullscreen(False)
-        # Give macOS time to animate out of fullscreen (animation is ~0.2s)
+        # Give macOS time to animate out of fullscreen
         import asyncio
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.5)
 
     # Set window frame to fill screen without triggering fullscreen mode
     x, y, width, height = _calculate_screen_frame()
@@ -246,9 +249,6 @@ async def create_window(
         size=iterm2.Size(width, height),
     )
     await window.async_set_frame(frame)
-
-    # Bring window to focus
-    await window.async_activate()
 
     return window
 
@@ -390,256 +390,96 @@ async def wait_for_shell_ready(
     return False
 
 
-async def wait_for_claude_ready(
-    session: "iterm2.Session",
-    timeout_seconds: float = 15.0,
-    poll_interval: float = 0.2,
-    stable_count: int = 2,
-) -> bool:
-    """
-    Wait for Claude Code's TUI to be ready to accept input.
-
-    Polls the screen content and waits for Claude's prompt to appear.
-    Claude is considered ready when the screen shows either:
-    - A line starting with '>' (Claude's input prompt)
-    - A status line containing 'tokens' (bottom status bar)
-
-    Args:
-        session: iTerm2 session to monitor
-        timeout_seconds: Maximum time to wait for Claude readiness
-        poll_interval: Time between screen content checks
-        stable_count: Number of consecutive stable reads before considering ready
-
-    Returns:
-        True if Claude became ready, False if timeout was reached
-    """
-    import asyncio
-    import time
-
-    start_time = time.monotonic()
-    last_content = None
-    stable_reads = 0
-
-    while (time.monotonic() - start_time) < timeout_seconds:
-        try:
-            content = await read_screen_text(session)
-            lines = content.split('\n')
-
-            # Check if content is stable (same as last read)
-            if content == last_content:
-                stable_reads += 1
-            else:
-                stable_reads = 0
-                last_content = content
-
-            # Only check for Claude readiness after content has stabilized
-            if stable_reads >= stable_count:
-                for line in lines:
-                    stripped = line.strip()
-                    # Check for Claude's input prompt (starts with >)
-                    if stripped.startswith('>'):
-                        logger.debug("Claude ready: found '>' prompt")
-                        return True
-                    # Check for status bar (contains 'tokens')
-                    if 'tokens' in stripped:
-                        logger.debug("Claude ready: found status bar with 'tokens'")
-                        return True
-
-        except Exception as e:
-            # Screen read failed, retry
-            logger.debug(f"Screen read failed during Claude ready check: {e}")
-
-        await asyncio.sleep(poll_interval)
-
-    logger.warning(f"Timeout waiting for Claude TUI readiness ({timeout_seconds}s)")
-    return False
-
-
-# =============================================================================
-# JSONL Session Detection
-# =============================================================================
-
-
-def get_claude_projects_dir() -> Path:
-    """
-    Get the Claude projects directory path.
-
-    Returns:
-        Path to ~/.claude/projects/
-    """
-    return Path.home() / ".claude" / "projects"
-
-
-def project_path_to_slug(project_path: str) -> str:
-    """
-    Convert a project path to Claude's slug format.
-
-    Claude stores conversations at ~/.claude/projects/{slug}/{session}.jsonl
-    where slug is the project path with '/' replaced by '-'.
-
-    Args:
-        project_path: Absolute project path (e.g., /Users/josh/code)
-
-    Returns:
-        Slug string (e.g., -Users-josh-code)
-    """
-    return project_path.replace("/", "-")
-
-
-async def wait_for_jsonl_session(
-    project_path: str,
-    poll_interval_ms: int = 200,
-    timeout_seconds: float = 10.0,
-    min_file_size: int = 1,
-) -> Optional[Path]:
-    """
-    Wait for a JSONL session file to be created for a project.
-
-    Polls the Claude projects directory for new JSONL files matching the
-    project slug. Returns when a file exists with content (size > 0).
-
-    Args:
-        project_path: Absolute project path
-        poll_interval_ms: Milliseconds between polls (default 200ms)
-        timeout_seconds: Maximum wait time (default 10s)
-        min_file_size: Minimum file size in bytes to consider valid (default 1)
-
-    Returns:
-        Path to the JSONL file if found, None if timeout reached
-    """
-    import asyncio
-    import time
-
-    slug = project_path_to_slug(project_path)
-    projects_dir = get_claude_projects_dir()
-    slug_dir = projects_dir / slug
-
-    start_time_monotonic = time.monotonic()
-    start_time_real = time.time()  # For comparing with file mtime
-    poll_interval_sec = poll_interval_ms / 1000.0
-
-    # Track files and their mtimes before we started, so we can detect new/modified ones
-    existing_files: dict[str, float] = {}
-    if slug_dir.exists():
-        for f in slug_dir.glob("*.jsonl"):
-            try:
-                existing_files[f.name] = f.stat().st_mtime
-            except OSError:
-                pass
-
-    while (time.monotonic() - start_time_monotonic) < timeout_seconds:
-        try:
-            if slug_dir.exists():
-                # Look for JSONL files that are new or modified since we started
-                for jsonl_file in slug_dir.glob("*.jsonl"):
-                    try:
-                        stat = jsonl_file.stat()
-                        file_size = stat.st_size
-                        file_mtime = stat.st_mtime
-
-                        if file_size >= min_file_size:
-                            # Check if this is a new file or modified since we started
-                            is_new = jsonl_file.name not in existing_files
-                            is_modified = (
-                                not is_new
-                                and file_mtime > existing_files[jsonl_file.name]
-                            )
-
-                            if is_new or is_modified:
-                                logger.debug(
-                                    f"Found JSONL session file: {jsonl_file} "
-                                    f"(size={file_size} bytes, "
-                                    f"{'new' if is_new else 'modified'})"
-                                )
-                                return jsonl_file
-                    except OSError:
-                        # File may have been deleted/moved, continue checking
-                        continue
-        except Exception as e:
-            # Directory access failed, retry on next poll
-            logger.debug(f"Error checking for JSONL files: {e}")
-
-        await asyncio.sleep(poll_interval_sec)
-
-    logger.warning(
-        f"Timeout waiting for JSONL session file for project {project_path} "
-        f"(slug={slug}, timeout={timeout_seconds}s)"
-    )
-    return None
-
-
 # =============================================================================
 # Claude Session Control
 # =============================================================================
+
+def build_stop_hook_settings(marker_id: str) -> str:
+    """
+    Build the --settings JSON for Stop hook injection.
+
+    The hook embeds a marker in the command text itself, which gets logged
+    to the JSONL in the stop_hook_summary's hookInfos array. This provides
+    reliable completion detection without needing stderr or exit code hacks.
+
+    Args:
+        marker_id: Unique ID to embed in the marker (typically session_id)
+
+    Returns:
+        JSON string suitable for --settings flag
+    """
+    import json
+
+    settings = {
+        "hooks": {
+            "Stop": [{
+                "hooks": [{
+                    "type": "command",
+                    "command": f"echo [worker-done:{marker_id}]"
+                }]
+            }]
+        }
+    }
+    return json.dumps(settings, separators=(',', ':'))
+
 
 async def start_claude_in_session(
     session: "iterm2.Session",
     project_path: str,
     resume_session: Optional[str] = None,
+    wait_seconds: float = 3.0,
     dangerously_skip_permissions: bool = False,
     env: Optional[dict[str, str]] = None,
     shell_ready_timeout: float = 10.0,
-    jsonl_poll_interval_ms: int = 200,
-    jsonl_timeout_seconds: float = 10.0,
-) -> Optional[Path]:
+    stop_hook_marker_id: Optional[str] = None,
+) -> None:
     """
     Start Claude Code in an existing iTerm2 session.
 
     Changes to the project directory and launches Claude Code. Waits for shell
-    readiness before sending commands, then polls for JSONL session file
-    creation to detect when Claude has fully initialized.
+    readiness before sending commands to prevent garbled input.
 
     Args:
         session: iTerm2 session to use
         project_path: Directory to run Claude in
         resume_session: Optional session ID to resume
+        wait_seconds: Time to wait for Claude to initialize after starting
         dangerously_skip_permissions: If True, start with --dangerously-skip-permissions
         env: Optional dict of environment variables to set before running claude
         shell_ready_timeout: Max seconds to wait for shell prompt before each command
-        jsonl_poll_interval_ms: Milliseconds between JSONL file checks (default 200ms)
-        jsonl_timeout_seconds: Max seconds to wait for JSONL file creation (default 10s)
-
-    Returns:
-        Path to the JSONL session file if found, None if timeout reached
+        stop_hook_marker_id: If provided, inject a Stop hook that logs this marker
+            to the JSONL for completion detection
     """
-    # Wait for shell to be ready before sending the combined cd && claude command.
-    # We use a single wait and combine the commands with && to ensure cd succeeds
-    # before claude runs, while avoiding the latency of two separate wait cycles.
+    import asyncio
+
+    # Wait for shell to be ready before sending cd command
     await wait_for_shell_ready(session, timeout_seconds=shell_ready_timeout)
 
-    # Build claude command with flags
+    # Change to project directory
+    await send_prompt(session, f"cd {project_path}")
+
+    # Wait for shell to be ready after cd before sending claude command
+    await wait_for_shell_ready(session, timeout_seconds=shell_ready_timeout)
+
+    # Build and run claude command
     cmd = "claude"
     if dangerously_skip_permissions:
         cmd += " --dangerously-skip-permissions"
     if resume_session:
         cmd += f" --resume {resume_session}"
+    if stop_hook_marker_id:
+        settings_json = build_stop_hook_settings(stop_hook_marker_id)
+        cmd += f" --settings '{settings_json}'"
 
     # Prepend environment variables if provided
     if env:
         env_exports = " ".join(f"{k}={v}" for k, v in env.items())
         cmd = f"{env_exports} {cmd}"
 
-    # Combine cd and claude into single command - cd must succeed for claude to run
-    combined_cmd = f"cd {project_path} && {cmd}"
-    await send_prompt(session, combined_cmd)
+    await send_prompt(session, cmd)
 
-    # Wait for Claude's TUI to be ready by polling terminal for prompt/status bar.
-    # This is more reliable than JSONL detection since JSONL is created before TUI.
-    await wait_for_claude_ready(
-        session,
-        timeout_seconds=jsonl_timeout_seconds,
-        poll_interval=jsonl_poll_interval_ms / 1000.0,
-    )
-
-    # Now find the JSONL session file for identification purposes.
-    # The file should exist at this point since Claude's TUI is up.
-    jsonl_path = await wait_for_jsonl_session(
-        project_path=project_path,
-        poll_interval_ms=jsonl_poll_interval_ms,
-        timeout_seconds=2.0,  # Short timeout since Claude is already running
-    )
-
-    return jsonl_path
+    # Wait for Claude to initialize
+    await asyncio.sleep(wait_seconds)
 
 
 # =============================================================================
@@ -795,6 +635,7 @@ async def create_multi_claude_layout(
     project_envs: Optional[dict[str, dict[str, str]]] = None,
     profile: Optional[str] = None,
     pane_customizations: Optional[dict[str, "iterm2.LocalWriteOnlyProfile"]] = None,
+    pane_marker_ids: Optional[dict[str, str]] = None,
 ) -> dict[str, "iterm2.Session"]:
     """
     Create a multi-pane window and start Claude Code in each pane.
@@ -814,6 +655,9 @@ async def create_multi_claude_layout(
         profile: Optional profile name to use for all panes
         pane_customizations: Optional dict mapping pane names to LocalWriteOnlyProfile
             objects with per-pane customizations (tab color, badge, etc.)
+        pane_marker_ids: Optional dict mapping pane names to marker IDs for Stop hook
+            injection. Each worker will have a Stop hook that logs its marker ID
+            to the JSONL for completion detection.
 
     Returns:
         Dict mapping pane names to iTerm2 sessions (after Claude is started)
@@ -848,11 +692,13 @@ async def create_multi_claude_layout(
     async def start_claude_for_pane(pane_name: str, project_path: str) -> None:
         session = panes[pane_name]
         pane_env = project_envs.get(pane_name) if project_envs else None
+        marker_id = pane_marker_ids.get(pane_name) if pane_marker_ids else None
         await start_claude_in_session(
             session=session,
             project_path=project_path,
             dangerously_skip_permissions=skip_permissions,
             env=pane_env,
+            stop_hook_marker_id=marker_id,
         )
 
     await asyncio.gather(*[

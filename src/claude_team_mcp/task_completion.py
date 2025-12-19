@@ -1,12 +1,18 @@
 """
 Task Completion Detection
 
-Detects when a delegated task is truly complete using multiple strategies:
-- Convention-based markers in conversation
-- Git commit detection
-- Beads issue status monitoring
-- Screen parsing for completion patterns
-- JSONL conversation analysis
+Detects when a delegated task is truly complete using multiple strategies.
+
+PRIMARY METHOD:
+- Stop hook detection (0.99 confidence) - Authoritative signal from Claude Code
+  itself via the Stop hook system. This is the recommended approach.
+
+FALLBACK METHODS (legacy, lower confidence):
+- Convention-based markers in conversation (0.75-0.95) - DEPRECATED as primary
+- Git commit detection (0.7) - Suggests progress but not certainty
+- Beads issue status monitoring (0.6-0.9) - Useful when issues are linked
+- Screen parsing for completion patterns (0.6) - Last resort
+- Idle detection (0.5) - DEPRECATED, unreliable
 """
 
 import asyncio
@@ -20,7 +26,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-from .session_state import Message, SessionState, parse_session
+from .session_state import Message, SessionState, parse_session, is_session_stopped
 
 logger = logging.getLogger("claude-team-mcp")
 
@@ -62,10 +68,17 @@ class TaskCompletionInfo:
 
 
 # =============================================================================
-# Convention-Based Detection
+# Convention-Based Detection (DEPRECATED as primary method)
+# =============================================================================
+# NOTE: These markers and patterns are now FALLBACK methods only.
+# The Stop hook system (detect_stop_hook_completion) is the primary detection
+# method with 0.99 confidence. Convention markers remain available for:
+# - Sessions without Stop hook injection
+# - Edge cases where Stop hook doesn't fire
+# - Backwards compatibility
 # =============================================================================
 
-# Markers that indicate task completion
+# Markers that indicate task completion (fallback detection)
 COMPLETION_MARKERS = [
     "TASK_COMPLETE",
     "TASK_COMPLETED",
@@ -75,7 +88,7 @@ COMPLETION_MARKERS = [
     "✅ TASK COMPLETE",
 ]
 
-# Markers that indicate task failure
+# Markers that indicate task failure (fallback detection)
 FAILURE_MARKERS = [
     "TASK_FAILED",
     "TASK_FAILURE",
@@ -85,7 +98,7 @@ FAILURE_MARKERS = [
     "❌ TASK FAILED",
 ]
 
-# Natural language patterns suggesting completion
+# Natural language patterns suggesting completion (fallback, 0.75 confidence)
 COMPLETION_PATTERNS = [
     r"(?i)(?:I've|I have) (?:completed|finished|done|implemented) (?:the |all |)(?:task|work|changes)",
     r"(?i)(?:task|work) (?:is |has been )(?:complete|completed|finished|done)",
@@ -95,7 +108,7 @@ COMPLETION_PATTERNS = [
     r"(?i)the (?:feature|fix|change|implementation) is (?:complete|ready|done)",
 ]
 
-# Patterns suggesting failure
+# Patterns suggesting failure (fallback, 0.75 confidence)
 FAILURE_PATTERNS = [
     r"(?i)(?:I |we )(?:cannot|can't|couldn't) (?:complete|finish|implement)",
     r"(?i)(?:task|work) (?:failed|blocked|cannot be completed)",
@@ -447,7 +460,14 @@ async def detect_from_screen(
 
 
 # =============================================================================
-# Idle Detection
+# Idle Detection (DEPRECATED - low reliability)
+# =============================================================================
+# NOTE: Idle detection is DEPRECATED as a completion signal. It only checks
+# file modification time which is unreliable - Claude may be "thinking" or
+# waiting for user input. The Stop hook system is the authoritative method.
+#
+# This function remains available as a last-resort fallback with very low
+# confidence (0.5), but should not be relied upon for task completion.
 # =============================================================================
 
 
@@ -455,7 +475,14 @@ def detect_idle_completion(
     state: SessionState, idle_seconds: float = 30.0
 ) -> Optional[TaskCompletionInfo]:
     """
-    Check if the session has been idle (suggesting completion).
+    DEPRECATED: Check if the session has been idle (suggesting completion).
+
+    WARNING: This method is deprecated and unreliable. It only checks JSONL
+    file mtime which doesn't distinguish between "Claude is done" and "Claude
+    is thinking" or "waiting for input". Use Stop hook detection instead.
+
+    Retained as a low-confidence (0.5) fallback for edge cases where Stop
+    hook data is unavailable.
 
     Args:
         state: Parsed session state
@@ -501,6 +528,50 @@ def detect_idle_completion(
 
 
 # =============================================================================
+# Stop Hook Detection (Primary Method)
+# =============================================================================
+
+
+def detect_stop_hook_completion(
+    jsonl_path: Path,
+    session_id: str,
+) -> Optional[TaskCompletionInfo]:
+    """
+    Detect completion via Stop hook marker in JSONL.
+
+    This is the primary detection method. When workers are spawned with
+    Stop hook injection, their completion is reliably signaled via a marker
+    embedded in the hook command that gets logged to the JSONL.
+
+    The detection checks:
+    1. A stop_hook_summary exists with the session's marker
+    2. No user/assistant messages exist after that stop_hook_summary
+
+    Args:
+        jsonl_path: Path to the session JSONL file
+        session_id: The session ID to check (matches marker in Stop hook)
+
+    Returns:
+        TaskCompletionInfo if stopped, None if still working or no hook data
+    """
+    if not jsonl_path.exists():
+        return None
+
+    if is_session_stopped(jsonl_path, session_id):
+        return TaskCompletionInfo(
+            status=TaskStatus.COMPLETED,
+            confidence=0.99,  # Authoritative signal from Claude Code itself
+            detection_method="stop_hook",
+            details={
+                "session_id": session_id,
+                "signal": "stop_hook_summary detected with no subsequent messages",
+            },
+        )
+
+    return None
+
+
+# =============================================================================
 # Combined Detection
 # =============================================================================
 
@@ -530,13 +601,28 @@ async def detect_task_completion(
     check_git: bool = True,
     check_beads: bool = True,
     check_screen: bool = True,
+    check_stop_hook: bool = True,
     idle_threshold: float = 30.0,
+    jsonl_path: Optional[Path] = None,
 ) -> TaskCompletionInfo:
     """
     Run all detection methods and return the best result.
 
     Combines multiple detection strategies and returns the result
     with the highest confidence.
+
+    Detection priority (highest to lowest):
+    1. Stop hook (0.99) - PRIMARY METHOD, authoritative signal from Claude Code
+    2. Beads issues (0.9) - Issue closed (useful when linked)
+    3. Convention markers (0.75-0.95) - FALLBACK, explicit TASK_COMPLETE markers
+    4. Natural language (0.75) - FALLBACK, completion phrases in conversation
+    5. Git commits (0.7) - Suggests progress but not certainty
+    6. Screen patterns (0.6) - Last resort pattern matching
+    7. Idle (0.5) - DEPRECATED, unreliable file mtime check
+
+    NOTE: Stop hook detection is the recommended primary method. If Stop hook
+    returns a result, it short-circuits and returns immediately. Other methods
+    are fallbacks for sessions without Stop hook injection or edge cases.
 
     Args:
         task_ctx: Context about the delegated task
@@ -546,14 +632,26 @@ async def detect_task_completion(
         check_git: Whether to check for git commits
         check_beads: Whether to check beads issues
         check_screen: Whether to parse screen content
+        check_stop_hook: Whether to check Stop hook markers (recommended)
         idle_threshold: Seconds to consider idle as complete
+        jsonl_path: Path to JSONL file for Stop hook detection
 
     Returns:
         TaskCompletionInfo with the best detected status
     """
     results: list[TaskCompletionInfo] = []
 
-    # 1. Convention markers in conversation (highest priority)
+    # 0. Stop hook detection (highest priority, authoritative signal)
+    # This is the primary detection method when workers have Stop hook injection
+    if check_stop_hook and jsonl_path:
+        stop_hook_result = detect_stop_hook_completion(
+            jsonl_path, task_ctx.session_id
+        )
+        if stop_hook_result:
+            # Stop hook is authoritative - return immediately
+            return stop_hook_result
+
+    # 1. Convention markers in conversation (fallback method)
     if session_state:
         conv_result = detect_from_conversation(
             session_state, task_ctx.baseline_message_uuid
@@ -561,7 +659,7 @@ async def detect_task_completion(
         if conv_result:
             results.append(conv_result)
 
-        # 2. Idle detection
+        # 2. Idle detection (DEPRECATED - low confidence fallback)
         idle_result = detect_idle_completion(session_state, idle_threshold)
         if idle_result:
             results.append(idle_result)
@@ -655,6 +753,7 @@ async def wait_for_task_completion(
             iterm_session=iterm_session,
             read_screen_func=read_screen_func,
             idle_threshold=idle_threshold,
+            jsonl_path=jsonl_path,
         )
 
         # Return if completed or failed with good confidence

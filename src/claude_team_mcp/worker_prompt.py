@@ -57,8 +57,9 @@ or let them know if something's blocking you. No pressure, but also: no half-mea
    - `bd comment <id> "what you're doing"` as you go
    - **Never close beads** — that's the coordinator's job after review
 
-5. **When you're done,** leave a clear summary comment on the bead and let the
-   coordinator know. They'll review and close it.
+5. **When you're done,** leave a clear summary comment on the bead. Your completion
+   is detected automatically — no special markers needed. Just finish your work
+   and the system handles the rest.
 {commit_section}
 === TOOLS YOU'VE GOT ===
 - `bd_help` — Quick reference for beads commands
@@ -100,6 +101,14 @@ Your team is ready. Here's what your workers know and what they expect from you:
 - `check_blockers` — Scan worker conversations for `<!BLOCKED:...!>` markers
 - `get_conversation_history(session_id)` — Read what a worker has been doing
 - `get_session_status(session_id)` — Quick status check
+
+**Completion detection:**
+Worker completion is detected automatically via Stop hooks — no markers needed.
+- `get_task_status(session_id)` — Check if a worker has finished (returns status + confidence)
+- `wait_for_completion(session_id)` — Block until worker finishes (with timeout)
+
+Detection uses multiple signals: Stop hook events (highest confidence), git commits,
+beads issue status, and idle time. Workers don't need to output anything special.
 
 **The deal:** Workers either finish completely or flag. No middle ground.
 You review everything before it's considered done.
