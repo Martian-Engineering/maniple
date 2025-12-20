@@ -621,7 +621,7 @@ async def spawn_team(
             managed_sessions[pane_name] = managed
 
         # Send marker messages to all sessions for JSONL correlation
-        from .session_state import generate_marker_message
+        from .session_state import generate_marker_message, await_marker_in_jsonl
 
         for pane_name, managed in managed_sessions.items():
             marker_message = generate_marker_message(
@@ -630,8 +630,24 @@ async def spawn_team(
             )
             await send_prompt(pane_sessions[pane_name], marker_message, submit=True)
 
-        # Wait for markers to be logged
-        await asyncio.sleep(2)
+        # Poll for markers to appear in JSONL (replaces blind 2s wait)
+        # Marker is logged as user message the instant send_prompt returns
+        for pane_name, managed in managed_sessions.items():
+            claude_session_id = await await_marker_in_jsonl(
+                managed.project_path,
+                managed.session_id,
+                timeout=30.0,
+                poll_interval=0.1,
+            )
+            if claude_session_id:
+                managed.claude_session_id = claude_session_id
+            else:
+                # Fallback to timestamp-based discovery
+                logger.warning(
+                    f"Marker polling timed out for {managed.session_id}, "
+                    "falling back to timestamp-based discovery"
+                )
+                managed.discover_claude_session()
 
         # Determine mode and send appropriate prompts to workers
         is_standard_mode = custom_prompt is None
@@ -656,19 +672,9 @@ async def spawn_team(
 
             await send_prompt(pane_sessions[pane_name], worker_prompt, submit=True)
 
-        # Wait for prompts to be processed
-        await asyncio.sleep(1)
-
-        # Discover Claude sessions by marker and update status
+        # Mark sessions ready (discovery already happened during marker polling)
         result_sessions = {}
         for pane_name, managed in managed_sessions.items():
-            if not managed.discover_claude_session_by_marker():
-                # Fallback to old discovery if marker not found
-                logger.warning(
-                    f"Marker-based discovery failed for {managed.session_id}, "
-                    "falling back to timestamp-based discovery"
-                )
-                managed.discover_claude_session()
             registry.update_status(managed.session_id, SessionStatus.READY)
             result_sessions[pane_name] = managed.to_dict()
 
@@ -1623,23 +1629,18 @@ async def import_session(
     Import an existing iTerm2 Claude Code session into the MCP registry.
 
     Takes an iTerm2 session ID (from discover_sessions) and registers it
-    for management. This allows you to send messages and get responses
-    from sessions that were started outside this MCP server.
+    for management. Only works for sessions originally spawned by claude-team
+    (which have markers in their JSONL for reliable correlation).
 
     Args:
         iterm_session_id: The iTerm2 session ID (from discover_sessions)
-        project_path: Optional explicit project path. If not provided,
-            will attempt to detect from screen content.
+        project_path: Ignored (recovered from marker). Kept for API compatibility.
         session_name: Optional friendly name for the session
 
     Returns:
         Dict with imported session info, or error if session not found
     """
-    from .session_state import (
-        CLAUDE_PROJECTS_DIR,
-        find_active_session,
-        find_jsonl_by_iterm_id,
-    )
+    from .session_state import find_jsonl_by_iterm_id
 
     app_ctx = ctx.request_context.lifespan_context
     registry = app_ctx.registry
@@ -1674,86 +1675,44 @@ async def import_session(
             hint="Run discover_sessions to scan for active Claude sessions in iTerm2",
         )
 
-    # If project_path not provided, try marker-based discovery first (most reliable)
-    internal_session_id = None
-    if not project_path:
-        match = find_jsonl_by_iterm_id(iterm_session_id)
-        if match:
-            project_path = match.project_path
-            internal_session_id = match.internal_session_id
-            logger.info(
-                f"Recovered session info via iTerm marker: "
-                f"project={project_path}, internal_id={internal_session_id}"
-            )
-
-    # Fallback: try to detect from screen content
-    if not project_path:
-        try:
-            screen_text = await read_screen_text(target_session)
-            lines = screen_text.split("\n")
-
-            # Try to find project from git branch indicator
-            for line in lines:
-                if "git:(" in line:
-                    parts = line.split("git:(")[0].strip().split()
-                    if parts:
-                        project_name = parts[-1]
-                        # Search Claude projects directory
-                        for proj_dir in CLAUDE_PROJECTS_DIR.iterdir():
-                            if proj_dir.is_dir() and project_name in proj_dir.name:
-                                project_path = proj_dir.name.replace("-", "/")
-                                if project_path.startswith("/"):
-                                    break
-                    break
-        except Exception as e:
-            logger.warning(f"Could not detect project path: {e}")
-
-    if not project_path:
+    # Use marker-based discovery to recover original session identity
+    # This only works for sessions we originally spawned (which have our markers)
+    match = find_jsonl_by_iterm_id(iterm_session_id)
+    if not match:
         return error_response(
-            "Could not detect project path from terminal",
-            hint=HINTS["project_path_detection_failed"],
+            "Session not found or not spawned by claude-team",
+            hint="import_session only works for sessions originally spawned by claude-team. "
+            "External sessions cannot be reliably correlated to their JSONL files.",
             iterm_session_id=iterm_session_id,
         )
 
-    # Validate project path exists
-    if not os.path.isdir(project_path):
+    logger.info(
+        f"Recovered session via iTerm marker: "
+        f"project={match.project_path}, internal_id={match.internal_session_id}"
+    )
+
+    # Validate project path still exists
+    if not os.path.isdir(match.project_path):
         return error_response(
-            f"Project path does not exist: {project_path}",
+            f"Project path no longer exists: {match.project_path}",
             hint=HINTS["project_path_missing"],
         )
 
-    # Register the session
+    # Register with recovered identity (no new marker needed)
     managed = registry.add(
         iterm_session=target_session,
-        project_path=project_path,
+        project_path=match.project_path,
         name=session_name,
+        session_id=match.internal_session_id,  # Recover original ID
     )
+    managed.claude_session_id = match.jsonl_path.stem
 
-    # Send marker message for JSONL correlation
-    from .session_state import generate_marker_message
-
-    marker_message = generate_marker_message(
-        managed.session_id,
-        iterm_session_id=target_session.session_id,
-    )
-    await send_prompt(target_session, marker_message, submit=True)
-
-    # Wait for marker to be logged, then discover by marker
-    await asyncio.sleep(2)
-    if not managed.discover_claude_session_by_marker():
-        # Fallback to old discovery if marker not found
-        logger.warning(
-            f"Marker-based discovery failed for {managed.session_id}, "
-            "falling back to timestamp-based discovery"
-        )
-        managed.discover_claude_session()
-
-    # Update status to ready (it's already running)
+    # Mark ready immediately (no discovery needed, we already have it)
     registry.update_status(managed.session_id, SessionStatus.READY)
 
     return {
         "success": True,
-        "message": f"Session imported as '{managed.session_id}'",
+        "message": f"Session recovered as '{managed.session_id}'",
         "session": managed.to_dict(),
     }
 
@@ -1802,10 +1761,12 @@ async def close_session(
     try:
         # Send Ctrl+C to interrupt any running operation
         await send_key(session.iterm_session, "ctrl-c")
-        await asyncio.sleep(0.5)
+        # TODO: Programmatically time these actions
+        await asyncio.sleep(1.0)
 
         # Send /exit to quit Claude
         await send_prompt(session.iterm_session, "/exit", submit=True)
+        # TODO: Programmatically time these actions
         await asyncio.sleep(1.0)
 
         # Clean up worktree if exists

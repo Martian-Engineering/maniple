@@ -417,6 +417,41 @@ def find_jsonl_by_iterm_id(
     return None
 
 
+async def await_marker_in_jsonl(
+    project_path: str,
+    session_id: str,
+    timeout: float = 30.0,
+    poll_interval: float = 0.1,
+) -> Optional[str]:
+    """
+    Poll for a session marker to appear in the JSONL.
+
+    The marker is logged as a user message the instant send_prompt() returns.
+    This function polls immediately (no initial delay) and returns as soon as
+    the marker is found.
+
+    Args:
+        project_path: Absolute path to the project
+        session_id: The session ID to search for in markers
+        timeout: Maximum seconds to wait (default 30)
+        poll_interval: Seconds between polls (default 0.1)
+
+    Returns:
+        The Claude session ID (JSONL filename stem) if found, None on timeout
+    """
+    import asyncio
+
+    start = time.time()
+
+    while time.time() - start < timeout:
+        result = find_jsonl_by_marker(project_path, session_id)
+        if result:
+            return result
+        await asyncio.sleep(poll_interval)
+
+    return None
+
+
 # =============================================================================
 # Session Discovery
 # =============================================================================
@@ -849,9 +884,6 @@ async def wait_for_response(
     start = time.time()
     last_mtime = jsonl_path.stat().st_mtime if jsonl_path.exists() else 0.0
     last_change = start
-
-    # Brief initial delay for Claude to start processing
-    await asyncio.sleep(0.5)
 
     while time.time() - start < timeout:
         try:
