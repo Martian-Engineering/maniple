@@ -706,18 +706,15 @@ async def spawn_team(
 async def list_sessions(
     ctx: Context[ServerSession, AppContext],
     status_filter: str | None = None,
-    blocked_only: bool = False,
 ) -> list[dict]:
     """
     List all managed Claude Code sessions.
 
     Returns information about each session including its ID, name,
-    project path, and current status. Results are sorted with blocked
-    sessions first for coordinator visibility.
+    project path, and current status. Results are sorted by creation time.
 
     Args:
         status_filter: Optional filter by status - "ready", "busy", "spawning", "closed"
-        blocked_only: If True, only return sessions that are currently blocked
 
     Returns:
         List of session info dicts
@@ -739,12 +736,8 @@ async def list_sessions(
     else:
         sessions = registry.list_all()
 
-    # Filter to only blocked sessions if requested
-    if blocked_only:
-        sessions = [s for s in sessions if s.is_blocked()]
-
-    # Sort with blocked sessions first, then by created_at
-    sessions = sorted(sessions, key=lambda s: (not s.is_blocked(), s.created_at))
+    # Sort by created_at
+    sessions = sorted(sessions, key=lambda s: s.created_at)
 
     # Convert to dicts and add message count if JSONL is available
     results = []
