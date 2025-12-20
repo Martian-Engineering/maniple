@@ -1633,7 +1633,11 @@ async def import_session(
     Returns:
         Dict with imported session info, or error if session not found
     """
-    from .session_state import CLAUDE_PROJECTS_DIR, find_active_session
+    from .session_state import (
+        CLAUDE_PROJECTS_DIR,
+        find_active_session,
+        find_jsonl_by_iterm_id,
+    )
 
     app_ctx = ctx.request_context.lifespan_context
     registry = app_ctx.registry
@@ -1668,7 +1672,19 @@ async def import_session(
             hint="Run discover_sessions to scan for active Claude sessions in iTerm2",
         )
 
-    # If project_path not provided, try to detect it
+    # If project_path not provided, try marker-based discovery first (most reliable)
+    internal_session_id = None
+    if not project_path:
+        match = find_jsonl_by_iterm_id(iterm_session_id)
+        if match:
+            project_path = match.project_path
+            internal_session_id = match.internal_session_id
+            logger.info(
+                f"Recovered session info via iTerm marker: "
+                f"project={project_path}, internal_id={internal_session_id}"
+            )
+
+    # Fallback: try to detect from screen content
     if not project_path:
         try:
             screen_text = await read_screen_text(target_session)
