@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import colorsys
 
 # Import the pure functions that don't need iterm2
-from src.claude_team_mcp.colors import (
+from claude_team_mcp.colors import (
     GOLDEN_RATIO_CONJUGATE,
     DEFAULT_SATURATION,
     DEFAULT_LIGHTNESS,
@@ -98,7 +98,7 @@ class TestGenerateTabColor:
         mock_iterm2.Color.return_value = mock_color
 
         with patch.dict('sys.modules', {'iterm2': mock_iterm2}):
-            from src.claude_team_mcp.colors import generate_tab_color
+            from claude_team_mcp.colors import generate_tab_color
             result = generate_tab_color(0)
 
             # Verify Color was called with RGB values
@@ -122,7 +122,7 @@ class TestGenerateTabColor:
         mock_iterm2.Color.side_effect = capture_color
 
         with patch.dict('sys.modules', {'iterm2': mock_iterm2}):
-            from src.claude_team_mcp.colors import generate_tab_color
+            from claude_team_mcp.colors import generate_tab_color
             for i in range(5):
                 generate_tab_color(i)
 

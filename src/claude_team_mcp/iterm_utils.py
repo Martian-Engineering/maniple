@@ -253,19 +253,6 @@ async def create_window(
     return window
 
 
-async def create_tab(window: "iterm2.Window") -> "iterm2.Tab":
-    """
-    Create a new tab in an existing window.
-
-    Args:
-        window: iTerm2 window object
-
-    Returns:
-        New tab object
-    """
-    return await window.async_create_tab()
-
-
 async def split_pane(
     session: "iterm2.Session",
     vertical: bool = True,
@@ -482,7 +469,6 @@ def build_stop_hook_settings(marker_id: str) -> str:
 async def start_claude_in_session(
     session: "iterm2.Session",
     project_path: str,
-    resume_session: Optional[str] = None,
     dangerously_skip_permissions: bool = False,
     env: Optional[dict[str, str]] = None,
     shell_ready_timeout: float = 10.0,
@@ -499,7 +485,6 @@ async def start_claude_in_session(
     Args:
         session: iTerm2 session to use
         project_path: Directory to run Claude in
-        resume_session: Optional session ID to resume
         dangerously_skip_permissions: If True, start with --dangerously-skip-permissions
         env: Optional dict of environment variables to set before running claude
         shell_ready_timeout: Max seconds to wait for shell prompt before each command
@@ -523,8 +508,6 @@ async def start_claude_in_session(
     cmd = "claude"
     if dangerously_skip_permissions:
         cmd += " --dangerously-skip-permissions"
-    if resume_session:
-        cmd += f" --resume {resume_session}"
     if stop_hook_marker_id:
         settings_json = build_stop_hook_settings(stop_hook_marker_id)
         cmd += f" --settings '{settings_json}'"
@@ -562,7 +545,7 @@ async def create_multi_pane_layout(
     connection: "iterm2.Connection",
     layout: str,
     profile: Optional[str] = None,
-    pane_customizations: Optional[dict[str, "iterm2.LocalWriteOnlyProfile"]] = None,
+    profile_customizations: Optional[dict[str, "iterm2.LocalWriteOnlyProfile"]] = None,
 ) -> dict[str, "iterm2.Session"]:
     """
     Create a new iTerm2 window with a multi-pane layout.
@@ -579,7 +562,7 @@ async def create_multi_pane_layout(
             - "quad": 4 panes in 2x2 grid (top_left, top_right, bottom_left, bottom_right)
             - "triple_vertical": 3 panes side by side (left, middle, right)
         profile: Optional profile name to use for all panes
-        pane_customizations: Optional dict mapping pane names to LocalWriteOnlyProfile
+        profile_customizations: Optional dict mapping pane names to LocalWriteOnlyProfile
             objects with per-pane customizations (tab color, badge, etc.)
 
     Returns:
@@ -595,8 +578,8 @@ async def create_multi_pane_layout(
 
     # Helper to get customizations for a specific pane
     def get_customization(pane_name: str):
-        if pane_customizations:
-            return pane_customizations.get(pane_name)
+        if profile_customizations:
+            return profile_customizations.get(pane_name)
         return None
 
     # Get the first pane name for the initial window
@@ -696,7 +679,7 @@ async def create_multi_claude_layout(
     skip_permissions: bool = False,
     project_envs: Optional[dict[str, dict[str, str]]] = None,
     profile: Optional[str] = None,
-    pane_customizations: Optional[dict[str, "iterm2.LocalWriteOnlyProfile"]] = None,
+    profile_customizations: Optional[dict[str, "iterm2.LocalWriteOnlyProfile"]] = None,
     pane_marker_ids: Optional[dict[str, str]] = None,
 ) -> dict[str, "iterm2.Session"]:
     """
@@ -715,7 +698,7 @@ async def create_multi_claude_layout(
         project_envs: Optional dict mapping pane names to env var dicts. Each
             pane can have its own environment variables set before starting Claude.
         profile: Optional profile name to use for all panes
-        pane_customizations: Optional dict mapping pane names to LocalWriteOnlyProfile
+        profile_customizations: Optional dict mapping pane names to LocalWriteOnlyProfile
             objects with per-pane customizations (tab color, badge, etc.)
         pane_marker_ids: Optional dict mapping pane names to marker IDs for Stop hook
             injection. Each worker will have a Stop hook that logs its marker ID
@@ -745,7 +728,7 @@ async def create_multi_claude_layout(
         connection,
         layout,
         profile=profile,
-        pane_customizations=pane_customizations,
+        profile_customizations=profile_customizations,
     )
 
     # Start Claude in all panes in parallel.
@@ -882,44 +865,3 @@ async def get_window_for_session(
     return None
 
 
-async def find_claude_session(
-    app: "iterm2.App",
-    project_path: str,
-    match_fn: Optional[Callable[[str], bool]] = None,
-) -> Optional["iterm2.Session"]:
-    """
-    Find an iTerm2 session that appears to be running Claude Code.
-
-    Searches all windows/tabs for sessions whose screen contains
-    indicators of Claude Code (e.g., project path, "Opus", prompt char).
-
-    Args:
-        app: iTerm2 app object
-        project_path: Expected project path
-        match_fn: Optional custom matcher function(screen_text) -> bool
-
-    Returns:
-        iTerm2 session if found, None otherwise
-    """
-    # Default matcher looks for Claude indicators
-    if match_fn is None:
-        project_name = Path(project_path).name
-
-        def match_fn(text: str) -> bool:
-            return (
-                project_name in text
-                and ("Opus" in text or "Sonnet" in text or "Haiku" in text)
-                and ">" in text
-            )
-
-    for window in app.terminal_windows:
-        for tab in window.tabs:
-            for session in tab.sessions:
-                try:
-                    text = await read_screen_text(session)
-                    if match_fn(text):
-                        return session
-                except Exception:
-                    continue
-
-    return None

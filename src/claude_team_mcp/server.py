@@ -25,15 +25,9 @@ from .colors import generate_tab_color
 from .formatting import format_badge_text, format_session_title
 from .iterm_utils import (
     LAYOUT_PANE_NAMES,
-    MAX_PANES_PER_TAB,
-    count_panes_in_tab,
     create_multi_claude_layout,
-    create_window,
-    find_available_window,
     read_screen_text,
     send_prompt,
-    split_pane,
-    start_claude_in_session,
 )
 from .names import pick_names_for_count
 from .profile import PROFILE_NAME, get_or_create_profile
@@ -101,11 +95,6 @@ HINTS = {
     "registry_empty": (
         "No sessions are being managed. Use spawn_team to create a new session, "
         "or discover_sessions to find existing Claude sessions in iTerm2"
-    ),
-    "split_session_not_found": (
-        "The split_from_session ID was not found. Run list_sessions to see "
-        "available sessions to split from, or omit split_from_session to "
-        "split from the currently active iTerm window"
     ),
     "no_jsonl_file": (
         "Claude may not have started yet or the session file doesn't exist. "
@@ -503,7 +492,7 @@ async def spawn_team(
 
         # Create profile customizations for each pane
         # Each pane gets a unique color from the sequence and a badge showing iconic name
-        pane_customizations: dict[str, iterm2.LocalWriteOnlyProfile] = {}
+        profile_customizations: dict[str, iterm2.LocalWriteOnlyProfile] = {}
         layout_pane_names = LAYOUT_PANE_NAMES[layout]
 
         # Pick iconic names for sessions
@@ -581,7 +570,7 @@ async def spawn_team(
             # Set badge text to show iconic name
             customization.set_badge_text(iconic_name)
 
-            pane_customizations[pane_name] = customization
+            profile_customizations[pane_name] = customization
 
         # Create the multi-pane layout and start Claude in each pane
         # Pass pre-generated session IDs as marker IDs for Stop hook injection
@@ -592,7 +581,7 @@ async def spawn_team(
             skip_permissions=skip_permissions,
             project_envs=project_envs if project_envs else None,
             profile=PROFILE_NAME,
-            pane_customizations=pane_customizations,
+            profile_customizations=profile_customizations,
             pane_marker_ids=pane_session_ids,
         )
 
@@ -611,9 +600,10 @@ async def spawn_team(
                 name=iconic_name,  # e.g., "Groucho", "John"
                 session_id=session_id,  # Use pre-generated ID from Stop hook
             )
-            # Store worktree path if one was created for this session
+            # Store worktree path and main repo path if worktree was created
             if pane_name in worktree_paths:
                 managed.worktree_path = worktree_paths[pane_name]
+                managed.main_repo_path = Path(original_projects[pane_name])
             managed_sessions[pane_name] = managed
 
         # Send marker messages to all sessions for JSONL correlation
@@ -1599,7 +1589,6 @@ async def discover_sessions(
 async def import_session(
     ctx: Context[ServerSession, AppContext],
     iterm_session_id: str,
-    project_path: str | None = None,
     session_name: str | None = None,
 ) -> dict:
     """
@@ -1611,7 +1600,6 @@ async def import_session(
 
     Args:
         iterm_session_id: The iTerm2 session ID (from discover_sessions)
-        project_path: Ignored (recovered from marker). Kept for API compatibility.
         session_name: Optional friendly name for the session
 
     Returns:
@@ -1748,10 +1736,10 @@ async def close_session(
 
         # Clean up worktree if exists
         worktree_cleaned = False
-        if session.worktree_path:
+        if session.worktree_path and session.main_repo_path:
             try:
                 remove_worktree(
-                    repo_path=Path(session.project_path),
+                    repo_path=session.main_repo_path,
                     worktree_name=session.worktree_path.name,
                 )
                 worktree_cleaned = True

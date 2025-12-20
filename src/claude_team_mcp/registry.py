@@ -79,6 +79,7 @@ class ManagedSession:
     # Coordinator annotations and worktree tracking
     coordinator_annotation: Optional[str] = None  # Notes from coordinator about assignment
     worktree_path: Optional[Path] = None  # Path to worker's git worktree if any
+    main_repo_path: Optional[Path] = None  # Path to main git repo (for worktree cleanup)
 
     # Terminal-agnostic identifier (auto-populated from iterm_session if not set)
     terminal_id: Optional[TerminalId] = None
@@ -103,6 +104,7 @@ class ManagedSession:
             "last_activity": self.last_activity.isoformat(),
             "coordinator_annotation": self.coordinator_annotation,
             "worktree_path": str(self.worktree_path) if self.worktree_path else None,
+            "main_repo_path": str(self.main_repo_path) if self.main_repo_path else None,
         }
 
     def update_activity(self) -> None:
