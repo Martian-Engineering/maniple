@@ -40,7 +40,12 @@ from .idle_detection import (
     SessionInfo,
 )
 from .worker_prompt import generate_worker_prompt, get_coordinator_guidance
-from .worktree import WorktreeError, create_worktree, remove_worktree
+from .worktree import (
+    WorktreeError,
+    create_worktree,
+    list_claude_team_worktrees,
+    remove_worktree,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -531,11 +536,15 @@ async def spawn_team(
                 unique_seed = f"{worker_name}-{time.time()}-{pane_name}"
                 short_hash = hashlib.sha256(unique_seed.encode()).hexdigest()[:6]
                 worker_branch = f"{worker_name}-{short_hash}"
-                worktree_dir_name = f"{worker_name}-{short_hash}"
+                # Worktree name includes branch for identification
+                # Timestamp is added by create_worktree for uniqueness
+                worktree_name = f"{worker_name}-{short_hash}"
                 try:
+                    # Worktrees are created at ~/.claude-team/worktrees/{repo-hash}/{name}-{timestamp}
+                    # This keeps them outside the target repo to avoid "embedded repo" warnings
                     worktree_path = create_worktree(
                         repo_path=Path(project_path),
-                        worktree_name=worktree_dir_name,
+                        worktree_name=worktree_name,
                         branch=worker_branch,
                     )
                     worktree_paths[pane_name] = worktree_path
@@ -1734,13 +1743,13 @@ async def close_session(
         # TODO: Programmatically time these actions
         await asyncio.sleep(1.0)
 
-        # Clean up worktree if exists
+        # Clean up worktree if exists (keeps branch alive for cherry-picking)
         worktree_cleaned = False
         if session.worktree_path and session.main_repo_path:
             try:
                 remove_worktree(
                     repo_path=session.main_repo_path,
-                    worktree_name=session.worktree_path.name,
+                    worktree_path=session.worktree_path,
                 )
                 worktree_cleaned = True
             except WorktreeError as e:
@@ -1770,6 +1779,98 @@ async def close_session(
             "warning": f"Session removed but cleanup may be incomplete: {e}",
             "worktree_cleaned": False,
         }
+
+
+# =============================================================================
+# Worktree Management Tools
+# =============================================================================
+
+
+@mcp.tool()
+async def list_worktrees(
+    ctx: Context[ServerSession, AppContext],
+    repo_path: str,
+    remove_orphans: bool = False,
+) -> dict:
+    """
+    List claude-team worktrees for a repository.
+
+    Shows all worktrees created by claude-team for the specified repository,
+    including which are orphaned (directory exists but not registered with git).
+
+    Worktrees are stored at ~/.claude-team/worktrees/{repo-hash}/.
+
+    Args:
+        repo_path: Path to the repository to list worktrees for
+        remove_orphans: If True, remove worktrees that are not registered with git
+
+    Returns:
+        Dict with:
+            - repo_path: The repository path
+            - repo_hash: Hash used for worktree directory
+            - worktrees: List of worktree info dicts containing:
+                - path: Full path to worktree
+                - name: Directory name
+                - branch: Git branch (if registered)
+                - commit: Current commit (if registered)
+                - registered: True if git knows about this worktree
+                - removed: True if orphan was removed (when remove_orphans=True)
+            - total: Total number of worktrees
+            - orphan_count: Number of orphaned worktrees
+            - removed_count: Number of orphans removed (when remove_orphans=True)
+    """
+    from .worktree import get_repo_hash, get_worktree_base_for_repo
+
+    resolved_path = Path(repo_path).resolve()
+    if not resolved_path.exists():
+        return error_response(
+            f"Repository path does not exist: {repo_path}",
+            code="invalid_repo_path",
+        )
+
+    repo_hash = get_repo_hash(resolved_path)
+    base_dir = get_worktree_base_for_repo(resolved_path)
+
+    worktrees = list_claude_team_worktrees(resolved_path)
+
+    result_worktrees = []
+    orphan_count = 0
+    removed_count = 0
+
+    for wt in worktrees:
+        wt_info = {
+            "path": str(wt["path"]),
+            "name": wt["name"],
+            "branch": wt["branch"],
+            "commit": wt["commit"],
+            "registered": wt["registered"],
+            "removed": False,
+        }
+
+        if not wt["registered"]:
+            orphan_count += 1
+            if remove_orphans:
+                try:
+                    # Remove the orphaned directory
+                    import shutil
+                    shutil.rmtree(wt["path"])
+                    wt_info["removed"] = True
+                    removed_count += 1
+                    logger.info(f"Removed orphaned worktree: {wt['path']}")
+                except Exception as e:
+                    logger.warning(f"Failed to remove orphaned worktree {wt['path']}: {e}")
+
+        result_worktrees.append(wt_info)
+
+    return {
+        "repo_path": str(resolved_path),
+        "repo_hash": repo_hash,
+        "worktree_base": str(base_dir),
+        "worktrees": result_worktrees,
+        "total": len(worktrees),
+        "orphan_count": orphan_count,
+        "removed_count": removed_count,
+    }
 
 
 # =============================================================================

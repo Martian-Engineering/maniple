@@ -4,11 +4,23 @@ Git worktree utilities for worker session isolation.
 Provides functions to create, remove, and list git worktrees, enabling
 each worker session to operate in its own isolated working directory
 while sharing the same repository history.
+
+Worktrees are created OUTSIDE the target repository to avoid polluting it:
+    ~/.claude-team/worktrees/{repo-path-hash}/{worker-name}-{timestamp}/
+
+This prevents "embedded repository" warnings and doesn't require modifying
+the target repo's .gitignore.
 """
 
+import hashlib
 import subprocess
+import time
 from pathlib import Path
 from typing import Optional
+
+
+# Base directory for all worktrees (outside any repo)
+WORKTREE_BASE_DIR = Path.home() / ".claude-team" / "worktrees"
 
 
 class WorktreeError(Exception):
@@ -17,24 +29,56 @@ class WorktreeError(Exception):
     pass
 
 
+def get_repo_hash(repo_path: Path) -> str:
+    """
+    Generate a short hash from a repository path.
+
+    Used to create unique subdirectories for each repo's worktrees.
+
+    Args:
+        repo_path: Absolute path to the repository
+
+    Returns:
+        8-character hex hash of the repo path
+    """
+    return hashlib.sha256(str(repo_path).encode()).hexdigest()[:8]
+
+
+def get_worktree_base_for_repo(repo_path: Path) -> Path:
+    """
+    Get the base directory for a repo's worktrees.
+
+    Args:
+        repo_path: Path to the main repository
+
+    Returns:
+        Path to ~/.claude-team/worktrees/{repo-hash}/
+    """
+    repo_path = Path(repo_path).resolve()
+    repo_hash = get_repo_hash(repo_path)
+    return WORKTREE_BASE_DIR / repo_hash
+
+
 def create_worktree(
     repo_path: Path,
     worktree_name: str,
     branch: Optional[str] = None,
-    base_dir: str = ".worktrees",
+    timestamp: Optional[int] = None,
 ) -> Path:
     """
     Create a git worktree for a worker.
 
-    Creates a new worktree in {repo_path}/{base_dir}/{worktree_name}.
+    Creates a new worktree at:
+        ~/.claude-team/worktrees/{repo-hash}/{worktree_name}-{timestamp}/
+
     If a branch is specified and doesn't exist, it will be created from HEAD.
     If no branch is specified, creates a detached HEAD worktree.
 
     Args:
         repo_path: Path to the main repository
-        worktree_name: Name for the worktree (used as directory name)
+        worktree_name: Name for the worktree (worker name, e.g., "John-abc123")
         branch: Branch to checkout (creates new branch from HEAD if doesn't exist)
-        base_dir: Directory under repo_path where worktrees live
+        timestamp: Unix timestamp for directory name (defaults to current time)
 
     Returns:
         Path to the created worktree
@@ -43,19 +87,24 @@ def create_worktree(
         WorktreeError: If the git worktree command fails
 
     Example:
-        # Create a worktree for worker-1 on a new branch
         path = create_worktree(
             repo_path=Path("/path/to/repo"),
-            worktree_name="worker-1",
-            branch="worker-1-feature"
+            worktree_name="John-abc123",
+            branch="John-abc123"
         )
-        # Returns: Path("/path/to/repo/.worktrees/worker-1")
+        # Returns: Path("~/.claude-team/worktrees/a1b2c3d4/John-abc123-1703001234")
     """
     repo_path = Path(repo_path).resolve()
-    worktree_path = repo_path / base_dir / worktree_name
+
+    # Generate worktree path outside the repo
+    if timestamp is None:
+        timestamp = int(time.time())
+    worktree_dir_name = f"{worktree_name}-{timestamp}"
+    base_dir = get_worktree_base_for_repo(repo_path)
+    worktree_path = base_dir / worktree_dir_name
 
     # Ensure base directory exists
-    (repo_path / base_dir).mkdir(parents=True, exist_ok=True)
+    base_dir.mkdir(parents=True, exist_ok=True)
 
     # Check if worktree already exists
     if worktree_path.exists():
@@ -92,17 +141,18 @@ def create_worktree(
 
 def remove_worktree(
     repo_path: Path,
-    worktree_name: str,
-    base_dir: str = ".worktrees",
+    worktree_path: Path,
     force: bool = True,
 ) -> bool:
     """
-    Remove a worktree and clean up.
+    Remove a worktree directory (does NOT delete the branch).
+
+    The branch is intentionally kept alive so that commits can be
+    cherry-picked before manual cleanup.
 
     Args:
         repo_path: Path to the main repository
-        worktree_name: Name of the worktree to remove
-        base_dir: Directory under repo_path where worktrees live
+        worktree_path: Full path to the worktree to remove
         force: If True, force removal even with uncommitted changes
 
     Returns:
@@ -112,14 +162,13 @@ def remove_worktree(
         WorktreeError: If the git worktree remove command fails
 
     Example:
-        # Remove a worker's worktree
         success = remove_worktree(
             repo_path=Path("/path/to/repo"),
-            worktree_name="worker-1"
+            worktree_path=Path("~/.claude-team/worktrees/a1b2c3d4/John-abc123-1703001234")
         )
     """
     repo_path = Path(repo_path).resolve()
-    worktree_path = repo_path / base_dir / worktree_name
+    worktree_path = Path(worktree_path).resolve()
 
     cmd = ["git", "-C", str(repo_path), "worktree", "remove"]
 
@@ -146,9 +195,9 @@ def remove_worktree(
     return True
 
 
-def list_worktrees(repo_path: Path) -> list[dict]:
+def list_git_worktrees(repo_path: Path) -> list[dict]:
     """
-    List all worktrees in a repository.
+    List all worktrees registered with git for a repository.
 
     Parses the porcelain output of git worktree list to provide
     structured information about each worktree.
@@ -168,7 +217,7 @@ def list_worktrees(repo_path: Path) -> list[dict]:
         WorktreeError: If the git worktree list command fails
 
     Example:
-        worktrees = list_worktrees(Path("/path/to/repo"))
+        worktrees = list_git_worktrees(Path("/path/to/repo"))
         for wt in worktrees:
             print(f"{wt['path']}: {wt['branch'] or 'detached'}")
     """
@@ -221,31 +270,70 @@ def list_worktrees(repo_path: Path) -> list[dict]:
     return worktrees
 
 
-def get_worktree_path(
-    repo_path: Path,
-    worktree_name: str,
-    base_dir: str = ".worktrees",
-) -> Optional[Path]:
+def list_claude_team_worktrees(repo_path: Path) -> list[dict]:
     """
-    Get the path to a worktree if it exists.
+    List all claude-team worktrees for a repository.
 
-    Convenience function to check if a worktree exists and get its path.
+    Finds worktrees in ~/.claude-team/worktrees/{repo-hash}/ and
+    cross-references them with git's worktree list.
 
     Args:
-        repo_path: Path to the main repository
-        worktree_name: Name of the worktree
-        base_dir: Directory under repo_path where worktrees live
+        repo_path: Path to the repository
 
     Returns:
-        Path to the worktree if it exists, None otherwise
+        List of dicts, each containing:
+            - path: Path to the worktree directory
+            - name: Worktree directory name (e.g., "John-abc123-1703001234")
+            - branch: Branch name (if found in git worktree list)
+            - commit: Current HEAD commit hash (if found)
+            - registered: True if git knows about this worktree
+            - exists: True if the directory exists on disk
+
+    Example:
+        worktrees = list_claude_team_worktrees(Path("/path/to/repo"))
+        for wt in worktrees:
+            status = "active" if wt["registered"] else "orphaned"
+            print(f"{wt['name']}: {status}")
     """
     repo_path = Path(repo_path).resolve()
-    worktree_path = repo_path / base_dir / worktree_name
+    base_dir = get_worktree_base_for_repo(repo_path)
 
-    # Check if path exists and is in the worktree list
-    worktrees = list_worktrees(repo_path)
-    for wt in worktrees:
-        if wt["path"] == worktree_path:
-            return worktree_path
+    # Get git's view of worktrees
+    try:
+        git_worktrees = list_git_worktrees(repo_path)
+    except WorktreeError:
+        git_worktrees = []
 
-    return None
+    git_worktree_paths = {str(wt["path"]) for wt in git_worktrees}
+
+    worktrees = []
+
+    # Check if base directory exists
+    if not base_dir.exists():
+        return worktrees
+
+    # Scan the directory for worktree folders
+    for item in base_dir.iterdir():
+        if not item.is_dir():
+            continue
+
+        wt_path_str = str(item.resolve())
+        registered = wt_path_str in git_worktree_paths
+
+        # Find matching git worktree info if registered
+        git_info = None
+        for gwt in git_worktrees:
+            if str(gwt["path"]) == wt_path_str:
+                git_info = gwt
+                break
+
+        worktrees.append({
+            "path": item,
+            "name": item.name,
+            "branch": git_info["branch"] if git_info else None,
+            "commit": git_info["commit"] if git_info else None,
+            "registered": registered,
+            "exists": True,
+        })
+
+    return worktrees
