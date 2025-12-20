@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Iterator
+from typing import Optional
 
 
 # Claude projects directory
@@ -85,11 +85,16 @@ class SessionState:
 
     @property
     def is_processing(self) -> bool:
-        """Check if Claude appears to be processing (last msg has tool_use)."""
-        if not self.messages:
-            return False
-        last = self.messages[-1]
-        return bool(last.tool_uses)
+        """
+        Deprecated: Always returns False.
+
+        Stop hooks are the source of truth for completion detection.
+        Use is_session_stopped() from session_state.py for accurate idle detection.
+
+        Previously checked if last message had tool_uses, but this could disagree
+        with Stop hook state (returning True after the hook fired).
+        """
+        return False
 
     @property
     def message_count(self) -> int:
@@ -292,8 +297,6 @@ def find_jsonl_by_marker(
     Returns:
         The Claude session ID (JSONL filename stem) if found, None otherwise
     """
-    import time
-
     project_dir = get_project_dir(project_path)
     if not project_dir.exists():
         return None
@@ -401,8 +404,10 @@ def find_jsonl_by_iterm_id(
                 # Recover project path from directory slug
                 project_path = unslugify_path(project_dir.name)
                 if not project_path:
-                    # Fallback: can't recover path but have other info
-                    project_path = f"/{project_dir.name.replace('-', '/')}"
+                    # Can't reliably recover the project path - skip this match
+                    # Naive replacement (replace('-', '/')) is wrong because paths
+                    # can contain hyphens (e.g., /Users/josh/my-project)
+                    continue
 
                 return ItermSessionMatch(
                     iterm_session_id=iterm_session_id,
@@ -611,38 +616,6 @@ def parse_session(jsonl_path: Path) -> SessionState:
     )
 
 
-def watch_session(jsonl_path: Path, poll_interval: float = 0.5) -> Iterator[SessionState]:
-    """
-    Generator that yields SessionState whenever the file changes.
-
-    Blocking iterator - use in a separate thread or with asyncio.to_thread().
-
-    Args:
-        jsonl_path: Path to the session JSONL file
-        poll_interval: Seconds between checks
-
-    Yields:
-        SessionState objects when changes detected
-    """
-    last_mtime = 0.0
-    last_size = 0
-
-    while True:
-        try:
-            stat = jsonl_path.stat()
-            if stat.st_mtime > last_mtime or stat.st_size > last_size:
-                last_mtime = stat.st_mtime
-                last_size = stat.st_size
-                yield parse_session(jsonl_path)
-        except FileNotFoundError:
-            pass
-        time.sleep(poll_interval)
-
-
-# =============================================================================
-# Response Waiting
-# =============================================================================
-
 # =============================================================================
 # Stop Hook Detection
 # =============================================================================
@@ -794,14 +767,10 @@ def is_session_stopped(
     Returns:
         True if the session has stopped, False if still working or no data
     """
-    # Find the last stop hook for this session
-    stop_entry = get_last_stop_hook_for_session(jsonl_path, session_id)
-    if not stop_entry:
-        return False
+    # Parse file once, collecting stop hooks and message timestamps
+    last_stop_hook_ts: Optional[datetime] = None
+    last_message_ts: Optional[datetime] = None
 
-    stop_timestamp = stop_entry.timestamp
-
-    # Check if any user/assistant messages exist after the stop hook
     try:
         with open(jsonl_path, "r") as f:
             for line in f:
@@ -814,7 +783,27 @@ def is_session_stopped(
                 except json.JSONDecodeError:
                     continue
 
-                # Only check user and assistant messages with content
+                # Check for stop_hook_summary entries
+                if entry.get("type") == "system" and entry.get("subtype") == "stop_hook_summary":
+                    # Check if this stop hook matches our session
+                    hook_infos = entry.get("hookInfos", [])
+                    for h in hook_infos:
+                        cmd = h.get("command", "")
+                        marker_id = extract_stop_hook_marker(cmd)
+                        if marker_id == session_id:
+                            try:
+                                ts = datetime.fromisoformat(
+                                    entry.get("timestamp", "").replace("Z", "+00:00")
+                                )
+                                # Track the latest stop hook for this session
+                                if last_stop_hook_ts is None or ts > last_stop_hook_ts:
+                                    last_stop_hook_ts = ts
+                            except (ValueError, AttributeError):
+                                pass
+                            break
+                    continue
+
+                # Check for user/assistant messages with content
                 entry_type = entry.get("type", "")
                 if entry_type not in ("user", "assistant"):
                     continue
@@ -823,7 +812,6 @@ def is_session_stopped(
                 message = entry.get("message", {})
                 content = message.get("content", "")
                 if isinstance(content, list):
-                    # Check if any content block has text
                     has_text = any(
                         c.get("type") == "text" and c.get("text")
                         for c in content
@@ -834,47 +822,49 @@ def is_session_stopped(
                 elif not content:
                     continue
 
-                # Parse timestamp and compare
+                # Parse timestamp
                 try:
                     msg_ts = datetime.fromisoformat(
                         entry.get("timestamp", "").replace("Z", "+00:00")
                     )
+                    # Track the latest message timestamp
+                    if last_message_ts is None or msg_ts > last_message_ts:
+                        last_message_ts = msg_ts
                 except (ValueError, AttributeError):
                     continue
-
-                # If any message with content exists after the stop hook,
-                # the session is still working
-                if msg_ts > stop_timestamp:
-                    return False
 
     except FileNotFoundError:
         return False
 
-    # No messages after the stop hook - session is stopped
+    # No stop hook found for this session
+    if last_stop_hook_ts is None:
+        return False
+
+    # Check if any message exists after the stop hook
+    if last_message_ts is not None and last_message_ts > last_stop_hook_ts:
+        return False
+
+    # Stop hook fired and no messages after it - session is stopped
     return True
 
 
 async def wait_for_response(
     jsonl_path: Path,
+    session_id: str,
     timeout: float = 120,
     poll_interval: float = 0.5,
-    idle_threshold: float = 2.0,
-    baseline_message_uuid: Optional[str] = None,
 ) -> Optional[Message]:
     """
-    Wait for Claude to finish responding.
+    Wait for Claude to finish responding using Stop hook detection.
 
-    Monitors the JSONL file for a new assistant message. Returns when:
-    1. A new assistant message exists (different from baseline_message_uuid)
-    2. AND the file has been idle for idle_threshold seconds
+    Polls until the Stop hook fires (indicating Claude finished responding),
+    then returns the last assistant message.
 
     Args:
         jsonl_path: Path to the session JSONL file
+        session_id: The session ID (matches marker in Stop hook)
         timeout: Maximum seconds to wait
         poll_interval: Seconds between checks
-        idle_threshold: Seconds of no changes before considering complete
-        baseline_message_uuid: UUID of the last assistant message before sending.
-            If provided, waits for a DIFFERENT message to appear.
 
     Returns:
         The last assistant message, or None if timeout
@@ -882,35 +872,14 @@ async def wait_for_response(
     import asyncio
 
     start = time.time()
-    last_mtime = jsonl_path.stat().st_mtime if jsonl_path.exists() else 0.0
-    last_change = start
 
     while time.time() - start < timeout:
         try:
-            stat = jsonl_path.stat()
-            current_mtime = stat.st_mtime
-
-            # Track file modifications
-            if current_mtime > last_mtime:
-                last_mtime = current_mtime
-                last_change = time.time()
-
-            # Check if idle long enough
-            idle_time = time.time() - last_change
-            if idle_time >= idle_threshold:
-                # Parse and check for new response
+            # Check if the Stop hook has fired (session is idle)
+            if is_session_stopped(jsonl_path, session_id):
+                # Session stopped - return the last assistant message
                 state = parse_session(jsonl_path)
-                last_msg = state.last_assistant_message
-
-                if last_msg:
-                    # If no baseline provided, return any assistant message
-                    if baseline_message_uuid is None:
-                        return last_msg
-                    # If baseline provided, only return if it's a NEW message
-                    if last_msg.uuid != baseline_message_uuid:
-                        return last_msg
-                    # Same message as baseline - keep waiting for new one
-
+                return state.last_assistant_message
         except FileNotFoundError:
             pass
 
