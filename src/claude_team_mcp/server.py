@@ -781,8 +781,8 @@ async def send_message(
     app_ctx = ctx.request_context.lifespan_context
     registry = app_ctx.registry
 
-    # Look up session
-    session = registry.get(session_id)
+    # Look up session (accepts internal ID, terminal ID, or name)
+    session = registry.resolve(session_id)
     if not session:
         return error_response(
             f"Session not found: {session_id}",
@@ -891,12 +891,13 @@ async def broadcast_message(
 
     # Validate all sessions exist first
     # (fail fast if any session is invalid)
+    # Uses resolve() to accept internal ID, terminal ID, or name
     missing_sessions = []
     closed_sessions = []
     valid_sessions = []
 
     for sid in session_ids:
-        session = registry.get(sid)
+        session = registry.resolve(sid)
         if not session:
             missing_sessions.append(sid)
         elif session.status == SessionStatus.CLOSED:
@@ -1045,8 +1046,8 @@ async def get_response(
     app_ctx = ctx.request_context.lifespan_context
     registry = app_ctx.registry
 
-    # Look up session
-    session = registry.get(session_id)
+    # Look up session (accepts internal ID, terminal ID, or name)
+    session = registry.resolve(session_id)
     if not session:
         return error_response(
             f"Session not found: {session_id}",
@@ -1252,8 +1253,8 @@ async def get_conversation_history(
             hint="Use offset=0 for most recent, offset=1 to skip most recent page, etc.",
         )
 
-    # Look up session
-    session = registry.get(session_id)
+    # Look up session (accepts internal ID, terminal ID, or name)
+    session = registry.resolve(session_id)
     if not session:
         return error_response(
             f"Session not found: {session_id}",
@@ -1368,8 +1369,8 @@ async def get_session_status(
     app_ctx = ctx.request_context.lifespan_context
     registry = app_ctx.registry
 
-    # Look up session
-    session = registry.get(session_id)
+    # Look up session (accepts internal ID, terminal ID, or name)
+    session = registry.resolve(session_id)
     if not session:
         return error_response(
             f"Session not found: {session_id}",
@@ -1431,7 +1432,8 @@ async def annotate_session(
     app_ctx = ctx.request_context.lifespan_context
     registry = app_ctx.registry
 
-    session = registry.get(session_id)
+    # Look up session (accepts internal ID, terminal ID, or name)
+    session = registry.resolve(session_id)
     if not session:
         return error_response(
             f"Session not found: {session_id}",
@@ -1780,8 +1782,8 @@ async def close_session(
     app_ctx = ctx.request_context.lifespan_context
     registry = app_ctx.registry
 
-    # Look up session
-    session = registry.get(session_id)
+    # Look up session (accepts internal ID, terminal ID, or name)
+    session = registry.resolve(session_id)
     if not session:
         return error_response(
             f"Session not found: {session_id}",
@@ -1874,8 +1876,8 @@ async def is_idle(
     app_ctx = ctx.request_context.lifespan_context
     registry = app_ctx.registry
 
-    # Look up session
-    session = registry.get(session_id)
+    # Look up session (accepts internal ID, terminal ID, or name)
+    session = registry.resolve(session_id)
     if not session:
         return error_response(
             f"Session not found: {session_id}",
@@ -1928,8 +1930,8 @@ async def wait_for_idle(
     app_ctx = ctx.request_context.lifespan_context
     registry = app_ctx.registry
 
-    # Look up session
-    session = registry.get(session_id)
+    # Look up session (accepts internal ID, terminal ID, or name)
+    session = registry.resolve(session_id)
     if not session:
         return error_response(
             f"Session not found: {session_id}",
@@ -2000,12 +2002,13 @@ async def wait_for_team_idle(
         )
 
     # Look up sessions and build SessionInfo list
+    # Uses resolve() to accept internal ID, terminal ID, or name
     session_infos = []
     missing_sessions = []
     missing_jsonl = []
 
     for session_id in session_ids:
-        session = registry.get(session_id)
+        session = registry.resolve(session_id)
         if not session:
             missing_sessions.append(session_id)
             continue

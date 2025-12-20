@@ -15,6 +15,41 @@ from typing import Optional
 from .session_state import find_active_session, get_project_dir, parse_session
 
 
+@dataclass(frozen=True)
+class TerminalId:
+    """
+    Terminal-agnostic identifier for a session in a terminal emulator.
+
+    Designed for extensibility - same structure works for iTerm, Zed, VS Code, etc.
+    After MCP restart, registry is empty but terminal IDs persist. This allows
+    tools to accept terminal IDs directly for recovery scenarios.
+
+    Attributes:
+        terminal_type: Terminal emulator type ("iterm", "zed", "vscode", etc.)
+        native_id: Terminal's native session ID (e.g., iTerm's UUID)
+    """
+
+    terminal_type: str
+    native_id: str
+
+    def __str__(self) -> str:
+        """For display: 'iterm:DB29DB03-...'"""
+        return f"{self.terminal_type}:{self.native_id}"
+
+    @classmethod
+    def from_string(cls, s: str) -> "TerminalId":
+        """
+        Parse 'iterm:DB29DB03-...' format.
+
+        Falls back to treating bare IDs as iTerm for backwards compatibility.
+        """
+        if ":" in s:
+            terminal_type, native_id = s.split(":", 1)
+            return cls(terminal_type, native_id)
+        # Assume bare ID is iTerm for backwards compatibility
+        return cls("iterm", s)
+
+
 class SessionStatus(str, Enum):
     """Status of a managed Claude session."""
 
@@ -46,10 +81,26 @@ class ManagedSession:
     controller_annotation: Optional[str] = None  # Notes from coordinator about assignment
     worktree_path: Optional[Path] = None  # Path to worker's git worktree if any
 
+    # Terminal-agnostic identifier (auto-populated from iterm_session if not set)
+    terminal_id: Optional[TerminalId] = None
+
+    def __post_init__(self):
+        """Auto-populate terminal_id from iterm_session if not set."""
+        if self.terminal_id is None and self.iterm_session is not None:
+            # Use object.__setattr__ since we're in __post_init__
+            object.__setattr__(
+                self,
+                "terminal_id",
+                TerminalId("iterm", self.iterm_session.session_id),
+            )
+
     def to_dict(self) -> dict:
         """Convert to dictionary for MCP tool responses."""
         return {
             "session_id": self.session_id,
+            "terminal_id": str(self.terminal_id) if self.terminal_id else None,
+            "terminal_type": self.terminal_id.terminal_type if self.terminal_id else None,
+            "native_terminal_id": self.terminal_id.native_id if self.terminal_id else None,
             "name": self.name or self.session_id,
             "project_path": self.project_path,
             "claude_session_id": self.claude_session_id,
@@ -209,6 +260,36 @@ class SessionRegistry:
             if session.name == name:
                 return session
         return None
+
+    def resolve(self, identifier: str) -> Optional[ManagedSession]:
+        """
+        Resolve a session by any known identifier.
+
+        Lookup order (most specific first):
+        1. Internal session_id (e.g., "d875b833")
+        2. Terminal native ID (e.g., "DB29DB03-AA52-4FBF-879A-4DA2C5F9F823")
+        3. Session name
+
+        After MCP restart, internal IDs are lost until import. This method
+        allows tools to accept terminal IDs directly for recovery scenarios.
+
+        Args:
+            identifier: Any session identifier (internal ID, terminal ID, or name)
+
+        Returns:
+            ManagedSession if found, None otherwise
+        """
+        # 1. Try internal session_id (fast dict lookup)
+        if identifier in self._sessions:
+            return self._sessions[identifier]
+
+        # 2. Try terminal native ID (iterate once)
+        for session in self._sessions.values():
+            if session.terminal_id and session.terminal_id.native_id == identifier:
+                return session
+
+        # 3. Try name (last resort)
+        return self.get_by_name(identifier)
 
     def list_all(self) -> list[ManagedSession]:
         """
