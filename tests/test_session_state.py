@@ -7,6 +7,7 @@ from claude_team_mcp.session_state import (
     MARKER_SUFFIX,
     extract_iterm_session_id,
     extract_marker_session_id,
+    generate_marker_message,
 )
 
 
@@ -78,3 +79,33 @@ class TestExtractItermSessionId:
 More content here"""
         assert extract_iterm_session_id(text) == "ITERM-ABC-456"
         assert extract_marker_session_id(text) == "internal-123"
+
+
+class TestGenerateMarkerMessage:
+    """Tests for generate_marker_message function."""
+
+    def test_includes_internal_marker(self):
+        """Message should include internal session marker."""
+        message = generate_marker_message("abc123")
+        assert "<!claude-team-session:abc123!>" in message
+
+    def test_no_iterm_marker_by_default(self):
+        """Message should not include iTerm marker when not provided."""
+        message = generate_marker_message("abc123")
+        assert "<!claude-team-iterm:" not in message
+
+    def test_includes_iterm_marker_when_provided(self):
+        """Message should include iTerm marker when iterm_session_id provided."""
+        message = generate_marker_message("abc123", iterm_session_id="ITERM-XYZ")
+        assert "<!claude-team-iterm:ITERM-XYZ!>" in message
+
+    def test_both_markers_when_iterm_provided(self):
+        """Message should include both markers when iTerm ID provided."""
+        message = generate_marker_message("internal-id", iterm_session_id="iterm-id")
+        assert "<!claude-team-session:internal-id!>" in message
+        assert "<!claude-team-iterm:iterm-id!>" in message
+
+    def test_includes_identification_instruction(self):
+        """Message should instruct Claude to respond with 'Identified!'."""
+        message = generate_marker_message("test")
+        assert "Identified!" in message

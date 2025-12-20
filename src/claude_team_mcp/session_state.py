@@ -201,7 +201,10 @@ ITERM_MARKER_PREFIX = "<!claude-team-iterm:"
 ITERM_MARKER_SUFFIX = "!>"
 
 
-def generate_marker_message(session_id: str) -> str:
+def generate_marker_message(
+    session_id: str,
+    iterm_session_id: Optional[str] = None,
+) -> str:
     """
     Generate a marker message to send to a session for JSONL correlation.
 
@@ -210,11 +213,18 @@ def generate_marker_message(session_id: str) -> str:
 
     Args:
         session_id: The managed session ID (e.g., "worker-1")
+        iterm_session_id: Optional iTerm2 session ID for discovery/recovery.
+            When provided, an additional iTerm-specific marker is emitted.
 
     Returns:
         A message string to send to the session
     """
     marker = f"{MARKER_PREFIX}{session_id}{MARKER_SUFFIX}"
+
+    # Add iTerm-specific marker if provided (for session recovery after MCP restart)
+    if iterm_session_id:
+        marker += f"\n{ITERM_MARKER_PREFIX}{iterm_session_id}{ITERM_MARKER_SUFFIX}"
+
     return (
         f"{marker}\n\n"
         "The above is a marker that assists Claude Teams in locating your session - "

@@ -624,7 +624,10 @@ async def spawn_team(
         from .session_state import generate_marker_message
 
         for pane_name, managed in managed_sessions.items():
-            marker_message = generate_marker_message(managed.session_id)
+            marker_message = generate_marker_message(
+                managed.session_id,
+                iterm_session_id=managed.iterm_session.session_id,
+            )
             await send_prompt(pane_sessions[pane_name], marker_message, submit=True)
 
         # Wait for markers to be logged
@@ -638,12 +641,11 @@ async def spawn_team(
 
             if is_standard_mode:
                 # Standard mode: send worker pre-prompt with coordination workflow
-                # Pass iTerm session ID for discovery/recovery after MCP restart
+                # Note: iTerm marker already sent via generate_marker_message above
                 worker_prompt = generate_worker_prompt(
                     managed.session_id,
                     iconic_name,
                     use_worktree=use_worktrees,
-                    iterm_session_id=managed.iterm_session.session_id,
                 )
             else:
                 # Custom mode: use the provided custom_prompt
@@ -1719,7 +1721,10 @@ async def import_session(
     # Send marker message for JSONL correlation
     from .session_state import generate_marker_message
 
-    marker_message = generate_marker_message(managed.session_id)
+    marker_message = generate_marker_message(
+        managed.session_id,
+        iterm_session_id=target_session.session_id,
+    )
     await send_prompt(target_session, marker_message, submit=True)
 
     # Wait for marker to be logged, then discover by marker

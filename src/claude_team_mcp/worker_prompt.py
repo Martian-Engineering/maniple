@@ -1,13 +1,10 @@
 """Worker pre-prompt generation for coordinated team sessions."""
 
-from typing import Optional
-
 
 def generate_worker_prompt(
     session_id: str,
     name: str,
     use_worktree: bool = False,
-    iterm_session_id: Optional[str] = None,
 ) -> str:
     """Generate the pre-prompt text for a worker session.
 
@@ -15,12 +12,14 @@ def generate_worker_prompt(
         session_id: The unique identifier for this worker session
         name: The friendly name assigned to this worker
         use_worktree: Whether this worker is in an isolated worktree
-        iterm_session_id: Optional iTerm2 session ID for discovery/recovery.
-            When provided, an additional iTerm-specific marker is emitted
-            to enable session recovery after MCP server restart.
 
     Returns:
         The formatted pre-prompt string to inject into the worker session
+
+    Note:
+        The iTerm-specific marker for session recovery is emitted separately
+        via generate_marker_message() in session_state.py, which is called
+        before the worker prompt is sent.
     """
     commit_section = ""
     if use_worktree:
@@ -30,13 +29,7 @@ def generate_worker_prompt(
    summarizing what you did. Don't push; the coordinator handles that.
 """
 
-    # iTerm-specific marker for session discovery/recovery
-    # Future terminal support (e.g., Zed) will use their own marker format
-    iterm_marker = ""
-    if iterm_session_id:
-        iterm_marker = f"\n<!claude-team-iterm:{iterm_session_id}!>"
-
-    return f'''<!claude-team-session:{session_id}!>{iterm_marker}
+    return f'''<!claude-team-session:{session_id}!>
 
 Hey {name}! Welcome to the team.
 
