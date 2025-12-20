@@ -147,3 +147,42 @@ class TestWorktreeMode:
         """Should list coordinator responsibilities."""
         guidance = get_coordinator_guidance()
         assert "responsibilities" in guidance.lower()
+
+
+class TestItermMarker:
+    """Tests for iTerm-specific marker functionality."""
+
+    def test_no_iterm_marker_by_default(self):
+        """Prompt should not include iTerm marker when not provided."""
+        prompt = generate_worker_prompt("test-session", "Worker")
+        assert "<!claude-team-iterm:" not in prompt
+
+    def test_includes_iterm_marker_when_provided(self):
+        """Prompt should include iTerm marker when iterm_session_id is provided."""
+        prompt = generate_worker_prompt(
+            "test-session",
+            "Worker",
+            iterm_session_id="ABC123-DEF456",
+        )
+        assert "<!claude-team-iterm:ABC123-DEF456!>" in prompt
+
+    def test_both_markers_present_when_iterm_id_provided(self):
+        """Both internal and iTerm markers should be present."""
+        prompt = generate_worker_prompt(
+            "internal-id",
+            "Worker",
+            iterm_session_id="iterm-id",
+        )
+        assert "<!claude-team-session:internal-id!>" in prompt
+        assert "<!claude-team-iterm:iterm-id!>" in prompt
+
+    def test_iterm_marker_with_worktree(self):
+        """iTerm marker should work alongside worktree mode."""
+        prompt = generate_worker_prompt(
+            "test",
+            "Worker",
+            use_worktree=True,
+            iterm_session_id="iterm-123",
+        )
+        assert "<!claude-team-iterm:iterm-123!>" in prompt
+        assert "Commit when done" in prompt

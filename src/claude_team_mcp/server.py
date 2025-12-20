@@ -638,8 +638,12 @@ async def spawn_team(
 
             if is_standard_mode:
                 # Standard mode: send worker pre-prompt with coordination workflow
+                # Pass iTerm session ID for discovery/recovery after MCP restart
                 worker_prompt = generate_worker_prompt(
-                    managed.session_id, iconic_name, use_worktree=use_worktrees
+                    managed.session_id,
+                    iconic_name,
+                    use_worktree=use_worktrees,
+                    iterm_session_id=managed.iterm_session.session_id,
                 )
             else:
                 # Custom mode: use the provided custom_prompt
@@ -1476,6 +1480,7 @@ async def discover_sessions(
     from .session_state import (
         CLAUDE_PROJECTS_DIR,
         find_active_session,
+        find_jsonl_by_iterm_id,
         get_project_dir,
         list_sessions,
         parse_session,
@@ -1559,6 +1564,17 @@ async def discover_sessions(
                             project_path, max_age_seconds=3600  # Within last hour
                         )
 
+                    # Fallback: try to find JSONL by iTerm marker
+                    # This works for sessions spawned by claude-team that have
+                    # the iTerm-specific marker in their JSONL
+                    internal_session_id = None
+                    if not project_path:
+                        match = find_jsonl_by_iterm_id(iterm_session.session_id)
+                        if match:
+                            project_path = match.project_path
+                            claude_session_id = match.jsonl_path.stem
+                            internal_session_id = match.internal_session_id
+
                     # Get last assistant message preview from JSONL if available
                     last_assistant_preview = None
                     if project_path and claude_session_id:
@@ -1580,6 +1596,7 @@ async def discover_sessions(
                         "iterm_session_id": iterm_session.session_id,
                         "project_path": project_path,
                         "claude_session_id": claude_session_id,
+                        "internal_session_id": internal_session_id,  # Our session ID if recovered via marker
                         "model": detected_model,
                         "last_assistant_preview": last_assistant_preview,
                         "already_managed": iterm_session.session_id in managed_iterm_ids,

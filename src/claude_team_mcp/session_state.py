@@ -193,6 +193,13 @@ def get_project_dir(project_path: str) -> Path:
 MARKER_PREFIX = "<!claude-team-session:"
 MARKER_SUFFIX = "!>"
 
+# iTerm-specific marker for session discovery/recovery
+# When running in iTerm, we emit both markers so that orphaned sessions
+# can be matched back to their JSONL files even after MCP server restart.
+# Future terminal support (e.g., Zed) will use their own marker prefix.
+ITERM_MARKER_PREFIX = "<!claude-team-iterm:"
+ITERM_MARKER_SUFFIX = "!>"
+
 
 def generate_marker_message(session_id: str) -> str:
     """
@@ -231,6 +238,26 @@ def extract_marker_session_id(text: str) -> Optional[str]:
         return None
     start += len(MARKER_PREFIX)
     end = text.find(MARKER_SUFFIX, start)
+    if end == -1:
+        return None
+    return text[start:end]
+
+
+def extract_iterm_session_id(text: str) -> Optional[str]:
+    """
+    Extract an iTerm session ID from marker text if present.
+
+    Args:
+        text: Text that may contain an iTerm marker
+
+    Returns:
+        The iTerm session ID from the marker, or None if no marker found
+    """
+    start = text.find(ITERM_MARKER_PREFIX)
+    if start == -1:
+        return None
+    start += len(ITERM_MARKER_PREFIX)
+    end = text.find(ITERM_MARKER_SUFFIX, start)
     if end == -1:
         return None
     return text[start:end]
@@ -288,6 +315,94 @@ def find_jsonl_by_marker(
                 return f.stem
         except Exception:
             continue
+
+    return None
+
+
+@dataclass
+class ItermSessionMatch:
+    """Result of matching an iTerm session ID to a JSONL file."""
+
+    iterm_session_id: str
+    internal_session_id: str  # Our claude-team session ID
+    jsonl_path: Path
+    project_path: str  # Recovered from directory slug
+
+
+def find_jsonl_by_iterm_id(
+    iterm_session_id: str,
+    max_age_seconds: int = 3600,
+) -> Optional[ItermSessionMatch]:
+    """
+    Find a JSONL file containing a specific iTerm session marker.
+
+    Scans all project directories in ~/.claude/projects/ for JOSNLs
+    that contain the iTerm-specific marker. This enables session recovery
+    after MCP server restart.
+
+    Args:
+        iterm_session_id: The iTerm2 session ID to search for
+        max_age_seconds: Only check files modified within this many seconds
+
+    Returns:
+        ItermSessionMatch with full recovery info, or None if not found
+    """
+    iterm_marker = f"{ITERM_MARKER_PREFIX}{iterm_session_id}{ITERM_MARKER_SUFFIX}"
+    now = time.time()
+
+    # Scan all project directories
+    if not CLAUDE_PROJECTS_DIR.exists():
+        return None
+
+    for project_dir in CLAUDE_PROJECTS_DIR.iterdir():
+        if not project_dir.is_dir():
+            continue
+
+        # Check JSONL files in this project
+        for f in project_dir.glob("*.jsonl"):
+            # Skip agent files
+            if f.name.startswith("agent-"):
+                continue
+
+            # Skip old files
+            try:
+                if now - f.stat().st_mtime > max_age_seconds:
+                    continue
+            except OSError:
+                continue
+
+            # Search for iTerm marker in file
+            try:
+                file_size = f.stat().st_size
+                read_size = min(file_size, 100000)  # Check last 100KB
+                with open(f, "r") as fp:
+                    if file_size > read_size:
+                        fp.seek(file_size - read_size)
+                    content = fp.read()
+
+                if iterm_marker not in content:
+                    continue
+
+                # Found it! Now extract the internal session ID
+                internal_id = extract_marker_session_id(content)
+                if not internal_id:
+                    continue
+
+                # Recover project path from directory slug
+                project_path = unslugify_path(project_dir.name)
+                if not project_path:
+                    # Fallback: can't recover path but have other info
+                    project_path = f"/{project_dir.name.replace('-', '/')}"
+
+                return ItermSessionMatch(
+                    iterm_session_id=iterm_session_id,
+                    internal_session_id=internal_id,
+                    jsonl_path=f,
+                    project_path=project_path,
+                )
+
+            except Exception:
+                continue
 
     return None
 
