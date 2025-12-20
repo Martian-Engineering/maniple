@@ -757,8 +757,8 @@ async def send_message(
     ctx: Context[ServerSession, AppContext],
     session_id: str,
     message: str,
-    wait_for_response: bool = False,
-    timeout: float = 120.0,
+    wait_for_idle: bool = False,
+    timeout: float = 600.0,
 ) -> dict:
     """
     Send a message to a managed Claude Code session.
@@ -769,13 +769,13 @@ async def send_message(
     Args:
         session_id: ID of the target session (from spawn_team or list_sessions)
         message: The prompt/message to send
-        wait_for_response: If True, wait for Claude to finish responding
-        timeout: Maximum seconds to wait for response (if wait_for_response=True)
+        wait_for_idle: If True, wait for Claude to finish responding (uses stop hook detection)
+        timeout: Maximum seconds to wait for response (if wait_for_idle=True)
 
     Returns:
         Dict with success status and optional response content
     """
-    from .session_state import wait_for_response as wait_for_resp
+    from .idle_detection import wait_for_idle as wait_idle
 
     app_ctx = ctx.request_context.lifespan_context
     registry = app_ctx.registry
@@ -812,20 +812,23 @@ async def send_message(
             "message_sent": message[:100] + "..." if len(message) > 100 else message,
         }
 
-        # Optionally wait for response
-        if wait_for_response:
-            if jsonl_path and jsonl_path.exists():
-                response = await wait_for_resp(
-                    jsonl_path=jsonl_path,
-                    timeout=timeout,
-                    idle_threshold=2.0,
-                    baseline_message_uuid=baseline_uuid,
-                )
-                if response:
-                    result["response"] = response.content
+        # Optionally wait for Claude to finish
+        if wait_for_idle:
+            # Use stop hook detection to wait for idle
+            idle_result = await wait_idle(
+                session_id=session.session_id,
+                timeout=timeout,
+            )
+            if idle_result.get("timed_out"):
+                result["response"] = None
+                result["timeout"] = True
+            else:
+                # Get the response after waiting
+                state = session.get_conversation_state()
+                if state and state.last_assistant_message:
+                    result["response"] = state.last_assistant_message.content
                 else:
                     result["response"] = None
-                    result["timeout"] = True
 
         # Update status back to ready
         registry.update_status(session_id, SessionStatus.READY)
@@ -847,8 +850,8 @@ async def broadcast_message(
     ctx: Context[ServerSession, AppContext],
     session_ids: list[str],
     message: str,
-    wait_for_response: bool = False,
-    timeout: float = 120.0,
+    wait_for_idle: bool = False,
+    timeout: float = 600.0,
 ) -> dict:
     """
     Send the same message to multiple Claude Code sessions in parallel.
@@ -860,8 +863,8 @@ async def broadcast_message(
     Args:
         session_ids: List of session IDs to send the message to
         message: The prompt/message to send to all sessions
-        wait_for_response: If True, wait for Claude to finish responding in each session
-        timeout: Maximum seconds to wait for responses (if wait_for_response=True)
+        wait_for_idle: If True, wait for Claude to finish responding in each session
+        timeout: Maximum seconds to wait for responses (if wait_for_idle=True)
 
     Returns:
         Dict with:
@@ -870,7 +873,7 @@ async def broadcast_message(
             - failure_count: Number of sessions that failed
             - total: Total number of sessions targeted
     """
-    from .session_state import wait_for_response as wait_for_resp
+    from .idle_detection import wait_for_idle as wait_idle
 
     app_ctx = ctx.request_context.lifespan_context
     registry = app_ctx.registry
@@ -946,20 +949,23 @@ async def broadcast_message(
                 "message_sent": message[:100] + "..." if len(message) > 100 else message,
             }
 
-            # Optionally wait for response
-            if wait_for_response:
-                if jsonl_path and jsonl_path.exists():
-                    response = await wait_for_resp(
-                        jsonl_path=jsonl_path,
-                        timeout=timeout,
-                        idle_threshold=2.0,
-                        baseline_message_uuid=baseline_uuid,
-                    )
-                    if response:
-                        result["response"] = response.content
+            # Optionally wait for Claude to finish
+            if wait_for_idle:
+                # Use stop hook detection to wait for idle
+                idle_result = await wait_idle(
+                    session_id=session.session_id,
+                    timeout=timeout,
+                )
+                if idle_result.get("timed_out"):
+                    result["response"] = None
+                    result["timeout"] = True
+                else:
+                    # Get the response after waiting
+                    state = session.get_conversation_state()
+                    if state and state.last_assistant_message:
+                        result["response"] = state.last_assistant_message.content
                     else:
                         result["response"] = None
-                        result["timeout"] = True
 
             # Update status back to ready
             registry.update_status(sid, SessionStatus.READY)
@@ -1006,8 +1012,8 @@ async def broadcast_message(
 async def get_response(
     ctx: Context[ServerSession, AppContext],
     session_id: str,
-    wait: bool = True,
-    timeout: float = 60.0,
+    wait_for_idle: bool = True,
+    timeout: float = 600.0,
 ) -> dict:
     """
     Get the latest response from a Claude Code session.
@@ -1017,13 +1023,13 @@ async def get_response(
 
     Args:
         session_id: ID of the target session
-        wait: If True, wait for Claude to finish if still processing
+        wait_for_idle: If True, wait for Claude to finish if still processing (uses stop hook detection)
         timeout: Maximum seconds to wait
 
     Returns:
         Dict with status, response content, and metadata
     """
-    from .session_state import wait_for_response as wait_for_resp
+    from .idle_detection import wait_for_idle as wait_idle
 
     app_ctx = ctx.request_context.lifespan_context
     registry = app_ctx.registry
@@ -1055,12 +1061,12 @@ async def get_response(
             status=session.status.value,
         )
 
-    # If wait=True and session appears to be processing, wait for idle
-    if wait and state.is_processing:
-        response = await wait_for_resp(
-            jsonl_path=jsonl_path,
+    # If wait_for_idle=True, wait for Claude to finish
+    if wait_for_idle:
+        # Use stop hook detection to wait for idle
+        idle_result = await wait_idle(
+            session_id=session.session_id,
             timeout=timeout,
-            idle_threshold=2.0,
         )
         # Refresh state after waiting
         state = session.get_conversation_state()
