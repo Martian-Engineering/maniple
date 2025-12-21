@@ -97,8 +97,8 @@ Your team is ready. Here's what your workers know and what they expect from you:
 **Idle detection:**
 Worker completion is detected automatically via Stop hooks.
 - `is_idle(session_id)` — Check if a worker has finished (returns idle: true/false)
-- `wait_for_idle(session_id, timeout=600)` — Block until worker finishes
-- `wait_for_team_idle(session_ids, mode="all", timeout=600)` — Wait for team
+- `wait_idle_workers([session_id], timeout=600)` — Block until worker(s) finish
+- `wait_idle_workers(session_ids, mode="any")` — Return when first worker finishes
 
 The system knows the instant they finish responding — no markers needed.
 
@@ -109,8 +109,8 @@ with the user. Check in on workers when the user asks, or prompt them occasional
 ("Want me to check on the team?"). Use `is_idle` for quick polls.
 
 At the other end: **Fully autonomous** — The user sets a goal, you break it into tasks
-(probably via beads), dispatch workers, and use `wait_for_idle(session_id)` or
-`wait_for_team_idle(session_ids)` to block until they finish. Read their conversation
+(probably via beads), dispatch workers, and use `wait_idle_workers([session_id])` or
+`wait_idle_workers(session_ids)` to block until they finish. Read their conversation
 history to understand what they did, then assign follow-up tasks or report results.
 
 Most coordination falls somewhere in between. Match your approach to the user's preference
