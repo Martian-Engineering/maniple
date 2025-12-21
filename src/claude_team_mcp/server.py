@@ -1442,6 +1442,7 @@ async def annotate_worker(
 @mcp.tool()
 async def discover_workers(
     ctx: Context[ServerSession, AppContext],
+    max_age: int = 3600,
 ) -> dict:
     """
     Discover existing Claude Code sessions running in iTerm2.
@@ -1449,6 +1450,9 @@ async def discover_workers(
     Scans all iTerm2 windows, tabs, and panes to find sessions that appear
     to be running Claude Code. Attempts to match each session to its JSONL
     file in ~/.claude/projects/ based on the project path visible on screen.
+
+    Args:
+        max_age: Only check JSONL files modified within this many seconds (default 3600)
 
     Returns:
         Dict with:
@@ -1554,7 +1558,7 @@ async def discover_workers(
                     # the iTerm-specific marker in their JSONL
                     internal_session_id = None
                     if not project_path:
-                        match = find_jsonl_by_iterm_id(iterm_session.session_id)
+                        match = find_jsonl_by_iterm_id(iterm_session.session_id, max_age_seconds=max_age)
                         if match:
                             project_path = match.project_path
                             claude_session_id = match.jsonl_path.stem
@@ -1605,6 +1609,7 @@ async def adopt_worker(
     ctx: Context[ServerSession, AppContext],
     iterm_session_id: str,
     session_name: str | None = None,
+    max_age: int = 3600,
 ) -> dict:
     """
     Adopt an existing iTerm2 Claude Code session into the MCP registry.
@@ -1616,6 +1621,7 @@ async def adopt_worker(
     Args:
         iterm_session_id: The iTerm2 session ID (from discover_workers)
         session_name: Optional friendly name for the worker
+        max_age: Only check JSONL files modified within this many seconds (default 3600)
 
     Returns:
         Dict with adopted worker info, or error if session not found
@@ -1657,7 +1663,7 @@ async def adopt_worker(
 
     # Use marker-based discovery to recover original session identity
     # This only works for sessions we originally spawned (which have our markers)
-    match = find_jsonl_by_iterm_id(iterm_session_id)
+    match = find_jsonl_by_iterm_id(iterm_session_id, max_age_seconds=max_age)
     if not match:
         return error_response(
             "Session not found or not spawned by claude-team",

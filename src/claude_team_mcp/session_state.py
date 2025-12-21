@@ -137,6 +137,11 @@ def unslugify_path(slug: str) -> str | None:
     if not slug.startswith("-"):
         return None
 
+    # Handle .worktrees directories specifically
+    # The slug replaces both / and . with -, so /.worktrees becomes --worktrees
+    # We only handle this known case to avoid unexpected behavior elsewhere
+    slug = slug.replace("--worktrees", "-.worktrees")
+
     # Split the slug into parts (removing the leading -)
     # Each part was originally separated by / or is part of a hyphenated name
     parts = slug[1:].split("-")
@@ -353,6 +358,9 @@ def find_jsonl_by_iterm_id(
     that contain the iTerm-specific marker. This enables session recovery
     after MCP server restart.
 
+    Only looks at root user messages (type="user", parentUuid=null) and
+    extracts markers from the message.content field for reliability.
+
     Args:
         iterm_session_id: The iTerm2 session ID to search for
         max_age_seconds: Only check files modified within this many seconds
@@ -384,37 +392,51 @@ def find_jsonl_by_iterm_id(
             except OSError:
                 continue
 
-            # Search for iTerm marker in file
+            # Parse JSONL looking for root user message with our markers
             try:
-                file_size = f.stat().st_size
-                read_size = min(file_size, 100000)  # Check last 100KB
                 with open(f, "r") as fp:
-                    if file_size > read_size:
-                        fp.seek(file_size - read_size)
-                    content = fp.read()
+                    for line in fp:
+                        line = line.strip()
+                        if not line:
+                            continue
 
-                if iterm_marker not in content:
-                    continue
+                        try:
+                            entry = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
 
-                # Found it! Now extract the internal session ID
-                internal_id = extract_marker_session_id(content)
-                if not internal_id:
-                    continue
+                        # Only look at root user messages (our marker message)
+                        if entry.get("type") != "user":
+                            continue
+                        if entry.get("parentUuid") is not None:
+                            continue
 
-                # Recover project path from directory slug
-                project_path = unslugify_path(project_dir.name)
-                if not project_path:
-                    # Can't reliably recover the project path - skip this match
-                    # Naive replacement (replace('-', '/')) is wrong because paths
-                    # can contain hyphens (e.g., /Users/josh/my-project)
-                    continue
+                        # Extract message content
+                        message = entry.get("message", {})
+                        content = message.get("content", "")
+                        if not isinstance(content, str):
+                            continue
 
-                return ItermSessionMatch(
-                    iterm_session_id=iterm_session_id,
-                    internal_session_id=internal_id,
-                    jsonl_path=f,
-                    project_path=project_path,
-                )
+                        # Check for iTerm marker in message content
+                        if iterm_marker not in content:
+                            continue
+
+                        # Extract internal session ID from the same content
+                        internal_id = extract_marker_session_id(content)
+                        if not internal_id:
+                            continue
+
+                        # Recover project path from directory slug
+                        project_path = unslugify_path(project_dir.name)
+                        if not project_path:
+                            continue
+
+                        return ItermSessionMatch(
+                            iterm_session_id=iterm_session_id,
+                            internal_session_id=internal_id,
+                            jsonl_path=f,
+                            project_path=project_path,
+                        )
 
             except Exception:
                 continue
