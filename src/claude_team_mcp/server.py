@@ -462,7 +462,7 @@ async def spawn_workers(
     registry = app_ctx.registry
 
     # Ensure we have a fresh connection (websocket can go stale)
-    connection, _ = await ensure_connection(app_ctx)
+    connection, app = await ensure_connection(app_ctx)
 
     # Auto-select layout based on project count
     if layout == "auto":
@@ -692,6 +692,20 @@ async def spawn_workers(
         for pane_name, managed in managed_sessions.items():
             registry.update_status(managed.session_id, SessionStatus.READY)
             result_sessions[pane_name] = managed.to_dict()
+
+        # Re-activate the window and app to bring it to focus after all setup is complete.
+        # The initial activation in create_window() happens early, but focus can
+        # shift back to the coordinator window during the Claude startup process.
+        # Note: Window.async_activate() only focuses within iTerm2, we also need
+        # App.async_activate() to bring iTerm2 itself to the foreground.
+        try:
+            await app.async_activate()
+            # Get window from any of the sessions (they're all in the same window)
+            any_session = next(iter(pane_sessions.values()))
+            window = any_session.tab.window
+            await window.async_activate()
+        except Exception as e:
+            logger.debug(f"Failed to re-activate window: {e}")
 
         # Build return value based on mode
         result = {

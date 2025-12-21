@@ -6,6 +6,9 @@ Includes automatic dark/light mode detection and consistent visual styling.
 """
 
 import logging
+import re
+
+from .subprocess_cache import cached_system_profiler
 
 logger = logging.getLogger("claude-team-mcp.profile")
 
@@ -79,19 +82,15 @@ def calculate_screen_dimensions() -> tuple[int, int]:
     Returns:
         Tuple of (columns, rows) for a screen-filling terminal window
     """
-    import subprocess
-    import re
-
     try:
-        result = subprocess.run(
-            ["system_profiler", "SPDisplaysDataType"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
+        # Use cached system_profiler to avoid repeated slow calls
+        stdout = cached_system_profiler("SPDisplaysDataType")
+        if stdout is None:
+            logger.warning("system_profiler failed, using default dimensions")
+            return (200, 60)
 
         # Parse resolution from output like "Resolution: 3024 x 1964"
-        match = re.search(r"Resolution: (\d+) x (\d+)", result.stdout)
+        match = re.search(r"Resolution: (\d+) x (\d+)", stdout)
         if not match:
             logger.warning("Could not parse screen resolution, using defaults")
             return (200, 60)
@@ -99,7 +98,7 @@ def calculate_screen_dimensions() -> tuple[int, int]:
         screen_w, screen_h = int(match.group(1)), int(match.group(2))
 
         # Detect Retina display (2x scale factor)
-        scale = 2 if "Retina" in result.stdout else 1
+        scale = 2 if "Retina" in stdout else 1
         logical_w = screen_w // scale
         logical_h = screen_h // scale
 
@@ -121,9 +120,6 @@ def calculate_screen_dimensions() -> tuple[int, int]:
         )
         return (cols, rows)
 
-    except subprocess.TimeoutExpired:
-        logger.warning("system_profiler timed out, using default dimensions")
-        return (200, 60)
     except Exception as e:
         logger.warning(f"Failed to calculate screen dimensions: {e}")
         return (200, 60)

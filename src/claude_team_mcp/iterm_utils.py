@@ -7,9 +7,10 @@ from the original primitives.py for use in the MCP server.
 
 import logging
 import re
-import subprocess
 from typing import Optional, Callable
 from pathlib import Path
+
+from .subprocess_cache import cached_system_profiler
 
 logger = logging.getLogger("claude-team-mcp.iterm_utils")
 
@@ -150,39 +151,25 @@ async def read_screen_text(session: "iterm2.Session") -> str:
 # =============================================================================
 
 
-async def _calculate_screen_frame() -> tuple[float, float, float, float]:
+def _calculate_screen_frame() -> tuple[float, float, float, float]:
     """
     Calculate a screen-filling window frame that avoids macOS fullscreen.
 
     Returns dimensions slightly smaller than full screen to ensure the window
     stays in the current Space rather than entering macOS fullscreen mode.
 
-    Uses async subprocess to avoid blocking the event loop while initial
-    sessions are starting their shells.
-
     Returns:
         Tuple of (x, y, width, height) in points for the window frame.
     """
-    import asyncio
-
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "system_profiler", "SPDisplaysDataType",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        try:
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
-            logger.warning("system_profiler timed out, using default frame")
+        # Use cached system_profiler to avoid repeated slow calls
+        stdout = cached_system_profiler("SPDisplaysDataType")
+        if stdout is None:
+            logger.warning("system_profiler failed, using default frame")
             return (0.0, 25.0, 1400.0, 900.0)
 
-        output = stdout.decode()
-
         # Parse resolution from output like "Resolution: 3840 x 2160"
-        match = re.search(r"Resolution: (\d+) x (\d+)", output)
+        match = re.search(r"Resolution: (\d+) x (\d+)", stdout)
         if not match:
             logger.warning("Could not parse screen resolution, using defaults")
             return (0.0, 25.0, 1400.0, 900.0)
@@ -190,7 +177,7 @@ async def _calculate_screen_frame() -> tuple[float, float, float, float]:
         screen_w, screen_h = int(match.group(1)), int(match.group(2))
 
         # Detect Retina display (2x scale factor)
-        scale = 2 if "Retina" in output else 1
+        scale = 2 if "Retina" in stdout else 1
         logical_w = screen_w // scale
         logical_h = screen_h // scale
 
@@ -248,17 +235,20 @@ async def create_window(
     if is_fullscreen:
         logger.info("Window opened in fullscreen, exiting fullscreen mode")
         await window.async_set_fullscreen(False)
-        # Give macOS time to animate out of fullscreen
+        # Give macOS time to animate out of fullscreen (animation is ~0.2s)
         import asyncio
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.2)
 
     # Set window frame to fill screen without triggering fullscreen mode
-    x, y, width, height = await _calculate_screen_frame()
+    x, y, width, height = _calculate_screen_frame()
     frame = iterm2.Frame(
         origin=iterm2.Point(x, y),
         size=iterm2.Size(width, height),
     )
     await window.async_set_frame(frame)
+
+    # Bring window to focus
+    await window.async_activate()
 
     return window
 
@@ -373,44 +363,66 @@ CLAUDE_READY_PATTERNS = [
 
 async def wait_for_claude_ready(
     session: "iterm2.Session",
-    timeout_seconds: float = 30.0,
-    poll_interval: float = 0.5,
+    timeout_seconds: float = 15.0,
+    poll_interval: float = 0.2,
+    stable_count: int = 2,
 ) -> bool:
     """
-    Wait for Claude Code to start and display its banner.
+    Wait for Claude Code's TUI to be ready to accept input.
 
-    Polls the screen content looking for Claude's startup banner (the ASCII
-    robot art and version text). This ensures Claude is actually running
-    before we try to send it messages.
+    Polls the screen content and waits for Claude's prompt to appear.
+    Claude is considered ready when the screen shows either:
+    - A line starting with '>' (Claude's input prompt)
+    - A status line containing 'tokens' (bottom status bar)
 
     Args:
         session: iTerm2 session to monitor
-        timeout_seconds: Maximum time to wait for Claude to start
+        timeout_seconds: Maximum time to wait for Claude readiness
         poll_interval: Time between screen content checks
+        stable_count: Number of consecutive stable reads before considering ready
 
     Returns:
-        True if Claude started successfully, False if timeout was reached
+        True if Claude became ready, False if timeout was reached
     """
     import asyncio
     import time
 
     start_time = time.monotonic()
+    last_content = None
+    stable_reads = 0
 
     while (time.monotonic() - start_time) < timeout_seconds:
         try:
             content = await read_screen_text(session)
+            lines = content.split('\n')
 
-            # Check for any of the Claude banner patterns
-            for pattern in CLAUDE_READY_PATTERNS:
-                if pattern in content:
-                    return True
+            # Check if content is stable (same as last read)
+            if content == last_content:
+                stable_reads += 1
+            else:
+                stable_reads = 0
+                last_content = content
 
-        except Exception:
+            # Only check for Claude readiness after content has stabilized
+            if stable_reads >= stable_count:
+                for line in lines:
+                    stripped = line.strip()
+                    # Check for Claude's input prompt (starts with >)
+                    if stripped.startswith('>'):
+                        logger.debug("Claude ready: found '>' prompt")
+                        return True
+                    # Check for status bar (contains 'tokens')
+                    if 'tokens' in stripped:
+                        logger.debug("Claude ready: found status bar with 'tokens'")
+                        return True
+
+        except Exception as e:
             # Screen read failed, retry
-            pass
+            logger.debug(f"Screen read failed during Claude ready check: {e}")
 
         await asyncio.sleep(poll_interval)
 
+    logger.warning(f"Timeout waiting for Claude TUI readiness ({timeout_seconds}s)")
     return False
 
 
