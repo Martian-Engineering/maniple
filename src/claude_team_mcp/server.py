@@ -1791,63 +1791,7 @@ async def is_idle(
 
 
 @mcp.tool()
-async def wait_for_idle(
-    ctx: Context[ServerSession, AppContext],
-    session_id: str,
-    timeout: float = 600.0,
-    poll_interval: float = 2.0,
-) -> dict:
-    """
-    Wait for a worker session to become idle.
-
-    Polls until the Stop hook fires or timeout is reached. When Claude finishes
-    responding, the Stop hook fires immediately — no guessing, no heuristics.
-
-    Args:
-        session_id: ID of the session to wait on
-        timeout: Maximum seconds to wait (default 10 minutes)
-        poll_interval: Seconds between checks (default 2)
-
-    Returns:
-        Dict with {idle: bool, session_id: str, waited_seconds: float, timed_out: bool}
-    """
-    app_ctx = ctx.request_context.lifespan_context
-    registry = app_ctx.registry
-
-    # Look up session (accepts internal ID, terminal ID, or name)
-    session = registry.resolve(session_id)
-    if not session:
-        return error_response(
-            f"Session not found: {session_id}",
-            hint=HINTS["session_not_found"],
-        )
-
-    # Get JSONL path
-    jsonl_path = session.get_jsonl_path()
-    if not jsonl_path:
-        return error_response(
-            "No JSONL session file found",
-            hint=HINTS["no_jsonl_file"],
-            session_id=session_id,
-        )
-
-    # Wait for idle
-    result = await wait_for_idle_impl(
-        jsonl_path=jsonl_path,
-        session_id=session_id,
-        timeout=timeout,
-        poll_interval=poll_interval,
-    )
-
-    # Update session status if idle
-    if result["idle"]:
-        registry.update_status(session_id, SessionStatus.READY)
-
-    return result
-
-
-@mcp.tool()
-async def wait_for_team_idle(
+async def wait_idle_workers(
     ctx: Context[ServerSession, AppContext],
     session_ids: list[str],
     mode: str = "all",
@@ -1855,20 +1799,21 @@ async def wait_for_team_idle(
     poll_interval: float = 2.0,
 ) -> dict:
     """
-    Wait for multiple worker sessions to become idle.
+    Wait for worker sessions to become idle.
 
-    Supports two modes:
+    Unified tool for waiting on one or more workers. Supports two modes:
     - "all": Wait until ALL workers are idle (default, for fan-out/fan-in)
     - "any": Return as soon as ANY worker becomes idle (for pipelines)
 
     Args:
-        session_ids: List of session IDs to wait on
+        session_ids: List of session IDs to wait on (accepts 1 or more)
         mode: "all" or "any" - default "all"
         timeout: Maximum seconds to wait (default 10 minutes)
         poll_interval: Seconds between checks (default 2)
 
     Returns:
         Dict with:
+            - session_ids: The session IDs that were requested
             - idle_session_ids: List of sessions that are idle
             - all_idle: Whether all sessions are idle
             - waiting_on: Sessions still working (if timed out)
@@ -1878,6 +1823,13 @@ async def wait_for_team_idle(
     """
     app_ctx = ctx.request_context.lifespan_context
     registry = app_ctx.registry
+
+    # Validate inputs
+    if not session_ids:
+        return error_response(
+            "session_ids is required and must contain at least one session ID",
+            hint=HINTS["registry_empty"],
+        )
 
     # Validate mode
     if mode not in ("all", "any"):
@@ -1928,10 +1880,12 @@ async def wait_for_team_idle(
             poll_interval=poll_interval,
         )
         # Convert to common format
+        idle_session_ids = [result["idle_session_id"]] if result["idle_session_id"] else []
         return {
-            "idle_session_ids": [result["idle_session_id"]] if result["idle_session_id"] else [],
-            "all_idle": False,  # Can't be all idle in "any" mode
-            "waiting_on": [s for s in session_ids if s != result.get("idle_session_id")],
+            "session_ids": session_ids,
+            "idle_session_ids": idle_session_ids,
+            "all_idle": len(idle_session_ids) == len(session_ids),
+            "waiting_on": [s for s in session_ids if s not in idle_session_ids],
             "mode": mode,
             "waited_seconds": result["waited_seconds"],
             "timed_out": result["timed_out"],
@@ -1949,6 +1903,7 @@ async def wait_for_team_idle(
             registry.update_status(session_id, SessionStatus.READY)
 
         return {
+            "session_ids": session_ids,
             "idle_session_ids": result["idle_session_ids"],
             "all_idle": result["all_idle"],
             "waiting_on": result["waiting_on"],
