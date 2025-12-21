@@ -38,6 +38,18 @@ SOLOS: dict[str, list[str]] = {
     "seal": ["Seal"],
     "enya": ["Enya"],
     "yanni": ["Yanni"],
+    # International artists
+    "sade": ["Sade"],
+    "stromae": ["Stromae"],
+    "lorde": ["Lorde"],
+    # Historical/cultural icons
+    "confucius": ["Confucius"],
+    "nefertiti": ["Nefertiti"],
+    "hypatia": ["Hypatia"],
+    "frida": ["Frida"],
+    "oprah": ["Oprah"],
+    "basquiat": ["Basquiat"],
+    "hokusai": ["Hokusai"],
 }
 
 # Dynamic duos - iconic pairs
@@ -82,6 +94,21 @@ DUOS: dict[str, list[str]] = {
     "salt_pepa": ["Salt", "Pepa"],
     "milli_vanilli": ["Fab", "Rob"],
     "wham": ["George", "Andrew"],
+    # Literature & mythology
+    "don_sancho": ["Don Quixote", "Sancho"],
+    "romeo_juliet": ["Romeo", "Juliet"],
+    # Film
+    "jules_vincent": ["Jules", "Vincent"],
+    # Gaming
+    "ratchet_clank": ["Ratchet", "Clank"],
+    "jak_daxter": ["Jak", "Daxter"],
+    "goku_vegeta": ["Goku", "Vegeta"],
+    # Science & innovation
+    "wright_bros": ["Orville", "Wilbur"],
+    "jobs_woz": ["Steve", "Woz"],
+    # TV
+    "tia_tamera": ["Tia", "Tamera"],
+    "statler_waldorf": ["Statler", "Waldorf"],
 }
 
 # Terrific trios - famous threesomes
@@ -116,6 +143,20 @@ TRIOS: dict[str, list[str]] = {
     "hp_trio": ["Harry", "Ron", "Hermione"],
     "lotr_hunters": ["Aragorn", "Legolas", "Gimli"],
     "fairly_odd": ["Timmy", "Cosmo", "Wanda"],
+    # Mythology & folklore
+    "three_fates": ["Clotho", "Lachesis", "Atropos"],
+    "norns": ["Urd", "Verdandi", "Skuld"],
+    "trimurti": ["Brahma", "Vishnu", "Shiva"],
+    # Literature
+    "bronte_sisters": ["Charlotte", "Emily", "Anne"],
+    # Gaming & anime
+    "triforce": ["Link", "Zelda", "Ganon"],
+    "team_rocket": ["Jessie", "James", "Meowth"],
+    "sannin": ["Jiraiya", "Tsunade", "Orochimaru"],
+    # TV
+    "top_gear": ["Jeremy", "Richard", "James"],
+    "trailer_park": ["Julian", "Ricky", "Bubbles"],
+    "totally_spies": ["Sam", "Clover", "Alex"],
 }
 
 # Fabulous fours - quartets
@@ -150,6 +191,21 @@ QUARTETS: dict[str, list[str]] = {
     "monkees": ["Davy", "Micky", "Michael", "Peter"],
     "crosby_stills": ["David", "Stephen", "Graham", "Neil"],
     "it_crowd": ["Roy", "Moss", "Jen", "Richmond"],
+    # Philosophy & mythology
+    "cardinal_virtues": ["Prudence", "Justice", "Temperance", "Fortitude"],
+    "four_winds": ["Boreas", "Notus", "Eurus", "Zephyrus"],
+    # Anime
+    "team_avatar": ["Aang", "Katara", "Sokka", "Toph"],
+    "cowboy_bebop": ["Spike", "Jet", "Faye", "Ed"],
+    # TV comedy
+    "its_sunny": ["Dennis", "Mac", "Charlie", "Dee"],
+    "impractical": ["Joe", "Murr", "Sal", "Q"],
+    "schitts_creek": ["Johnny", "Moira", "David", "Alexis"],
+    # Music
+    "abba": ["Agnetha", "Björn", "Benny", "Frida"],
+    "black_sabbath": ["Ozzy", "Tony", "Geezer", "Bill"],
+    # Historical
+    "mount_rushmore": ["Washington", "Jefferson", "Roosevelt", "Lincoln"],
 }
 
 # Famous fives - quintets

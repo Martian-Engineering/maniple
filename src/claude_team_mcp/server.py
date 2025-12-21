@@ -727,7 +727,7 @@ async def spawn_workers(
 async def list_workers(
     ctx: Context[ServerSession, AppContext],
     status_filter: str | None = None,
-) -> list[dict]:
+) -> dict:
     """
     List all managed Claude Code sessions.
 
@@ -738,7 +738,9 @@ async def list_workers(
         status_filter: Optional filter by status - "ready", "busy", "spawning", "closed"
 
     Returns:
-        List of session info dicts
+        Dict with:
+            - workers: List of session info dicts
+            - count: Number of workers returned
     """
     app_ctx = ctx.request_context.lifespan_context
     registry = app_ctx.registry
@@ -750,10 +752,10 @@ async def list_workers(
             sessions = registry.list_by_status(status)
         except ValueError:
             valid_statuses = [s.value for s in SessionStatus]
-            return [error_response(
+            return error_response(
                 f"Invalid status filter: {status_filter}",
                 hint=f"Valid statuses are: {', '.join(valid_statuses)}",
-            )]
+            )
     else:
         sessions = registry.list_all()
 
@@ -761,19 +763,21 @@ async def list_workers(
     sessions = sorted(sessions, key=lambda s: s.created_at)
 
     # Convert to dicts and add message count + idle status
-    results = []
+    workers = []
     for session in sessions:
         info = session.to_dict()
-        jsonl_path = session.get_jsonl_path()
         # Try to get conversation stats
         state = session.get_conversation_state()
         if state:
             info["message_count"] = state.message_count
         # Check idle using stop hook detection
         info["is_idle"] = session.is_idle()
-        results.append(info)
+        workers.append(info)
 
-    return results
+    return {
+        "workers": workers,
+        "count": len(workers),
+    }
 
 
 @mcp.tool()
@@ -1478,10 +1482,11 @@ async def adopt_worker(
     # Check if already managed
     for managed in registry.list_all():
         if managed.iterm_session.session_id == iterm_session_id:
-            return {
-                "error": f"Session already managed as '{managed.session_id}'",
-                "existing_session": managed.to_dict(),
-            }
+            return error_response(
+                f"Session already managed as '{managed.session_id}'",
+                hint="Use message_workers to communicate with the existing session",
+                existing_session=managed.to_dict(),
+            )
 
     # Find the iTerm2 session by ID
     target_session = None
@@ -1747,7 +1752,7 @@ async def list_worktrees(
     if not resolved_path.exists():
         return error_response(
             f"Repository path does not exist: {repo_path}",
-            code="invalid_repo_path",
+            hint=HINTS["project_path_missing"],
         )
 
     repo_hash = get_repo_hash(resolved_path)
