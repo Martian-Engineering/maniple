@@ -31,9 +31,8 @@ from .iterm_utils import (
 )
 from .names import pick_names_for_count
 from .profile import PROFILE_NAME, get_or_create_profile
-from .registry import SessionRegistry, SessionStatus
+from .registry import ManagedSession, SessionRegistry, SessionStatus
 from .idle_detection import (
-    is_idle as check_is_idle,
     wait_for_idle as wait_for_idle_impl,
     wait_for_all_idle as wait_for_all_idle_impl,
     wait_for_any_idle as wait_for_any_idle_impl,
@@ -115,6 +114,29 @@ HINTS = {
         "force=True to close it anyway (may lose work)"
     ),
 }
+
+
+def get_session_or_error(
+    registry: SessionRegistry,
+    session_id: str,
+) -> ManagedSession | dict:
+    """
+    Resolve a session by ID, returning error dict if not found.
+
+    Args:
+        registry: The session registry to search
+        session_id: ID to resolve (supports session_id, iterm_session_id, or name)
+
+    Returns:
+        ManagedSession if found, or error dict with hint if not found
+    """
+    session = registry.resolve(session_id)
+    if not session:
+        return error_response(
+            f"Session not found: {session_id}",
+            hint=HINTS["session_not_found"],
+        )
+    return session
 
 
 # =============================================================================
@@ -748,10 +770,7 @@ async def list_workers(
         if state:
             info["message_count"] = state.message_count
         # Check idle using stop hook detection
-        if jsonl_path and jsonl_path.exists():
-            info["is_idle"] = check_is_idle(jsonl_path, session.session_id)
-        else:
-            info["is_idle"] = False  # No JSONL = still starting
+        info["is_idle"] = session.is_idle()
         results.append(info)
 
     return results
@@ -1095,12 +1114,9 @@ async def read_worker_logs(
         )
 
     # Look up session (accepts internal ID, terminal ID, or name)
-    session = registry.resolve(session_id)
-    if not session:
-        return error_response(
-            f"Session not found: {session_id}",
-            hint=HINTS["session_not_found"],
-        )
+    session = get_session_or_error(registry, session_id)
+    if isinstance(session, dict):
+        return session  # Error response
 
     jsonl_path = session.get_jsonl_path()
     if not jsonl_path or not jsonl_path.exists():
@@ -1211,47 +1227,17 @@ async def examine_worker(
     registry = app_ctx.registry
 
     # Look up session (accepts internal ID, terminal ID, or name)
-    session = registry.resolve(session_id)
-    if not session:
-        return error_response(
-            f"Session not found: {session_id}",
-            hint=HINTS["session_not_found"],
-        )
+    session = get_session_or_error(registry, session_id)
+    if isinstance(session, dict):
+        return session  # Error response
 
     result = session.to_dict()
-    jsonl_path = session.get_jsonl_path()
 
     # Get conversation stats from JSONL
-    # Use state.conversation (messages with content) for consistent counts
-    state = session.get_conversation_state()
-    if state:
-        convo = state.conversation  # Only messages with text content
-        user_msgs = [m for m in convo if m.role == "user"]
-        assistant_msgs = [m for m in convo if m.role == "assistant"]
-
-        result["conversation_stats"] = {
-            "total_messages": len(convo),
-            "user_messages": len(user_msgs),
-            "assistant_messages": len(assistant_msgs),
-            "last_user_prompt": (
-                user_msgs[-1].content[:200] + "..."
-                if user_msgs and len(user_msgs[-1].content) > 200
-                else (user_msgs[-1].content if user_msgs else None)
-            ),
-            "last_assistant_preview": (
-                assistant_msgs[-1].content[:200] + "..."
-                if assistant_msgs and len(assistant_msgs[-1].content) > 200
-                else (assistant_msgs[-1].content if assistant_msgs else None)
-            ),
-        }
-    else:
-        result["conversation_stats"] = None
+    result["conversation_stats"] = session.get_conversation_stats()
 
     # Check idle using stop hook detection
-    if jsonl_path and jsonl_path.exists():
-        result["is_idle"] = check_is_idle(jsonl_path, session.session_id)
-    else:
-        result["is_idle"] = False  # No JSONL = still starting
+    result["is_idle"] = session.is_idle()
 
     return result
 
@@ -1279,12 +1265,9 @@ async def annotate_worker(
     registry = app_ctx.registry
 
     # Look up session (accepts internal ID, terminal ID, or name)
-    session = registry.resolve(session_id)
-    if not session:
-        return error_response(
-            f"Session not found: {session_id}",
-            hint=HINTS["session_not_found"],
-        )
+    session = get_session_or_error(registry, session_id)
+    if isinstance(session, dict):
+        return session  # Error response
 
     session.coordinator_annotation = annotation
     session.update_activity()
@@ -1872,15 +1855,7 @@ async def check_idle_workers(
     for session_id in session_ids:
         session = registry.resolve(session_id)
         # Already validated above, but get reference again
-        jsonl_path = session.get_jsonl_path()
-
-        if not jsonl_path or not jsonl_path.exists():
-            # No JSONL means not idle (still starting up)
-            idle_results[session_id] = False
-            continue
-
-        # Check if idle using Stop hook detection
-        idle = check_is_idle(jsonl_path, session_id)
+        idle = session.is_idle()
         idle_results[session_id] = idle
 
         # Update session status if idle
@@ -2046,16 +2021,12 @@ async def resource_sessions(ctx: Context[ServerSession, AppContext]) -> list[dic
 
     for session in sessions:
         info = session.to_dict()
-        jsonl_path = session.get_jsonl_path()
         # Add conversation stats if JSONL is available
         state = session.get_conversation_state()
         if state:
             info["message_count"] = state.message_count
         # Check idle using stop hook detection
-        if jsonl_path and jsonl_path.exists():
-            info["is_idle"] = check_is_idle(jsonl_path, session.session_id)
-        else:
-            info["is_idle"] = False
+        info["is_idle"] = session.is_idle()
         results.append(info)
 
     return results
@@ -2086,41 +2057,14 @@ async def resource_session_status(
         )
 
     result = session.to_dict()
-    jsonl_path = session.get_jsonl_path()
 
     # Get conversation stats from JSONL
-    # Use state.conversation (messages with content) for consistent counts
-    state = session.get_conversation_state()
-    if state:
-        convo = state.conversation  # Only messages with text content
-        user_msgs = [m for m in convo if m.role == "user"]
-        assistant_msgs = [m for m in convo if m.role == "assistant"]
-
-        result["conversation_stats"] = {
-            "total_messages": len(convo),
-            "user_messages": len(user_msgs),
-            "assistant_messages": len(assistant_msgs),
-            "last_user_prompt": (
-                user_msgs[-1].content[:200] + "..."
-                if user_msgs and len(user_msgs[-1].content) > 200
-                else (user_msgs[-1].content if user_msgs else None)
-            ),
-            "last_assistant_preview": (
-                assistant_msgs[-1].content[:200] + "..."
-                if assistant_msgs and len(assistant_msgs[-1].content) > 200
-                else (assistant_msgs[-1].content if assistant_msgs else None)
-            ),
-        }
-        result["message_count"] = state.message_count
-    else:
-        result["conversation_stats"] = None
-        result["message_count"] = 0
+    stats = session.get_conversation_stats()
+    result["conversation_stats"] = stats
+    result["message_count"] = stats["total_messages"] if stats else 0
 
     # Check idle using stop hook detection
-    if jsonl_path and jsonl_path.exists():
-        result["is_idle"] = check_is_idle(jsonl_path, session.session_id)
-    else:
-        result["is_idle"] = False
+    result["is_idle"] = session.is_idle()
 
     return result
 

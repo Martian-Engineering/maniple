@@ -161,6 +161,54 @@ class ManagedSession:
             return None
         return parse_session(jsonl_path)
 
+    def is_idle(self) -> bool:
+        """
+        Check if this session is idle using stop hook detection.
+
+        A session is idle if its Stop hook has fired and no messages
+        have been sent after it.
+
+        Returns:
+            True if idle, False if working or JSONL not available
+        """
+        from .idle_detection import is_idle as check_is_idle
+
+        jsonl_path = self.get_jsonl_path()
+        if not jsonl_path or not jsonl_path.exists():
+            return False
+        return check_is_idle(jsonl_path, self.session_id)
+
+    def get_conversation_stats(self) -> dict | None:
+        """
+        Get conversation statistics for this session.
+
+        Returns:
+            Dict with message counts and previews, or None if JSONL not available
+        """
+        state = self.get_conversation_state()
+        if not state:
+            return None
+
+        convo = state.conversation
+        user_msgs = [m for m in convo if m.role == "user"]
+        assistant_msgs = [m for m in convo if m.role == "assistant"]
+
+        return {
+            "total_messages": len(convo),
+            "user_messages": len(user_msgs),
+            "assistant_messages": len(assistant_msgs),
+            "last_user_prompt": (
+                user_msgs[-1].content[:200] + "..."
+                if user_msgs and len(user_msgs[-1].content) > 200
+                else (user_msgs[-1].content if user_msgs else None)
+            ),
+            "last_assistant_preview": (
+                assistant_msgs[-1].content[:200] + "..."
+                if assistant_msgs and len(assistant_msgs[-1].content) > 200
+                else (assistant_msgs[-1].content if assistant_msgs else None)
+            ),
+        }
+
 
 class SessionRegistry:
     """
