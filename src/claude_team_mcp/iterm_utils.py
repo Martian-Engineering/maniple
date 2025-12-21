@@ -150,26 +150,39 @@ async def read_screen_text(session: "iterm2.Session") -> str:
 # =============================================================================
 
 
-def _calculate_screen_frame() -> tuple[float, float, float, float]:
+async def _calculate_screen_frame() -> tuple[float, float, float, float]:
     """
     Calculate a screen-filling window frame that avoids macOS fullscreen.
 
     Returns dimensions slightly smaller than full screen to ensure the window
     stays in the current Space rather than entering macOS fullscreen mode.
 
+    Uses async subprocess to avoid blocking the event loop while initial
+    sessions are starting their shells.
+
     Returns:
         Tuple of (x, y, width, height) in points for the window frame.
     """
+    import asyncio
+
     try:
-        result = subprocess.run(
-            ["system_profiler", "SPDisplaysDataType"],
-            capture_output=True,
-            text=True,
-            timeout=5,
+        proc = await asyncio.create_subprocess_exec(
+            "system_profiler", "SPDisplaysDataType",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            logger.warning("system_profiler timed out, using default frame")
+            return (0.0, 25.0, 1400.0, 900.0)
+
+        output = stdout.decode()
 
         # Parse resolution from output like "Resolution: 3840 x 2160"
-        match = re.search(r"Resolution: (\d+) x (\d+)", result.stdout)
+        match = re.search(r"Resolution: (\d+) x (\d+)", output)
         if not match:
             logger.warning("Could not parse screen resolution, using defaults")
             return (0.0, 25.0, 1400.0, 900.0)
@@ -177,7 +190,7 @@ def _calculate_screen_frame() -> tuple[float, float, float, float]:
         screen_w, screen_h = int(match.group(1)), int(match.group(2))
 
         # Detect Retina display (2x scale factor)
-        scale = 2 if "Retina" in result.stdout else 1
+        scale = 2 if "Retina" in output else 1
         logical_w = screen_w // scale
         logical_h = screen_h // scale
 
@@ -194,9 +207,6 @@ def _calculate_screen_frame() -> tuple[float, float, float, float]:
         )
         return (x, y, width, height)
 
-    except subprocess.TimeoutExpired:
-        logger.warning("system_profiler timed out, using default frame")
-        return (0.0, 25.0, 1400.0, 900.0)
     except Exception as e:
         logger.warning(f"Failed to calculate screen frame: {e}")
         return (0.0, 25.0, 1400.0, 900.0)
@@ -243,7 +253,7 @@ async def create_window(
         await asyncio.sleep(0.5)
 
     # Set window frame to fill screen without triggering fullscreen mode
-    x, y, width, height = _calculate_screen_frame()
+    x, y, width, height = await _calculate_screen_frame()
     frame = iterm2.Frame(
         origin=iterm2.Point(x, y),
         size=iterm2.Size(width, height),
@@ -304,29 +314,26 @@ async def close_pane(session: "iterm2.Session", force: bool = False) -> bool:
 # Shell Readiness Detection
 # =============================================================================
 
-# Common shell prompt endings that indicate the shell is ready for input.
-# These appear at the end of the last non-empty line when shell is idle.
-SHELL_PROMPT_PATTERNS = ['$ ', '% ', '> ', '# ', '❯ ', '➜ ']
+# Marker used to detect shell readiness - must be unique enough not to appear randomly
+SHELL_READY_MARKER = "CLAUDE_TEAM_READY_7f3a9c"
 
 
 async def wait_for_shell_ready(
     session: "iterm2.Session",
     timeout_seconds: float = 10.0,
     poll_interval: float = 0.1,
-    stable_count: int = 2,
 ) -> bool:
     """
     Wait for the shell to be ready to accept input.
 
-    Polls the screen content and waits for a stable shell prompt to appear.
-    A prompt is considered "stable" when the screen content hasn't changed
-    for `stable_count` consecutive polls AND ends with a recognized prompt.
+    Sends an echo command with a unique marker and waits for it to appear
+    in the terminal output. This proves the shell is accepting and executing
+    commands, regardless of prompt style.
 
     Args:
         session: iTerm2 session to monitor
         timeout_seconds: Maximum time to wait for shell readiness
         poll_interval: Time between screen content checks
-        stable_count: Number of consecutive stable reads before considering ready
 
     Returns:
         True if shell became ready, False if timeout was reached
@@ -334,44 +341,18 @@ async def wait_for_shell_ready(
     import asyncio
     import time
 
-    start_time = time.monotonic()
-    last_content = None
-    stable_reads = 0
+    # Send the marker command
+    await send_prompt(session, f'echo "{SHELL_READY_MARKER}"')
 
+    # Wait for marker to appear in output
+    start_time = time.monotonic()
     while (time.monotonic() - start_time) < timeout_seconds:
         try:
             content = await read_screen_text(session)
-
-            # Find the last non-empty line (the prompt line)
-            lines = content.rstrip().split('\n')
-            last_line = ''
-            for line in reversed(lines):
-                stripped = line.rstrip()
-                if stripped:
-                    last_line = stripped
-                    break
-
-            # Check if content is stable (same as last read)
-            if content == last_content:
-                stable_reads += 1
-            else:
-                stable_reads = 0
-                last_content = content
-
-            # Check if we have a stable shell prompt
-            if stable_reads >= stable_count:
-                # Look for shell prompt at end of last line
-                for pattern in SHELL_PROMPT_PATTERNS:
-                    if last_line.endswith(pattern.rstrip()):
-                        return True
-                # Also check if line ends with common prompt chars
-                if last_line and last_line[-1] in '$%>#':
-                    return True
-
+            if SHELL_READY_MARKER in content:
+                return True
         except Exception:
-            # Screen read failed, retry
             pass
-
         await asyncio.sleep(poll_interval)
 
     return False
@@ -478,44 +459,48 @@ async def start_claude_in_session(
     """
     Start Claude Code in an existing iTerm2 session.
 
-    Changes to the project directory and launches Claude Code. Waits for shell
-    readiness before sending commands, then waits for Claude's startup banner
-    to appear before returning.
+    Changes to the project directory and launches Claude Code in a single
+    atomic command (cd && claude). Waits for shell readiness before sending
+    the command, then waits for Claude's startup banner to appear.
 
     Args:
         session: iTerm2 session to use
         project_path: Directory to run Claude in
         dangerously_skip_permissions: If True, start with --dangerously-skip-permissions
         env: Optional dict of environment variables to set before running claude
-        shell_ready_timeout: Max seconds to wait for shell prompt before each command
+        shell_ready_timeout: Max seconds to wait for shell prompt
         claude_ready_timeout: Max seconds to wait for Claude to start and show banner
         stop_hook_marker_id: If provided, inject a Stop hook that logs this marker
             to the JSONL for completion detection
 
     Raises:
-        RuntimeError: If Claude fails to start within the timeout
+        RuntimeError: If shell not ready or Claude fails to start within timeout
     """
-    # Wait for shell to be ready before sending cd command
-    await wait_for_shell_ready(session, timeout_seconds=shell_ready_timeout)
+    # Wait for shell to be ready
+    shell_ready = await wait_for_shell_ready(session, timeout_seconds=shell_ready_timeout)
+    if not shell_ready:
+        raise RuntimeError(
+            f"Shell not ready after {shell_ready_timeout}s in {project_path}. "
+            "Terminal may still be initializing."
+        )
 
-    # Change to project directory
-    await send_prompt(session, f"cd {project_path}")
-
-    # Wait for shell to be ready after cd before sending claude command
-    await wait_for_shell_ready(session, timeout_seconds=shell_ready_timeout)
-
-    # Build and run claude command
-    cmd = "claude"
+    # Build claude command with flags
+    claude_cmd = "claude"
     if dangerously_skip_permissions:
-        cmd += " --dangerously-skip-permissions"
+        claude_cmd += " --dangerously-skip-permissions"
     if stop_hook_marker_id:
         settings_json = build_stop_hook_settings(stop_hook_marker_id)
-        cmd += f" --settings '{settings_json}'"
+        claude_cmd += f" --settings '{settings_json}'"
 
-    # Prepend environment variables if provided
+    # Prepend environment variables to claude (not cd)
     if env:
         env_exports = " ".join(f"{k}={v}" for k, v in env.items())
-        cmd = f"{env_exports} {cmd}"
+        claude_cmd = f"{env_exports} {claude_cmd}"
+
+    # Combine cd and claude into atomic command to avoid race condition.
+    # Shell executes "cd /path && claude" as a unit - if cd fails, claude won't run.
+    # This eliminates the need for a second wait_for_shell_ready after cd.
+    cmd = f"cd {project_path} && {claude_cmd}"
 
     await send_prompt(session, cmd)
 
