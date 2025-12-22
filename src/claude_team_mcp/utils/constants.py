@@ -1,11 +1,6 @@
 """
-Beads issue tracking tools and constants.
-
-Provides bd_help tool and shared constants for beads integration.
+Shared constants for Claude Team MCP tools.
 """
-
-from mcp.server.fastmcp import FastMCP
-
 
 # Hint appended to messages sent to workers
 WORKER_MESSAGE_HINT = "\n\n---\n(Note: Use the `bd_help` tool for guidance on using beads to track progress and add comments.)"
@@ -81,36 +76,3 @@ bd list --type bug           # Filter by type
 bd blocked                   # Show blocked issues
 ```
 """
-
-
-def register_tools(mcp: FastMCP) -> None:
-    """Register beads-related tools on the MCP server."""
-
-    @mcp.tool()
-    async def bd_help() -> dict:
-        """
-        Get a quick reference guide for using Beads issue tracking.
-
-        Returns condensed documentation on beads commands, workflow patterns,
-        and best practices for worker sessions. Call this tool when you need
-        guidance on tracking progress, adding comments, or managing issues.
-
-        Returns:
-            Dict with help text and key command examples
-        """
-        return {
-            "help": BEADS_HELP_TEXT,
-            "quick_commands": {
-                "list_issues": "bd list",
-                "show_ready": "bd ready",
-                "show_issue": "bd show <issue-id>",
-                "start_work": "bd update <id> --status in_progress",
-                "add_comment": 'bd comment <id> "progress message"',
-                "close_issue": "bd close <id>",
-                "search": "bd search <query>",
-            },
-            "worker_tip": (
-                "As a worker, add comments to track progress rather than closing issues. "
-                "The coordinator will close issues after reviewing your work."
-            ),
-        }

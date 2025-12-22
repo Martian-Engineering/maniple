@@ -1,5 +1,5 @@
 """
-Worker spawning tools.
+Spawn workers tool.
 
 Provides spawn_workers for creating new Claude Code worker sessions.
 """
@@ -28,14 +28,13 @@ from ..worktree import (
     WorktreeError,
     create_worktree,
 )
-from ..utils import error_response, HINTS, get_worktree_beads_dir
-from .beads import BEADS_HELP_TEXT
+from ..utils import error_response, HINTS, get_worktree_beads_dir, BEADS_HELP_TEXT
 
 logger = logging.getLogger("claude-team-mcp")
 
 
 def register_tools(mcp: FastMCP, ensure_connection) -> None:
-    """Register spawn-related tools on the MCP server."""
+    """Register spawn_workers tool on the MCP server."""
 
     @mcp.tool()
     async def spawn_workers(

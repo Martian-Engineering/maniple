@@ -1,7 +1,7 @@
 """
-Git worktree management tools.
+List worktrees tool.
 
-Provides list_worktrees for managing claude-team created worktrees.
+Provides list_worktrees for managing claude-team created git worktrees.
 """
 
 import logging
@@ -22,7 +22,7 @@ logger = logging.getLogger("claude-team-mcp")
 
 
 def register_tools(mcp: FastMCP) -> None:
-    """Register worktree management tools on the MCP server."""
+    """Register list_worktrees tool on the MCP server."""
 
     @mcp.tool()
     async def list_worktrees(
