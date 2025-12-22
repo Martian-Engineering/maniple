@@ -353,13 +353,19 @@ async def wait_for_shell_ready(
     # Send the marker command
     await send_prompt(session, f'echo "{SHELL_READY_MARKER}"')
 
-    # Wait for marker to appear in output
+    # Wait for marker to appear in output (not in the command itself)
+    # We look for the marker at the start of a line, which indicates the echo
+    # actually executed and produced output, not just that the command was displayed
     start_time = time.monotonic()
     while (time.monotonic() - start_time) < timeout_seconds:
         try:
             content = await read_screen_text(session)
-            if SHELL_READY_MARKER in content:
-                return True
+            # Check each line - the output will be the marker on its own line
+            # (not preceded by 'echo "' which would be the command)
+            for line in content.split('\n'):
+                stripped = line.strip()
+                if stripped == SHELL_READY_MARKER:
+                    return True
         except Exception:
             pass
         await asyncio.sleep(poll_interval)
