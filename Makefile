@@ -14,7 +14,7 @@ install-commands-force:
 	uv run scripts/install-commands.py --force
 
 test:
-	uv run pytest
+	uv run --group dev pytest
 
 sync:
-	uv sync
+	uv sync --group dev
