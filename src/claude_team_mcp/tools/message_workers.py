@@ -173,7 +173,7 @@ def register_tools(mcp: FastMCP) -> None:
                 if jsonl_path:
                     session_infos.append(SessionInfo(
                         jsonl_path=jsonl_path,
-                        session_id=sid,
+                        session_id=session.session_id,
                     ))
 
             if session_infos:

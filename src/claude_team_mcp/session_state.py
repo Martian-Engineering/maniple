@@ -50,7 +50,6 @@ class Message:
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
         result = {
-            "uuid": self.uuid,
             "role": self.role,
             "content": self.content,
             "timestamp": self.timestamp.isoformat(),
