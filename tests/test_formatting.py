@@ -9,18 +9,18 @@ class TestFormatSessionTitle:
     """Tests for format_session_title function."""
 
     def test_full_title_with_all_parts(self):
-        """Test with session name, issue ID, and task description."""
+        """Test with session name, issue ID, and annotation."""
         result = format_session_title("worker-1", "cic-3dj", "profile module")
         assert result == "[worker-1] cic-3dj: profile module"
 
     def test_title_with_issue_id_only(self):
-        """Test with session name and issue ID, no description."""
+        """Test with session name and issue ID, no annotation."""
         result = format_session_title("worker-2", issue_id="cic-abc")
         assert result == "[worker-2] cic-abc"
 
-    def test_title_with_task_desc_only(self):
-        """Test with session name and description, no issue ID."""
-        result = format_session_title("worker-3", task_desc="refactor auth")
+    def test_title_with_annotation_only(self):
+        """Test with session name and annotation, no issue ID."""
+        result = format_session_title("worker-3", annotation="refactor auth")
         assert result == "[worker-3] refactor auth"
 
     def test_title_with_session_name_only(self):
@@ -35,7 +35,7 @@ class TestFormatSessionTitle:
 
     def test_title_with_empty_strings(self):
         """Empty strings should be treated like None."""
-        # Empty issue_id with task_desc
+        # Empty issue_id with annotation
         result = format_session_title("worker-6", "", "some task")
         assert result == "[worker-6] some task"
 
@@ -43,14 +43,14 @@ class TestFormatSessionTitle:
 class TestFormatBadgeText:
     """Tests for format_badge_text function."""
 
-    def test_badge_with_bead_and_description(self):
-        """Test multi-line badge with bead and description."""
+    def test_badge_with_bead_and_annotation(self):
+        """Test multi-line badge with bead and annotation."""
         result = format_badge_text("Groucho", "cic-3dj", "profile module")
         assert result == "cic-3dj\nprofile module"
 
-    def test_badge_with_name_and_description(self):
-        """Test multi-line badge with name and description (no bead)."""
-        result = format_badge_text("Groucho", description="quick task")
+    def test_badge_with_name_and_annotation(self):
+        """Test multi-line badge with name and annotation (no bead)."""
+        result = format_badge_text("Groucho", annotation="quick task")
         assert result == "Groucho\nquick task"
 
     def test_badge_with_bead_only(self):
@@ -71,7 +71,7 @@ class TestFormatBadgeText:
 
     def test_badge_newline_separator(self):
         """Test that multi-line badge uses newline separator."""
-        result = format_badge_text("Worker", bead="cic-123", description="task")
+        result = format_badge_text("Worker", bead="cic-123", annotation="task")
         assert "\n" in result
         lines = result.split("\n")
         assert len(lines) == 2
@@ -80,51 +80,51 @@ class TestFormatBadgeText:
 
     def test_badge_empty_bead_uses_name(self):
         """Test that empty string bead falls back to name."""
-        result = format_badge_text("Groucho", bead="", description="task")
+        result = format_badge_text("Groucho", bead="", annotation="task")
         assert result == "Groucho\ntask"
 
     def test_badge_none_bead_uses_name(self):
         """Test that None bead falls back to name."""
-        result = format_badge_text("Groucho", bead=None, description="task")
+        result = format_badge_text("Groucho", bead=None, annotation="task")
         assert result == "Groucho\ntask"
 
-    def test_badge_description_truncation(self):
-        """Test that long descriptions are truncated with ellipsis."""
-        long_desc = "implement user authentication system with OAuth"
-        result = format_badge_text("Groucho", description=long_desc, max_desc_length=30)
+    def test_badge_annotation_truncation(self):
+        """Test that long annotations are truncated with ellipsis."""
+        long_annotation = "implement user authentication system with OAuth"
+        result = format_badge_text("Groucho", annotation=long_annotation, max_annotation_length=30)
         lines = result.split("\n")
         assert len(lines) == 2
         assert lines[1].endswith("...")
         assert len(lines[1]) == 30
 
-    def test_badge_description_exact_length(self):
-        """Test description exactly at max length is not truncated."""
-        desc = "a" * 30
-        result = format_badge_text("Groucho", description=desc, max_desc_length=30)
+    def test_badge_annotation_exact_length(self):
+        """Test annotation exactly at max length is not truncated."""
+        annotation = "a" * 30
+        result = format_badge_text("Groucho", annotation=annotation, max_annotation_length=30)
         lines = result.split("\n")
-        assert lines[1] == desc
+        assert lines[1] == annotation
         assert "..." not in lines[1]
 
-    def test_badge_description_one_over(self):
-        """Test description one char over max length is truncated."""
-        desc = "a" * 31
-        result = format_badge_text("Groucho", description=desc, max_desc_length=30)
+    def test_badge_annotation_one_over(self):
+        """Test annotation one char over max length is truncated."""
+        annotation = "a" * 31
+        result = format_badge_text("Groucho", annotation=annotation, max_annotation_length=30)
         lines = result.split("\n")
         assert lines[1].endswith("...")
         assert len(lines[1]) == 30
 
-    def test_badge_custom_max_desc_length(self):
-        """Test custom max_desc_length parameter."""
-        desc = "this is a moderately long description"
-        result = format_badge_text("Groucho", description=desc, max_desc_length=20)
+    def test_badge_custom_max_annotation_length(self):
+        """Test custom max_annotation_length parameter."""
+        annotation = "this is a moderately long annotation"
+        result = format_badge_text("Groucho", annotation=annotation, max_annotation_length=20)
         lines = result.split("\n")
         assert len(lines[1]) == 20
         assert lines[1] == "this is a moderat..."
 
-    def test_badge_default_max_desc_length(self):
-        """Test default max_desc_length is 30."""
-        desc = "a" * 35
-        result = format_badge_text("Groucho", description=desc)
+    def test_badge_default_max_annotation_length(self):
+        """Test default max_annotation_length is 30."""
+        annotation = "a" * 35
+        result = format_badge_text("Groucho", annotation=annotation)
         lines = result.split("\n")
         assert len(lines[1]) == 30
 

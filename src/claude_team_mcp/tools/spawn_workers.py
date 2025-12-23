@@ -4,12 +4,11 @@ Spawn workers tool.
 Provides spawn_workers for creating new Claude Code worker sessions.
 """
 
-import hashlib
 import logging
 import os
-import time
 import uuid
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Literal, Optional, Required, TypedDict
 
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
@@ -18,27 +17,39 @@ if TYPE_CHECKING:
     from ..server import AppContext
 
 from ..colors import generate_tab_color
-from ..formatting import format_session_title
+from ..formatting import format_badge_text, format_session_title
 from ..iterm_utils import (
     LAYOUT_PANE_NAMES,
-    create_multi_claude_layout,
+    MAX_PANES_PER_TAB,
+    create_multi_pane_layout,
+    find_available_window,
     send_prompt,
+    split_pane,
+    start_claude_in_session,
 )
 from ..names import pick_names_for_count
 from ..profile import (
     PROFILE_NAME,
-    get_or_create_profile,
     apply_appearance_colors,
+    get_or_create_profile,
 )
 from ..registry import SessionStatus
+from ..utils import BEADS_HELP_TEXT, HINTS, error_response, get_worktree_beads_dir
 from ..worker_prompt import generate_worker_prompt, get_coordinator_guidance
-from ..worktree import (
-    WorktreeError,
-    create_worktree,
-)
-from ..utils import error_response, HINTS, get_worktree_beads_dir, BEADS_HELP_TEXT
+from ..worktree import WorktreeError, create_local_worktree
 
 logger = logging.getLogger("claude-team-mcp")
+
+
+class WorkerConfig(TypedDict, total=False):
+    """Configuration for a single worker."""
+
+    project_path: Required[str]  # Required: Path or "auto" for local worktree
+    name: str  # Optional: Worker name override. None = auto-pick from themed sets.
+    annotation: str  # Optional: Task description (badge, branch, worker annotation)
+    bead: str  # Optional: Beads issue ID (for badge, branch naming)
+    prompt: str  # Optional: Custom prompt (None = standard worker prompt)
+    skip_permissions: bool  # Optional: Default False
 
 
 def register_tools(mcp: FastMCP, ensure_connection) -> None:
@@ -47,151 +58,106 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
     @mcp.tool()
     async def spawn_workers(
         ctx: Context[ServerSession, "AppContext"],
-        projects: dict[str, str],
-        layout: str = "auto",
-        skip_permissions: bool = False,
-        custom_names: list[str] | None = None,
-        custom_prompt: str | None = None,
-        include_beads_instructions: bool = True,
-        use_worktrees: bool = False,
+        workers: list[WorkerConfig],
+        layout: Literal["auto", "new"] = "auto",
     ) -> dict:
         """
-        Spawn multiple Claude Code sessions in a multi-pane layout.
+        Spawn Claude Code worker sessions.
 
-        Creates a new iTerm2 window with the specified pane layout and starts
-        Claude Code in each pane. All sessions are registered for management.
-        Each pane receives a unique tab color from a visually distinct sequence,
-        and badges display iconic names (e.g., "Groucho", "John").
+        Creates worker sessions in iTerm2, each with its own pane, Claude instance,
+        and optional worktree. Workers can be spawned into existing windows (layout="auto")
+        or a fresh window (layout="new").
 
-        **Two Modes:**
+        **Layout Modes:**
 
-        1. **Standard Mode** (default, custom_prompt=None):
-           - Sends a pre-built worker pre-prompt to each session explaining
-             the coordination workflow (blocker flagging, beads discipline, etc.)
-           - Returns `coordinator_guidance` with instructions for the coordinator
-           - Best for general-purpose coordinated work
+        1. **"auto"** (default): Reuse existing claude-team windows.
+           - Finds tabs with <4 panes that contain managed sessions
+           - Splits new panes into available space
+           - Falls back to new window if no space available
+           - Incremental quad building: TL → TR → BL → BR
 
-        2. **Custom Mode** (custom_prompt provided):
-           - Sends your custom_prompt to each worker instead of the standard pre-prompt
-           - If include_beads_instructions=True, appends beads guidance to your prompt
-           - Does NOT return coordinator_guidance (you're in charge of the workflow)
-           - Best for specialized workflows or when workers need specific instructions
+        2. **"new"**: Always create a new window.
+           - 1 worker: single pane (full window)
+           - 2 workers: vertical split (left/right)
+           - 3 workers: triple vertical (left/middle/right)
+           - 4 workers: quad layout (2x2 grid)
+
+        **WorkerConfig fields:**
+            project_path: Required. Path to project, or "auto" to create local worktree.
+                - Path: Spawn worker at this location
+                - "auto": Create worktree at .worktrees/<bead>-<annotation> or
+                  .worktrees/<name>-<uuid>-<annotation>, auto-adds to .gitignore
+            name: Optional worker name override. Leaving this empty allows us to auto-pick names
+                from themed sets (Beatles, Marx Brothers, etc.) which aids visual identification.
+            annotation: Optional task description. Shown on badge second line, used in
+                branch names, and set as worker annotation. If using a bead, it's
+                recommended to use the bead title as the annotation for clarity.
+                Truncated to 30 chars in badge.
+            bead: Optional beads issue ID. Used for badge first line, branch naming.
+            prompt: Optional custom prompt. If None, uses standard worker prompt with
+                beads workflow guidance.
+            skip_permissions: Whether to start Claude with --dangerously-skip-permissions.
+                Default False. Without this, workers can only read local files and will
+                struggle with most commands (writes, shell, etc.).
+
+        **Badge Format:**
+        ```
+        <bead or name>
+        <annotation (truncated)>
+        ```
 
         Args:
-            projects: Dict mapping pane names to project paths. Keys must match
-                the layout's pane names:
-                - "single": ["main"]
-                - "vertical": ["left", "right"]
-                - "horizontal": ["top", "bottom"]
-                - "quad": ["top_left", "top_right", "bottom_left", "bottom_right"]
-                - "triple_vertical": ["left", "middle", "right"]
-            layout: Layout type - "auto" (default), "single", "vertical", "horizontal",
-                "quad", or "triple_vertical". When "auto", the layout is selected based
-                on project count:
-                - 1 project: "single" (full window, no splits)
-                - 2 projects: "vertical"
-                - 3 projects: "triple_vertical"
-                - 4+ projects: "quad"
-            skip_permissions: If True, start Claude with --dangerously-skip-permissions
-            custom_names: (Optional) Override automatic name selection with explicit names.
-                Leave empty to auto-select a size-matched iconic group (e.g., Beatles for 4,
-                Three Stooges for 3, Simon & Garfunkel for 2).
-            custom_prompt: If provided, sends this prompt to workers instead of the
-                standard pre-prompt (activates custom mode).
-            include_beads_instructions: For custom mode only - if True (default),
-                appends beads quick reference to your custom prompt.
-            use_worktrees: If True, create an isolated git worktree for each worker.
-                Workers will operate in their own working directory while sharing
-                the same repository history. Each worker gets a branch named
-                "{worker_name}-{hash}" (e.g., "Mark-a1b2c3") for uniqueness.
+            workers: List of WorkerConfig dicts. Must have 1-4 workers.
+            layout: "auto" (reuse windows) or "new" (fresh window).
 
         Returns:
             Dict with:
-                - sessions: Dict mapping pane names to session info (id, status, project_path,
-                  worktree_path if use_worktrees=True)
-                - layout: The layout used (resolved from "auto" if applicable)
-                - count: Number of sessions created
-                - name_set: The name set used (or "custom" if custom_names provided)
+                - sessions: Dict mapping worker names to session info
+                - layout: The layout mode used
+                - count: Number of workers spawned
                 - mode: "standard" or "custom"
-                - use_worktrees: Whether worktrees were created
-                - coordinator_guidance: Instructions for the coordinator (standard mode only)
+                - coordinator_guidance: Instructions for coordinator (standard mode only)
 
-        Example (standard mode):
+        Example (standard mode with worktrees):
             spawn_workers(
-                projects={
-                    "left": "/path/to/frontend",
-                    "right": "/path/to/backend",
-                },
-                layout="vertical",
+                workers=[
+                    {"project_path": "auto", "annotation": "Fix auth bug", "bead": "cic-abc"},
+                    {"project_path": "auto", "annotation": "Add unit tests", "bead": "cic-xyz"},
+                ],
+                layout="auto",  # Reuse existing windows if available
             )
-            # Automatically picks a duo like Simon & Garfunkel or Tom & Jerry
-            # Returns coordinator_guidance with worker management instructions
 
-        Example (custom mode):
+        Example (custom prompts, specific paths):
             spawn_workers(
-                projects={"main": "/path/to/project"},
-                layout="single",
-                custom_prompt="You are a code reviewer. Review all changed files.",
-                include_beads_instructions=False  # Skip beads for this workflow
+                workers=[
+                    {"project_path": "/path/to/repo", "annotation": "Code review"},
+                ],
+                layout="new",  # Always new window
             )
-            # Workers receive your custom prompt, no coordinator_guidance returned
         """
         from iterm2.profile import LocalWriteOnlyProfile
 
-        from ..session_state import generate_marker_message, await_marker_in_jsonl
-        from pathlib import Path
+        from ..session_state import await_marker_in_jsonl, generate_marker_message
 
         app_ctx = ctx.request_context.lifespan_context
         registry = app_ctx.registry
 
-        # Ensure we have a fresh connection (websocket can go stale)
+        # Validate worker count
+        if not workers:
+            return error_response("At least one worker is required")
+        if len(workers) > MAX_PANES_PER_TAB:
+            return error_response(
+                f"Maximum {MAX_PANES_PER_TAB} workers per spawn",
+                hint="Call spawn_workers multiple times for more workers",
+            )
+
+        # Ensure all workers have required fields
+        for i, w in enumerate(workers):
+            if "project_path" not in w:
+                return error_response(f"Worker {i} missing required 'project_path'")
+
+        # Ensure we have a fresh connection
         connection, app = await ensure_connection(app_ctx)
-
-        # Auto-select layout based on project count
-        if layout == "auto":
-            count = len(projects)
-            if count == 1:
-                layout = "single"  # full window, no splits
-            elif count == 2:
-                layout = "vertical"
-            elif count == 3:
-                layout = "triple_vertical"
-            elif count >= 4:
-                layout = "quad"
-
-        # Validate layout
-        if layout not in LAYOUT_PANE_NAMES:
-            return error_response(
-                f"Invalid layout: {layout}",
-                hint=f"Valid layouts are: {', '.join(LAYOUT_PANE_NAMES.keys())}",
-            )
-
-        # Validate pane names
-        expected_panes = set(LAYOUT_PANE_NAMES[layout])
-        provided_panes = set(projects.keys())
-        if not provided_panes.issubset(expected_panes):
-            invalid = provided_panes - expected_panes
-            return error_response(
-                f"Invalid pane names for layout '{layout}': {list(invalid)}",
-                hint=f"Valid pane names for '{layout}' are: {', '.join(expected_panes)}",
-            )
-
-        # Validate all project paths exist and detect worktrees
-        resolved_projects = {}
-        project_envs: dict[str, dict[str, str]] = {}
-        for pane_name, project_path in projects.items():
-            resolved = os.path.abspath(os.path.expanduser(project_path))
-            if not os.path.isdir(resolved):
-                return error_response(
-                    f"Project path does not exist for '{pane_name}': {resolved}",
-                    hint=HINTS["project_path_missing"],
-                )
-            resolved_projects[pane_name] = resolved
-
-            # Check for worktree and set BEADS_DIR if needed
-            beads_dir = get_worktree_beads_dir(resolved)
-            if beads_dir:
-                project_envs[pane_name] = {"BEADS_DIR": beads_dir}
 
         try:
             # Ensure the claude-team profile exists
@@ -200,140 +166,275 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             # Get base session index for color generation
             base_index = registry.count()
 
-            # Create profile customizations for each pane
-            # Each pane gets a unique color from the sequence and a badge showing iconic name
-            profile_customizations: dict[str, LocalWriteOnlyProfile] = {}
-            layout_pane_names = LAYOUT_PANE_NAMES[layout]
+            # Resolve worker names: use provided names or auto-pick from themed sets
+            worker_count = len(workers)
+            resolved_names: list[str] = []
 
-            # Pick iconic names for sessions
-            project_count = len(projects)
-            if custom_names:
-                iconic_names = custom_names
-                used_name_set = "custom"
+            # Count how many need auto-picked names
+            unnamed_count = sum(1 for w in workers if not w.get("name"))
+
+            # Get auto-picked names for workers without explicit names
+            if unnamed_count > 0:
+                _, auto_names = pick_names_for_count(unnamed_count)
+                auto_name_iter = iter(auto_names)
             else:
-                # Auto-select a size-matched set based on worker count
-                used_name_set, iconic_names = pick_names_for_count(project_count)
+                auto_name_iter = iter([])  # Empty iterator
 
-            # Map pane names to iconic names (in layout order)
-            pane_to_iconic: dict[str, str] = {}
-            name_index = 0
-            for pane_name in layout_pane_names:
-                if pane_name in projects:
-                    pane_to_iconic[pane_name] = iconic_names[name_index % len(iconic_names)]
-                    name_index += 1
+            for w in workers:
+                name = w.get("name")
+                if name:
+                    resolved_names.append(name)
+                else:
+                    resolved_names.append(next(auto_name_iter))
 
-            # Pre-generate session IDs for each pane
-            # These will be used as Stop hook markers and for registry registration
-            pane_session_ids: dict[str, str] = {}
-            for pane_name in projects:
-                pane_session_ids[pane_name] = str(uuid.uuid4())[:8]
+            # Resolve project paths and create worktrees if needed
+            # Workers with project_path="auto" get local worktrees
+            resolved_paths: list[str] = []
+            worktree_paths: dict[int, Path] = {}  # index -> worktree path
+            main_repo_paths: dict[int, Path] = {}  # index -> main repo (for "auto")
 
-            # Create worktrees if requested
-            # Track original project paths and worktree paths separately
-            original_projects = dict(resolved_projects)  # Preserve original paths
-            worktree_paths: dict[str, Path] = {}  # pane_name -> worktree Path
+            # Find the main repo path for "auto" workers
+            # Use the first non-auto path, or cwd
+            main_repo_for_auto: Optional[Path] = None
+            for w in workers:
+                if w["project_path"] != "auto":
+                    candidate = Path(w["project_path"]).expanduser().resolve()
+                    if candidate.is_dir():
+                        main_repo_for_auto = candidate
+                        break
+            if main_repo_for_auto is None:
+                main_repo_for_auto = Path.cwd()
 
-            if use_worktrees:
-                for pane_name, project_path in list(resolved_projects.items()):
-                    worker_name = pane_to_iconic[pane_name]
-                    # Each worker gets their own branch with a unique hash suffix
-                    # to avoid conflicts if names are recycled across spawns
-                    unique_seed = f"{worker_name}-{time.time()}-{pane_name}"
-                    short_hash = hashlib.sha256(unique_seed.encode()).hexdigest()[:6]
-                    worker_branch = f"{worker_name}-{short_hash}"
-                    # Worktree name includes branch for identification
-                    # Timestamp is added by create_worktree for uniqueness
-                    worktree_name = f"{worker_name}-{short_hash}"
+            for i, (w, name) in enumerate(zip(workers, resolved_names)):
+                project_path = w["project_path"]
+
+                if project_path == "auto":
+                    # Create local worktree
+                    bead = w.get("bead")
+                    annotation = w.get("annotation")
+
                     try:
-                        # Worktrees are created at ~/.claude-team/worktrees/{repo-hash}/{name}-{timestamp}
-                        # This keeps them outside the target repo to avoid "embedded repo" warnings
-                        worktree_path = create_worktree(
-                            repo_path=Path(project_path),
-                            worktree_name=worktree_name,
-                            branch=worker_branch,
+                        worktree_path = create_local_worktree(
+                            repo_path=main_repo_for_auto,
+                            worker_name=name,
+                            bead_id=bead,
+                            annotation=annotation,
                         )
-                        worktree_paths[pane_name] = worktree_path
-                        # Update resolved_projects so Claude starts in the worktree
-                        resolved_projects[pane_name] = str(worktree_path)
-                        logger.info(f"Created worktree for {worker_name} at {worktree_path}")
+                        worktree_paths[i] = worktree_path
+                        main_repo_paths[i] = main_repo_for_auto
+                        resolved_paths.append(str(worktree_path))
+                        logger.info(f"Created local worktree for {name} at {worktree_path}")
                     except WorktreeError as e:
-                        # Log but don't fail - worker can still use main repo
                         logger.warning(
-                            f"Failed to create worktree for {worker_name}: {e}. "
-                            "Worker will use main repo."
+                            f"Failed to create worktree for {name}: {e}. "
+                            "Using main repo instead."
                         )
+                        resolved_paths.append(str(main_repo_for_auto))
+                else:
+                    # Use provided path
+                    resolved = os.path.abspath(os.path.expanduser(project_path))
+                    if not os.path.isdir(resolved):
+                        return error_response(
+                            f"Project path does not exist for worker {i}: {resolved}",
+                            hint=HINTS["project_path_missing"],
+                        )
+                    resolved_paths.append(resolved)
 
-            for pane_index, pane_name in enumerate(layout_pane_names):
-                if pane_name not in projects:
-                    continue  # Skip panes not being used
+            # Pre-generate session IDs for Stop hook injection
+            session_ids = [str(uuid.uuid4())[:8] for _ in workers]
 
+            # Build profile customizations for each worker
+            profile_customizations: list[LocalWriteOnlyProfile] = []
+            for i, (w, name) in enumerate(zip(workers, resolved_names)):
                 customization = LocalWriteOnlyProfile()
 
-                # Get the iconic name for this pane
-                iconic_name = pane_to_iconic[pane_name]
+                bead = w.get("bead")
+                annotation = w.get("annotation")
 
-                # Set tab title with iconic name
-                tab_title = format_session_title(iconic_name)
+                # Tab title
+                tab_title = format_session_title(name, issue_id=bead, annotation=annotation)
                 customization.set_name(tab_title)
 
-                # Set unique tab color for this pane
-                color = generate_tab_color(base_index + pane_index)
+                # Tab color (unique per worker)
+                color = generate_tab_color(base_index + i)
                 customization.set_tab_color(color)
                 customization.set_use_tab_color(True)
 
-                # Set badge text to show iconic name
-                customization.set_badge_text(iconic_name)
+                # Badge (multi-line with bead/name and annotation)
+                badge_text = format_badge_text(name, bead=bead, annotation=annotation)
+                customization.set_badge_text(badge_text)
 
-                # Apply current appearance mode colors (light/dark)
+                # Apply current appearance mode colors
                 await apply_appearance_colors(customization, connection)
 
-                profile_customizations[pane_name] = customization
+                profile_customizations.append(customization)
 
-            # Create the multi-pane layout and start Claude in each pane
-            # Pass pre-generated session IDs as marker IDs for Stop hook injection
-            pane_sessions = await create_multi_claude_layout(
-                connection=connection,
-                projects=resolved_projects,
-                layout=layout,
-                skip_permissions=skip_permissions,
-                project_envs=project_envs if project_envs else None,
-                profile=PROFILE_NAME,
-                profile_customizations=profile_customizations,
-                pane_marker_ids=pane_session_ids,
-            )
+            # Create panes based on layout mode
+            pane_sessions: list = []  # list of iTerm sessions
 
-            # Register all sessions (this is quick, no I/O)
-            # Use the pre-generated session IDs that were baked into Stop hooks
-            managed_sessions = {}
-            for pane_name, iterm_session in pane_sessions.items():
-                iconic_name = pane_to_iconic[pane_name]
-                session_id = pane_session_ids[pane_name]
-                # Use resolved_projects which has worktree paths if created
-                # Claude creates JSONL based on working directory, so we need
-                # to use the worktree path for JSONL lookup to work correctly
-                managed = registry.add(
-                    iterm_session=iterm_session,
-                    project_path=resolved_projects[pane_name],
-                    name=iconic_name,  # e.g., "Groucho", "John"
-                    session_id=session_id,  # Use pre-generated ID from Stop hook
+            if layout == "auto":
+                # Try to find existing windows with space
+                # Build set of iTerm session IDs from all managed sessions
+                managed_iterm_ids: set[str] = {
+                    s.iterm_session.session_id
+                    for s in registry.list_all()
+                    if s.iterm_session is not None
+                }
+
+                for i in range(worker_count):
+                    result = await find_available_window(
+                        app,
+                        max_panes=MAX_PANES_PER_TAB,
+                        managed_session_ids=managed_iterm_ids,
+                    )
+
+                    if result:
+                        # Found a window with space - split into it
+                        window, tab, existing_session = result
+                        current_pane_count = len(tab.sessions)
+
+                        # Determine split direction based on current pane count
+                        # Incremental quad: TL→TR(vsplit)→BL(hsplit)→BR(hsplit)
+                        if current_pane_count == 1:
+                            # First split: vertical (left/right)
+                            new_session = await split_pane(
+                                existing_session,
+                                vertical=True,
+                                before=False,
+                                profile=PROFILE_NAME,
+                                profile_customizations=profile_customizations[i],
+                            )
+                        elif current_pane_count == 2:
+                            # Second split: horizontal from left pane (creates bottom-left)
+                            # Get the left pane (first session)
+                            left_session = tab.sessions[0]
+                            new_session = await split_pane(
+                                left_session,
+                                vertical=False,
+                                before=False,
+                                profile=PROFILE_NAME,
+                                profile_customizations=profile_customizations[i],
+                            )
+                        else:  # current_pane_count == 3
+                            # Third split: horizontal from right pane (creates bottom-right)
+                            # Get the right pane (second session after splits)
+                            right_session = tab.sessions[1]
+                            new_session = await split_pane(
+                                right_session,
+                                vertical=False,
+                                before=False,
+                                profile=PROFILE_NAME,
+                                profile_customizations=profile_customizations[i],
+                            )
+
+                        pane_sessions.append(new_session)
+                        # Update managed IDs for next iteration
+                        managed_iterm_ids.add(new_session.session_id)
+                    else:
+                        # No window with space - create new window
+                        # For the first worker when no windows exist, create a new window
+                        if i == 0:
+                            # Create new window with single pane
+                            panes = await create_multi_pane_layout(
+                                connection,
+                                "single",
+                                profile=PROFILE_NAME,
+                                profile_customizations={"main": profile_customizations[i]},
+                            )
+                            pane_sessions.append(panes["main"])
+                            managed_iterm_ids.add(panes["main"].session_id)
+                        else:
+                            # Subsequent workers when no space - split from last created
+                            last_session = pane_sessions[-1]
+                            new_session = await split_pane(
+                                last_session,
+                                vertical=True,
+                                before=False,
+                                profile=PROFILE_NAME,
+                                profile_customizations=profile_customizations[i],
+                            )
+                            pane_sessions.append(new_session)
+                            managed_iterm_ids.add(new_session.session_id)
+
+            else:  # layout == "new"
+                # Create new window with appropriate layout
+                if worker_count == 1:
+                    window_layout = "single"
+                    pane_names = ["main"]
+                elif worker_count == 2:
+                    window_layout = "vertical"
+                    pane_names = ["left", "right"]
+                elif worker_count == 3:
+                    window_layout = "triple_vertical"
+                    pane_names = ["left", "middle", "right"]
+                else:  # 4
+                    window_layout = "quad"
+                    pane_names = ["top_left", "top_right", "bottom_left", "bottom_right"]
+
+                # Build customizations dict for layout
+                customizations_dict = {
+                    pane_names[i]: profile_customizations[i] for i in range(worker_count)
+                }
+
+                panes = await create_multi_pane_layout(
+                    connection,
+                    window_layout,
+                    profile=PROFILE_NAME,
+                    profile_customizations=customizations_dict,
                 )
-                # Store worktree path and main repo path if worktree was created
-                if pane_name in worktree_paths:
-                    managed.worktree_path = worktree_paths[pane_name]
-                    managed.main_repo_path = Path(original_projects[pane_name])
-                managed_sessions[pane_name] = managed
 
-            # Send marker messages to all sessions for JSONL correlation
-            for pane_name, managed in managed_sessions.items():
+                pane_sessions = [panes[name] for name in pane_names[:worker_count]]
+
+            # Start Claude in all panes
+            import asyncio
+
+            async def start_claude_for_worker(index: int) -> None:
+                session = pane_sessions[index]
+                project_path = resolved_paths[index]
+                worker_config = workers[index]
+                marker_id = session_ids[index]
+
+                # Check for worktree and set BEADS_DIR if needed
+                beads_dir = get_worktree_beads_dir(project_path)
+                env = {"BEADS_DIR": beads_dir} if beads_dir else None
+
+                await start_claude_in_session(
+                    session=session,
+                    project_path=project_path,
+                    dangerously_skip_permissions=worker_config.get("skip_permissions", False),
+                    env=env,
+                    stop_hook_marker_id=marker_id,
+                )
+
+            await asyncio.gather(*[start_claude_for_worker(i) for i in range(worker_count)])
+
+            # Register all sessions
+            managed_sessions = []
+            for i in range(worker_count):
+                managed = registry.add(
+                    iterm_session=pane_sessions[i],
+                    project_path=resolved_paths[i],
+                    name=resolved_names[i],
+                    session_id=session_ids[i],
+                )
+                # Set annotation from worker config (if provided)
+                managed.coordinator_annotation = workers[i].get("annotation")
+                # Store worktree info if applicable
+                if i in worktree_paths:
+                    managed.worktree_path = worktree_paths[i]
+                    managed.main_repo_path = main_repo_paths[i]
+                managed_sessions.append(managed)
+
+            # Send marker messages for JSONL correlation
+            for i, managed in enumerate(managed_sessions):
                 marker_message = generate_marker_message(
                     managed.session_id,
                     iterm_session_id=managed.iterm_session.session_id,
                 )
-                await send_prompt(pane_sessions[pane_name], marker_message, submit=True)
+                await send_prompt(pane_sessions[i], marker_message, submit=True)
 
-            # Poll for markers to appear in JSONL (replaces blind 2s wait)
-            # Marker is logged as user message the instant send_prompt returns
-            for pane_name, managed in managed_sessions.items():
+            # Wait for markers to appear in JSONL
+            for i, managed in enumerate(managed_sessions):
                 claude_session_id = await await_marker_in_jsonl(
                     managed.project_path,
                     managed.session_id,
@@ -348,64 +449,56 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                         "JSONL correlation unavailable"
                     )
 
-            # Determine mode and send appropriate prompts to workers
-            is_standard_mode = custom_prompt is None
+            # Send worker prompts (each worker independently gets custom or standard)
+            any_standard_mode = False
+            for i, managed in enumerate(managed_sessions):
+                worker_config = workers[i]
+                custom_prompt = worker_config.get("prompt")
 
-            for pane_name, managed in managed_sessions.items():
-                iconic_name = pane_to_iconic[pane_name]
-
-                if is_standard_mode:
-                    # Standard mode: send worker pre-prompt with coordination workflow
-                    # Note: iTerm marker already sent via generate_marker_message above
+                if custom_prompt:
+                    # This worker has a custom prompt - use it directly
+                    worker_prompt = custom_prompt
+                else:
+                    # This worker uses standard prompt with beads workflow
+                    any_standard_mode = True
+                    use_worktree = i in worktree_paths
                     worker_prompt = generate_worker_prompt(
                         managed.session_id,
-                        iconic_name,
-                        use_worktree=use_worktrees,
+                        resolved_names[i],
+                        use_worktree=use_worktree,
                     )
-                else:
-                    # Custom mode: use the provided custom_prompt
-                    worker_prompt = custom_prompt
-                    if include_beads_instructions:
-                        # Append beads guidance from BEADS_HELP_TEXT
-                        worker_prompt += "\n\n---\n" + BEADS_HELP_TEXT
 
-                await send_prompt(pane_sessions[pane_name], worker_prompt, submit=True)
+                await send_prompt(pane_sessions[i], worker_prompt, submit=True)
 
-            # Mark sessions ready (discovery already happened during marker polling)
+            # Mark sessions ready
             result_sessions = {}
-            for pane_name, managed in managed_sessions.items():
+            for managed in managed_sessions:
                 registry.update_status(managed.session_id, SessionStatus.READY)
-                result_sessions[pane_name] = managed.to_dict()
+                result_sessions[managed.name] = managed.to_dict()
 
-            # Re-activate the window and app to bring it to focus after all setup is complete.
-            # The initial activation in create_window() happens early, but focus can
-            # shift back to the coordinator window during the Claude startup process.
-            # Note: Window.async_activate() only focuses within iTerm2, we also need
-            # App.async_activate() to bring iTerm2 itself to the foreground.
+            # Re-activate the window to bring it to focus
             try:
                 await app.async_activate()
-                # Get window from any of the sessions (they're all in the same window)
-                any_session = next(iter(pane_sessions.values()))
-                tab = any_session.tab
-                if tab is not None:
-                    window = tab.window
-                    if window is not None:
-                        await window.async_activate()
+                if pane_sessions:
+                    tab = pane_sessions[0].tab
+                    if tab is not None:
+                        window = tab.window
+                        if window is not None:
+                            await window.async_activate()
             except Exception as e:
                 logger.debug(f"Failed to re-activate window: {e}")
 
-            # Build return value based on mode
+            # Build return value
             result = {
                 "sessions": result_sessions,
                 "layout": layout,
                 "count": len(result_sessions),
-                "name_set": used_name_set,
-                "mode": "standard" if is_standard_mode else "custom",
-                "use_worktrees": use_worktrees,
+                "mode": "standard" if any_standard_mode else "custom",
             }
 
-            # Include coordinator guidance only in standard mode
-            if is_standard_mode:
+            # Include coordinator guidance if any workers use standard mode
+            if any_standard_mode:
+                use_worktrees = bool(worktree_paths)
                 result["coordinator_guidance"] = get_coordinator_guidance(use_worktrees)
             else:
                 result["coordinator_guidance"] = None
@@ -413,11 +506,10 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             return result
 
         except ValueError as e:
-            # Layout or pane name validation errors from the primitive
             logger.error(f"Validation error in spawn_workers: {e}")
             return error_response(str(e))
         except Exception as e:
-            logger.error(f"Failed to spawn team: {e}")
+            logger.error(f"Failed to spawn workers: {e}")
             return error_response(
                 str(e),
                 hint=HINTS["iterm_connection"],

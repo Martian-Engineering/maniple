@@ -13,7 +13,7 @@ Two worktree strategies are supported:
    - No .gitignore modifications needed
 
 2. Local worktrees (preferred):
-   {repo}/.worktrees/{bead-description}/ or {name-uuid-description}/
+   {repo}/.worktrees/{bead-annotation}/ or {name-uuid-annotation}/
    - Kept within the repo for easier discovery and cleanup
    - Automatically adds .worktrees to .gitignore
 """
@@ -228,14 +228,14 @@ def create_local_worktree(
     repo_path: Path,
     worker_name: str,
     bead_id: Optional[str] = None,
-    description: Optional[str] = None,
+    annotation: Optional[str] = None,
 ) -> Path:
     """
     Create a git worktree in the repo's .worktrees/ directory.
 
     Creates a new worktree at:
-        {repo}/.worktrees/{bead_id}-{description}/  (if bead_id provided)
-        {repo}/.worktrees/{worker_name}-{uuid}-{description}/  (otherwise)
+        {repo}/.worktrees/{bead_id}-{annotation}/  (if bead_id provided)
+        {repo}/.worktrees/{worker_name}-{uuid}-{annotation}/  (otherwise)
 
     The branch name matches the worktree directory name for consistency.
     Automatically adds .worktrees to .gitignore if not present.
@@ -244,7 +244,7 @@ def create_local_worktree(
         repo_path: Path to the main repository
         worker_name: Name of the worker (used in fallback naming)
         bead_id: Optional bead issue ID (e.g., "cic-abc123")
-        description: Optional description for the worktree
+        annotation: Optional annotation for the worktree
 
     Returns:
         Path to the created worktree
@@ -258,7 +258,7 @@ def create_local_worktree(
             repo_path=Path("/path/to/repo"),
             worker_name="Groucho",
             bead_id="cic-abc",
-            description="Add local worktrees"
+            annotation="Add local worktrees"
         )
         # Returns: Path("/path/to/repo/.worktrees/cic-abc-add-local-worktrees")
 
@@ -266,7 +266,7 @@ def create_local_worktree(
         path = create_local_worktree(
             repo_path=Path("/path/to/repo"),
             worker_name="Groucho",
-            description="Fix bug"
+            annotation="Fix bug"
         )
         # Returns: Path("/path/to/repo/.worktrees/groucho-a1b2c3d4-fix-bug")
     """
@@ -274,17 +274,17 @@ def create_local_worktree(
 
     # Build the worktree directory name
     if bead_id:
-        # Bead-based naming: {bead_id}-{description}
-        if description:
-            dir_name = f"{bead_id}-{slugify(description)}"
+        # Bead-based naming: {bead_id}-{annotation}
+        if annotation:
+            dir_name = f"{bead_id}-{slugify(annotation)}"
         else:
             dir_name = bead_id
     else:
-        # Fallback naming: {worker_name}-{uuid}-{description}
+        # Fallback naming: {worker_name}-{uuid}-{annotation}
         short_uuid = uuid.uuid4().hex[:8]
         name_slug = slugify(worker_name)
-        if description:
-            dir_name = f"{name_slug}-{short_uuid}-{slugify(description)}"
+        if annotation:
+            dir_name = f"{name_slug}-{short_uuid}-{slugify(annotation)}"
         else:
             dir_name = f"{name_slug}-{short_uuid}"
 
