@@ -846,38 +846,38 @@ async def find_available_window(
     Find a window with an available tab that has room for more panes.
 
     Searches terminal windows for a tab with fewer than max_panes sessions.
-    If managed_session_ids is provided, only considers windows that contain
-    at least one managed session (to avoid splitting into user's unrelated windows).
+    If managed_session_ids is provided, only considers tabs that contain
+    at least one managed session (to avoid splitting into user's unrelated tabs).
+
+    Note: When managed_session_ids is an empty set, no tabs will match (correct
+    behavior - an empty registry means we have no managed sessions to reuse,
+    so a new window should be created).
 
     Args:
         app: iTerm2 app object
         max_panes: Maximum panes before considering a tab full (default 4)
         managed_session_ids: Optional set of iTerm2 session IDs that are managed
-            by claude-team. If provided, only windows containing at least one
-            of these sessions will be considered.
+            by claude-team. If provided (including empty set), only tabs
+            containing at least one of these sessions will be considered.
+            Pass None to consider all tabs.
 
     Returns:
         Tuple of (window, tab, session) if found, None if all tabs are full
     """
     for window in app.terminal_windows:
-        # If we have managed session IDs, check if this window contains any
-        if managed_session_ids is not None:
-            window_has_managed_session = False
-            for tab in window.tabs:
-                for session in tab.sessions:
-                    if session.session_id in managed_session_ids:
-                        window_has_managed_session = True
-                        break
-                if window_has_managed_session:
-                    break
-            if not window_has_managed_session:
-                # Skip this window - it doesn't contain any managed sessions
-                continue
-
-        # Check if any tab has room for more panes
         for tab in window.tabs:
-            pane_count = count_panes_in_tab(tab)
-            if pane_count < max_panes:
+            # If we have managed session IDs filter, check if this tab contains any
+            # Note: empty set is valid (matches nothing) - use `is not None` check
+            if managed_session_ids is not None:
+                tab_has_managed = any(
+                    s.session_id in managed_session_ids for s in tab.sessions
+                )
+                if not tab_has_managed:
+                    # Skip this tab - it doesn't contain any managed sessions
+                    continue
+
+            # Check if this tab has room for more panes
+            if count_panes_in_tab(tab) < max_panes:
                 # Return the current session in this tab as the split target
                 current_session = tab.current_session
                 if current_session:
