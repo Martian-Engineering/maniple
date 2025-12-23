@@ -133,10 +133,11 @@ def unslugify_path(slug: str) -> str | None:
     if not slug.startswith("-"):
         return None
 
-    # Handle .worktrees directories specifically
+    # Handle dotfile directories specifically
     # The slug replaces both / and . with -, so /.worktrees becomes --worktrees
-    # We only handle this known case to avoid unexpected behavior elsewhere
+    # We handle known cases to avoid unexpected behavior elsewhere
     slug = slug.replace("--worktrees", "-.worktrees")
+    slug = slug.replace("--claude-team", "-.claude-team")
 
     # Split the slug into parts (removing the leading -)
     # Each part was originally separated by / or is part of a hyphenated name
