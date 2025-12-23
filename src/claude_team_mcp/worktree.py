@@ -5,22 +5,107 @@ Provides functions to create, remove, and list git worktrees, enabling
 each worker session to operate in its own isolated working directory
 while sharing the same repository history.
 
-Worktrees are created OUTSIDE the target repository to avoid polluting it:
-    ~/.claude-team/worktrees/{repo-path-hash}/{worker-name}-{timestamp}/
+Two worktree strategies are supported:
 
-This prevents "embedded repository" warnings and doesn't require modifying
-the target repo's .gitignore.
+1. External worktrees (legacy):
+   ~/.claude-team/worktrees/{repo-path-hash}/{worker-name}-{timestamp}/
+   - Created outside the target repo to avoid polluting it
+   - No .gitignore modifications needed
+
+2. Local worktrees (preferred):
+   {repo}/.worktrees/{bead-description}/ or {name-uuid-description}/
+   - Kept within the repo for easier discovery and cleanup
+   - Automatically adds .worktrees to .gitignore
 """
 
 import hashlib
+import re
 import subprocess
 import time
+import uuid
 from pathlib import Path
 from typing import Optional
 
 
 # Base directory for all worktrees (outside any repo)
 WORKTREE_BASE_DIR = Path.home() / ".claude-team" / "worktrees"
+
+# Local worktree directory name within repos
+LOCAL_WORKTREE_DIR = ".worktrees"
+
+
+def slugify(text: str) -> str:
+    """
+    Convert text to a URL/filesystem-friendly slug.
+
+    Converts to lowercase, replaces spaces and special chars with dashes,
+    and removes consecutive dashes.
+
+    Args:
+        text: The text to slugify
+
+    Returns:
+        A lowercase, dash-separated string safe for filenames/URLs
+
+    Example:
+        slugify("Add local worktrees support")  # "add-local-worktrees-support"
+        slugify("Fix Bug #123")                 # "fix-bug-123"
+    """
+    # Convert to lowercase
+    text = text.lower()
+    # Replace spaces and underscores with dashes
+    text = re.sub(r"[\s_]+", "-", text)
+    # Remove any characters that aren't alphanumeric or dashes
+    text = re.sub(r"[^a-z0-9-]", "", text)
+    # Collapse multiple dashes
+    text = re.sub(r"-+", "-", text)
+    # Strip leading/trailing dashes
+    text = text.strip("-")
+    return text
+
+
+def ensure_gitignore_entry(repo_path: Path, entry: str) -> bool:
+    """
+    Ensure an entry exists in the repository's .gitignore file.
+
+    Creates the .gitignore file if it doesn't exist. Adds the entry
+    on a new line if not already present.
+
+    Args:
+        repo_path: Path to the repository root
+        entry: The gitignore entry to add (e.g., ".worktrees")
+
+    Returns:
+        True if the entry was added, False if it already existed
+
+    Example:
+        ensure_gitignore_entry(Path("/path/to/repo"), ".worktrees")
+    """
+    gitignore_path = Path(repo_path) / ".gitignore"
+
+    # Check if entry already exists
+    if gitignore_path.exists():
+        content = gitignore_path.read_text()
+        lines = content.splitlines()
+
+        # Check for exact match (with or without trailing slash)
+        entry_variants = {entry, entry + "/", entry.rstrip("/")}
+        for line in lines:
+            stripped = line.strip()
+            if stripped in entry_variants:
+                return False
+
+        # Entry not found, append it
+        # Ensure there's a newline before our entry if file doesn't end with one
+        if content and not content.endswith("\n"):
+            content += "\n"
+        content += f"{entry}\n"
+        gitignore_path.write_text(content)
+        return True
+    else:
+        # Create new .gitignore with the entry
+        gitignore_path.write_text(f"{entry}\n")
+        return True
 
 
 class WorktreeError(Exception):
@@ -135,6 +220,112 @@ def create_worktree(
 
     if result.returncode != 0:
         raise WorktreeError(f"Failed to create worktree: {result.stderr.strip()}")
+
+    return worktree_path
+
+
+def create_local_worktree(
+    repo_path: Path,
+    worker_name: str,
+    bead_id: Optional[str] = None,
+    description: Optional[str] = None,
+) -> Path:
+    """
+    Create a git worktree in the repo's .worktrees/ directory.
+
+    Creates a new worktree at:
+        {repo}/.worktrees/{bead_id}-{description}/  (if bead_id provided)
+        {repo}/.worktrees/{worker_name}-{uuid}-{description}/  (otherwise)
+
+    The branch name matches the worktree directory name for consistency.
+    Automatically adds .worktrees to .gitignore if not present.
+
+    Args:
+        repo_path: Path to the main repository
+        worker_name: Name of the worker (used in fallback naming)
+        bead_id: Optional bead issue ID (e.g., "cic-abc123")
+        description: Optional description for the worktree
+
+    Returns:
+        Path to the created worktree
+
+    Raises:
+        WorktreeError: If the git worktree command fails
+
+    Example:
+        # With bead ID
+        path = create_local_worktree(
+            repo_path=Path("/path/to/repo"),
+            worker_name="Groucho",
+            bead_id="cic-abc",
+            description="Add local worktrees"
+        )
+        # Returns: Path("/path/to/repo/.worktrees/cic-abc-add-local-worktrees")
+
+        # Without bead ID
+        path = create_local_worktree(
+            repo_path=Path("/path/to/repo"),
+            worker_name="Groucho",
+            description="Fix bug"
+        )
+        # Returns: Path("/path/to/repo/.worktrees/groucho-a1b2c3d4-fix-bug")
+    """
+    repo_path = Path(repo_path).resolve()
+
+    # Build the worktree directory name
+    if bead_id:
+        # Bead-based naming: {bead_id}-{description}
+        if description:
+            dir_name = f"{bead_id}-{slugify(description)}"
+        else:
+            dir_name = bead_id
+    else:
+        # Fallback naming: {worker_name}-{uuid}-{description}
+        short_uuid = uuid.uuid4().hex[:8]
+        name_slug = slugify(worker_name)
+        if description:
+            dir_name = f"{name_slug}-{short_uuid}-{slugify(description)}"
+        else:
+            dir_name = f"{name_slug}-{short_uuid}"
+
+    # Worktree path inside the repo
+    worktrees_dir = repo_path / LOCAL_WORKTREE_DIR
+    worktree_path = worktrees_dir / dir_name
+
+    # Ensure .worktrees is in .gitignore
+    ensure_gitignore_entry(repo_path, LOCAL_WORKTREE_DIR)
+
+    # Ensure .worktrees directory exists
+    worktrees_dir.mkdir(parents=True, exist_ok=True)
+
+    # Check if worktree already exists
+    if worktree_path.exists():
+        raise WorktreeError(f"Worktree already exists at {worktree_path}")
+
+    # Branch name matches directory name for clarity
+    branch_name = dir_name
+
+    # Build the git worktree add command
+    cmd = ["git", "-C", str(repo_path), "worktree", "add"]
+
+    # Check if branch exists
+    branch_check = subprocess.run(
+        ["git", "-C", str(repo_path), "rev-parse", "--verify", f"refs/heads/{branch_name}"],
+        capture_output=True,
+        text=True,
+    )
+
+    if branch_check.returncode == 0:
+        # Branch exists, check it out
+        cmd.extend([str(worktree_path), branch_name])
+    else:
+        # Branch doesn't exist, create it with -b
+        cmd.extend(["-b", branch_name, str(worktree_path)])
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        raise WorktreeError(f"Failed to create local worktree: {result.stderr.strip()}")
 
     return worktree_path
 
