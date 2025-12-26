@@ -8,7 +8,7 @@ For changes that need review, use `/pr-worker` instead.
 ## Process
 
 1. Identify the worker session or branch from $ARGUMENTS
-   - Can be session ID (e.g., "worker-1") or branch name (e.g., "cic-abc/feature")
+   - Can be worker name (e.g., "Groucho") or branch name (e.g., "cic-abc-feature")
 
 2. Detect the parent branch (branch the worktree diverged from):
    ```bash
@@ -19,7 +19,7 @@ For changes that need review, use `/pr-worker` instead.
    Or check git reflog for the branch point. If unclear, ask user.
 
 3. Verify the work is complete:
-   - Check for TASK_COMPLETE marker or closed beads issue
+   - Check worker logs via `read_worker_logs` or verify bead is closed
    - Review commits: `git log <parent>..<branch> --oneline`
    - If not clearly complete, ask user to confirm before merging
 
@@ -44,9 +44,9 @@ For changes that need review, use `/pr-worker` instead.
    ```
 
 8. Clean up:
-   - Remove worktree: `git worktree remove .worktrees/<id>`
+   - Remove worktree: `git worktree remove .worktrees/<name>`
    - Delete branch: `git branch -d <branch>`
-   - Close session if still open: `close_session`
+   - Close worker if still open: `close_workers([session_id])`
 
 ## Output Format
 
@@ -63,15 +63,20 @@ For changes that need review, use `/pr-worker` instead.
 - <sha> Fix lint errors
 
 ### Cleanup
-- Worktree removed: .worktrees/cic-abc
-- Branch deleted: cic-abc/feature-name
-- Session closed: worker-1
+- Worktree removed: .worktrees/cic-abc-feature-name
+- Branch deleted: cic-abc-feature-name
+- Worker closed: Groucho
 
 **<parent-branch> pushed to origin.**
 ```
 
 ## Notes
 
-- Prefer `/pr-worker` for changes that need review
-- This is for quick internal merges where you are the reviewer
-- Always verifies work is complete before merging
+- This is for quick internal merges where the coordinator is the reviewer
+- Always verify work is complete before merging
+
+## If Large Merge
+
+**Stop and notify the user** if the merge is substantial (many files changed, significant code additions, or architectural changes). Let them know they may want to use `/pr-worker` instead to get a proper review.
+
+Allow the user flexibility to proceed with direct merge if they prefer — this is a suggestion, not a hard block.

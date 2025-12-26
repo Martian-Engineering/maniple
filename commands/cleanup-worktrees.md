@@ -4,28 +4,30 @@ Clean up worktrees that are no longer needed (merged branches only).
 
 ## Process
 
-1. List all worktrees:
+1. Call `list_worktrees(repo_path)` to get all worktrees in `.worktrees/`
+
+2. For each worktree, check if the branch is merged:
    ```bash
-   git worktree list
+   git branch --merged main | grep <branch>
    ```
 
-2. For each worktree in `.worktrees/`:
-   - Extract branch name
-   - Check if branch is merged to main: `git branch --merged main | grep <branch>`
-   - Check if associated PR is merged (if applicable): `gh pr list --head <branch> --state merged`
+3. Optionally check if associated PR is merged:
+   ```bash
+   gh pr list --head <branch> --state merged
+   ```
 
-3. Categorize worktrees:
+4. Categorize worktrees:
    - **Safe to remove**: Branch merged to main
    - **Keep**: Branch has open PR or unmerged commits
-   - **Orphaned**: No branch exists (worktree is stale)
+   - **Orphaned**: `registered: false` in list_worktrees output (stale)
 
-4. Remove safe worktrees:
+5. Remove safe worktrees:
    ```bash
-   git worktree remove .worktrees/<id>
+   git worktree remove .worktrees/<name>
    git branch -d <branch>  # Only if fully merged
    ```
 
-5. Report results
+6. For orphaned worktrees, use `list_worktrees(repo_path, remove_orphans=True)` to clean them up
 
 ## Output Format
 
@@ -35,19 +37,18 @@ Clean up worktrees that are no longer needed (merged branches only).
 ### Removed (merged)
 | Worktree | Branch | Reason |
 |----------|--------|--------|
-| .worktrees/cic-abc | cic-abc/feature | Merged to main |
-| .worktrees/cic-def | cic-def/bugfix | PR #42 merged |
+| cic-abc-feature | cic-abc-feature | Merged to main |
+| cic-def-bugfix | cic-def-bugfix | PR #42 merged |
 
 ### Kept (not merged)
 | Worktree | Branch | Reason |
 |----------|--------|--------|
-| .worktrees/cic-xyz | cic-xyz/wip | Has unmerged commits |
-| .worktrees/cic-123 | cic-123/feature | PR #45 open |
+| cic-xyz-wip | cic-xyz-wip | Has unmerged commits |
+| cic-123-feature | cic-123-feature | PR #45 open |
 
 ### Summary
 - Removed: X worktrees
 - Kept: Y worktrees
-- Space freed: ~Z MB
 ```
 
 ## Safety Rules
@@ -55,10 +56,22 @@ Clean up worktrees that are no longer needed (merged branches only).
 - NEVER remove worktrees with unmerged commits
 - NEVER delete branches that aren't fully merged
 - If unsure, keep the worktree and report it
-- Orphaned worktrees (no branch) can be removed with `git worktree remove --force`
+- Orphaned worktrees (not registered with git) can be removed via `remove_orphans=True`
 
 ## Notes
 
-- Run `/team-summary` first to see what's pending
-- Use `/merge-worker` or `/pr-worker` for unmerged branches
-- This command is conservative - it only removes definitely-safe worktrees
+- Worktrees are stored in `.worktrees/` within the repository
+- Branch names match directory names (e.g., `.worktrees/cic-abc-fix-bug` → branch `cic-abc-fix-bug`)
+- This command is conservative — it only removes definitely-safe worktrees
+
+## Before You Start
+
+If the user hasn't already, suggest they run `/team-summary` first to get an overview of pending work before cleanup.
+
+## If Unmerged Work Exists
+
+**Stop and notify the user** if any worktrees have unmerged commits or open PRs. Let them know:
+- They may use `/merge-worker` to merge completed work directly
+- They may use `/pr-worker` to create a PR for review
+
+Do not proceed with cleanup until the user confirms how to handle unmerged branches.

@@ -1,10 +1,14 @@
 """Worker pre-prompt generation for coordinated team sessions."""
 
+from typing import Optional
+
 
 def generate_worker_prompt(
     session_id: str,
     name: str,
     use_worktree: bool = False,
+    bead: Optional[str] = None,
+    custom_prompt: Optional[str] = None,
 ) -> str:
     """Generate the pre-prompt text for a worker session.
 
@@ -12,6 +16,8 @@ def generate_worker_prompt(
         session_id: The unique identifier for this worker session
         name: The friendly name assigned to this worker
         use_worktree: Whether this worker is in an isolated worktree
+        bead: Optional beads issue ID (if provided, this is the assignment)
+        custom_prompt: Optional additional instructions from the coordinator
 
     Returns:
         The formatted pre-prompt string to inject into the worker session
@@ -21,102 +27,130 @@ def generate_worker_prompt(
         via generate_marker_message() in session_state.py, which is called
         before the worker prompt is sent.
     """
-    commit_section = ""
-    if use_worktree:
-        commit_section = """
-5. **Commit when done.** You're in an isolated worktree branch — commit your
-   completed work so it can be easily cherry-picked. Use a clear commit message
-   summarizing what you did. Don't push; the coordinator handles that.
+    # Build optional sections with dynamic numbering
+    next_step = 4
+    extra_sections = ""
+
+    # Beads section (if bead provided)
+    if bead:
+        beads_section = f"""
+{next_step}. **Beads workflow.** You're working on `{bead}`. Follow this workflow:
+   - Mark in progress: `bd --no-db update {bead} --status in_progress`
+   - Implement the changes
+   - Close issue: `bd --no-db close {bead}`
+   - Commit with issue reference: `git add -A && git commit -m "{bead}: <summary>"`
+
+   Use `bd --no-db` for all beads commands (required in worktrees).
 """
+        extra_sections += beads_section
+        next_step += 1
 
-    return f'''<!claude-team-session:{session_id}!>
+    # Commit section (if worktree but beads section didn't already cover commit)
+    if use_worktree and not bead:
+        commit_section = f"""
+{next_step}. **Commit when done.** You're in an isolated worktree branch — commit your
+   completed work so it can be easily cherry-picked or merged. Use a clear
+   commit message summarizing what you did. Don't push; the coordinator
+   handles that.
+"""
+        extra_sections += commit_section
 
-Hey {name}! Welcome to the team.
+    # Closing/assignment section - 4 cases based on bead and custom_prompt
+    if bead and custom_prompt:
+        # Case 2: bead + custom instructions
+        closing = f"""=== YOUR ASSIGNMENT ===
 
-You're part of a coordinated claude-team session. Your coordinator has tasks
-for you. Do your best work — completion is detected automatically.
+The coordinator assigned you `{bead}` (use `bd show {bead}` for details) and included
+the following instructions:
 
-**Your session ID:** `{session_id}`
+{custom_prompt}
+
+Get to work!"""
+    elif bead:
+        # Case 1: bead only
+        closing = f"""=== YOUR ASSIGNMENT ===
+
+Your assignment is `{bead}`. Use `bd show {bead}` for details. Get to work!"""
+    elif custom_prompt:
+        # Case 3: custom instructions only
+        closing = f"""=== YOUR ASSIGNMENT ===
+
+The coordinator assigned you the following task:
+
+{custom_prompt}
+
+Get to work!"""
+    else:
+        # Case 4: no bead, no instructions - coordinator will message shortly
+        closing = "Alright, you're all set. The coordinator will send your first task shortly."
+
+    return f'''Hey {name}! Welcome to the team.
+
+You're part of a coordinated `claude-team` session. Your coordinator has tasks
+for you. Do your best to complete the work you've been assigned autonomously.
+However, if you have questions/comments/concerns for your coordinator, you can
+ask a question in chat and end your turn. `claude-team` will automatically report
+your session as idle to the coordinator so they can respond.
 
 === THE DEAL ===
 
 1. **Do the work fully.** Either complete it or explain what's blocking you in
    your response. The coordinator reads your output to understand what happened.
 
-2. **Beads discipline.** If you're working with beads for tracking:
-   - `bd update <id> --status in_progress` when you start
-   - `bd comment <id> "what you're doing"` as you go
-   - **Never close beads** — that's the coordinator's job after review
+2. **When you're done,** leave a clear summary in your response. Your completion
+   wil be detected automatically — just finish your work and the system handles the rest.
 
-3. **When you're done,** leave a clear summary in your response. Your completion
-   is detected automatically — just finish your work and the system handles the rest.
-
-4. **If blocked,** explain what you need in your response. The coordinator will
+3. **If blocked,** explain what you need in your response. The coordinator will
    read your conversation history and address it.
-{commit_section}
-=== TOOLS YOU'VE GOT ===
-- `bd_help` — Quick reference for beads commands
-
-Alright, you're all set. The coordinator will send your first task shortly.
+{extra_sections}
+{closing}
 '''
 
 
-def get_coordinator_guidance(use_worktree: bool = False) -> str:
-    """Get the coordinator guidance text to include in spawn_team response.
+def get_coordinator_guidance(
+    worker_summaries: list[dict],
+) -> str:
+    """Get the coordinator guidance text to include in spawn_workers response.
 
     Args:
-        use_worktree: Whether workers are in isolated worktrees
+        worker_summaries: List of dicts with keys:
+            - name: Worker name
+            - bead: Optional bead ID
+            - custom_prompt: Optional custom instructions (truncated for display)
+            - awaiting_task: True if worker has no bead and no prompt
+
+    Returns:
+        Formatted coordinator guidance string
     """
-    worktree_line = ""
-    if use_worktree:
-        worktree_line = "\n- Commit when done (for easy cherry-picking back to main)"
+    # Build per-worker summary lines
+    worker_lines = []
+    for w in worker_summaries:
+        name = w["name"]
+        bead = w.get("bead")
+        custom_prompt = w.get("custom_prompt")
+        awaiting = w.get("awaiting_task", False)
 
-    return f"""
-=== YOU ARE THE COORDINATOR ===
+        if awaiting:
+            worker_lines.append(f"- **{name}**: ⚠️ AWAITING TASK — send them instructions now")
+        elif bead and custom_prompt:
+            # Truncate custom prompt for display
+            short_prompt = custom_prompt[:50] + "..." if len(custom_prompt) > 50 else custom_prompt
+            worker_lines.append(f"- **{name}**: `{bead}` + custom instructions: \"{short_prompt}\"")
+        elif bead:
+            worker_lines.append(f"- **{name}**: `{bead}` (beads workflow: mark in_progress → implement → close → commit)")
+        elif custom_prompt:
+            short_prompt = custom_prompt[:50] + "..." if len(custom_prompt) > 50 else custom_prompt
+            worker_lines.append(f"- **{name}**: custom task: \"{short_prompt}\"")
 
-Your team is ready. Here's what your workers know and what they expect from you:
+    workers_section = "\n".join(worker_lines)
 
-**What workers have been told:**
-- Do the work fully, or explain what's blocking in their response
-- Comment on beads for progress, but NEVER close them
-- You (the coordinator) review and close beads{worktree_line}
+    return f"""=== TEAM DISPATCHED ===
 
-**Your responsibilities:**
-1. **Assign clear tasks** — Workers will explain in their response if something's unclear
-2. **Monitor workers** — Use `check_idle_workers([session_id])` to check if they've finished
-3. **Read their work** — Use `read_worker_logs(session_id)` to see what they did
-4. **Annotate sessions** — Use `annotate_worker(session_id, annotation)` to track assignments
-5. **Review and close beads** — Workers comment progress; you verify and close
+{workers_section}
 
-**Checking on workers:**
-- `list_workers` — See all workers and their status
-- `check_idle_workers([session_id])` — Check if a worker is idle (finished responding)
-- `read_worker_logs(session_id)` — Read what a worker has been doing
-- `examine_worker(session_id)` — Quick status check
-
-**Idle detection:**
-Worker completion is detected automatically via Stop hooks.
-- `check_idle_workers([session_id])` — Check if a worker has finished (returns idle: true/false)
-- `wait_idle_workers([session_id], timeout=600)` — Block until worker(s) finish
-- `wait_idle_workers(session_ids, mode="any")` — Return when first worker finishes
-
-The system knows the instant they finish responding — no markers needed.
-
-**Coordination patterns (a spectrum):**
-
-At one end: **Hands-off** — Dispatch tasks to workers, then continue your conversation
-with the user. Check in on workers when the user asks, or prompt them occasionally
-("Want me to check on the team?"). Use `check_idle_workers` for quick polls.
-
-At the other end: **Fully autonomous** — The user sets a goal, you break it into tasks
-(probably via beads), dispatch workers, and use `wait_idle_workers([session_id])` or
-`wait_idle_workers(session_ids)` to block until they finish. Read their conversation
-history to understand what they did, then assign follow-up tasks or report results.
-
-Most coordination falls somewhere in between. Match your approach to the user's preference
-and the nature of the work — exploratory tasks favor hands-off, sequential pipelines
-favor autonomous waits.
-
-**The deal:** Workers do the work and explain their output. No markers needed.
+Workers will do the work and explain their output. If blocked, they'll say so.
 You review everything before it's considered done.
+
+**Coordination style reminder:** Match your approach to the task. Hands-off for exploratory
+work (check in when asked), autonomous for pipelines (wait for completion, read logs, continue).
 """

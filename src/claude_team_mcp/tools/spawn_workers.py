@@ -93,12 +93,30 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 branch names, and set as worker annotation. If using a bead, it's
                 recommended to use the bead title as the annotation for clarity.
                 Truncated to 30 chars in badge.
-            bead: Optional beads issue ID. Used for badge first line, branch naming.
-            prompt: Optional custom prompt. If None, uses standard worker prompt with
-                beads workflow guidance.
+            bead: Optional beads issue ID. If provided, this IS the worker's assignment.
+                The worker receives beads workflow instructions (mark in_progress, close,
+                commit with issue reference). Used for badge first line and branch naming.
+            prompt: Optional additional instructions. Combined with standard worker prompt,
+                not a replacement. Use for extra context beyond what the bead describes.
             skip_permissions: Whether to start Claude with --dangerously-skip-permissions.
                 Default False. Without this, workers can only read local files and will
                 struggle with most commands (writes, shell, etc.).
+
+        **Worker Assignment (how workers know what to do):**
+
+        The worker's task is determined by `bead` and/or `prompt`:
+
+        1. **bead only**: Worker assigned to the bead. They'll `bd show <bead>` for details
+           and follow the beads workflow (mark in_progress → implement → close → commit).
+
+        2. **bead + prompt**: Worker assigned to bead with additional instructions.
+           Gets both the beads workflow and your custom guidance.
+
+        3. **prompt only**: Worker assigned a custom task (no beads tracking).
+           Your prompt text is their assignment.
+
+        4. **neither**: Worker spawns idle, waiting for you to message them.
+           ⚠️ Returns a warning reminding you to send them a task immediately.
 
         **Badge Format:**
         ```
@@ -115,25 +133,32 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 - sessions: Dict mapping worker names to session info
                 - layout: The layout mode used
                 - count: Number of workers spawned
-                - mode: "standard" or "custom"
-                - coordinator_guidance: Instructions for coordinator (standard mode only)
+                - coordinator_guidance: Per-worker summary with assignments and coordination reminder
+                - workers_awaiting_task: (only if any) List of worker names needing tasks
 
-        Example (standard mode with worktrees):
+        Example (bead assignment with auto worktrees):
             spawn_workers(
                 workers=[
-                    {"project_path": "auto", "annotation": "Fix auth bug", "bead": "cic-abc"},
-                    {"project_path": "auto", "annotation": "Add unit tests", "bead": "cic-xyz"},
+                    {"project_path": "auto", "bead": "cic-abc", "annotation": "Fix auth bug"},
+                    {"project_path": "auto", "bead": "cic-xyz", "annotation": "Add unit tests"},
                 ],
-                layout="auto",  # Reuse existing windows if available
+                layout="auto",
             )
 
-        Example (custom prompts, specific paths):
+        Example (custom prompt, no bead):
             spawn_workers(
                 workers=[
-                    {"project_path": "/path/to/repo", "annotation": "Code review"},
+                    {"project_path": "/path/to/repo", "prompt": "Review auth module for security issues"},
                 ],
-                layout="new",  # Always new window
             )
+
+        Example (spawn idle worker, send task separately):
+            # Returns warning: "WORKERS NEED TASKS: Groucho..."
+            result = spawn_workers(
+                workers=[{"project_path": "/path/to/repo"}],
+            )
+            # Then immediately:
+            message_workers(session_ids=["Groucho"], message="Your task is...")
         """
         from iterm2.profile import LocalWriteOnlyProfile
 
@@ -449,24 +474,25 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                         "JSONL correlation unavailable"
                     )
 
-            # Send worker prompts (each worker independently gets custom or standard)
-            any_standard_mode = False
+            # Send worker prompts - always use generate_worker_prompt with bead/custom_prompt
+            workers_awaiting_task: list[str] = []  # Workers with no bead and no prompt
             for i, managed in enumerate(managed_sessions):
                 worker_config = workers[i]
+                bead = worker_config.get("bead")
                 custom_prompt = worker_config.get("prompt")
+                use_worktree = i in worktree_paths
 
-                if custom_prompt:
-                    # This worker has a custom prompt - use it directly
-                    worker_prompt = custom_prompt
-                else:
-                    # This worker uses standard prompt with beads workflow
-                    any_standard_mode = True
-                    use_worktree = i in worktree_paths
-                    worker_prompt = generate_worker_prompt(
-                        managed.session_id,
-                        resolved_names[i],
-                        use_worktree=use_worktree,
-                    )
+                # Track workers that need immediate attention (case 4: no bead, no prompt)
+                if not bead and not custom_prompt:
+                    workers_awaiting_task.append(managed.name)
+
+                worker_prompt = generate_worker_prompt(
+                    managed.session_id,
+                    resolved_names[i],
+                    use_worktree=use_worktree,
+                    bead=bead,
+                    custom_prompt=custom_prompt,
+                )
 
                 await send_prompt(pane_sessions[i], worker_prompt, submit=True)
 
@@ -488,20 +514,32 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             except Exception as e:
                 logger.debug(f"Failed to re-activate window: {e}")
 
+            # Build worker summaries for coordinator guidance
+            worker_summaries = []
+            for i, name in enumerate(resolved_names):
+                worker_config = workers[i]
+                bead = worker_config.get("bead")
+                custom_prompt = worker_config.get("prompt")
+                awaiting = name in workers_awaiting_task
+
+                worker_summaries.append({
+                    "name": name,
+                    "bead": bead,
+                    "custom_prompt": custom_prompt,
+                    "awaiting_task": awaiting,
+                })
+
             # Build return value
             result = {
                 "sessions": result_sessions,
                 "layout": layout,
                 "count": len(result_sessions),
-                "mode": "standard" if any_standard_mode else "custom",
+                "coordinator_guidance": get_coordinator_guidance(worker_summaries),
             }
 
-            # Include coordinator guidance if any workers use standard mode
-            if any_standard_mode:
-                use_worktrees = bool(worktree_paths)
-                result["coordinator_guidance"] = get_coordinator_guidance(use_worktrees)
-            else:
-                result["coordinator_guidance"] = None
+            # Add structured warning for programmatic access
+            if workers_awaiting_task:
+                result["workers_awaiting_task"] = workers_awaiting_task
 
             return result
 

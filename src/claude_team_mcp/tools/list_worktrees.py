@@ -16,9 +16,8 @@ if TYPE_CHECKING:
     from ..server import AppContext
 
 from ..worktree import (
-    get_repo_hash,
-    get_worktree_base_for_repo,
-    list_claude_team_worktrees,
+    list_local_worktrees,
+    LOCAL_WORKTREE_DIR,
 )
 from ..utils import error_response, HINTS
 
@@ -35,12 +34,10 @@ def register_tools(mcp: FastMCP) -> None:
         remove_orphans: bool = False,
     ) -> dict:
         """
-        List claude-team worktrees for a repository.
+        List worktrees in a repository's .worktrees/ directory.
 
         Shows all worktrees created by claude-team for the specified repository,
         including which are orphaned (directory exists but not registered with git).
-
-        Worktrees are stored at ~/.claude-team/worktrees/{repo-hash}/.
 
         Args:
             repo_path: Path to the repository to list worktrees for
@@ -49,10 +46,10 @@ def register_tools(mcp: FastMCP) -> None:
         Returns:
             Dict with:
                 - repo_path: The repository path
-                - repo_hash: Hash used for worktree directory
+                - worktrees_dir: Path to .worktrees/ directory
                 - worktrees: List of worktree info dicts containing:
                     - path: Full path to worktree
-                    - name: Directory name
+                    - name: Directory name (e.g., "cic-abc-fix-bug")
                     - branch: Git branch (if registered)
                     - commit: Current commit (if registered)
                     - registered: True if git knows about this worktree
@@ -68,10 +65,8 @@ def register_tools(mcp: FastMCP) -> None:
                 hint=HINTS["project_path_missing"],
             )
 
-        repo_hash = get_repo_hash(resolved_path)
-        base_dir = get_worktree_base_for_repo(resolved_path)
-
-        worktrees = list_claude_team_worktrees(resolved_path)
+        worktrees_dir = resolved_path / LOCAL_WORKTREE_DIR
+        worktrees = list_local_worktrees(resolved_path)
 
         result_worktrees = []
         orphan_count = 0
@@ -103,8 +98,7 @@ def register_tools(mcp: FastMCP) -> None:
 
         return {
             "repo_path": str(resolved_path),
-            "repo_hash": repo_hash,
-            "worktree_base": str(base_dir),
+            "worktrees_dir": str(worktrees_dir),
             "worktrees": result_worktrees,
             "total": len(worktrees),
             "orphan_count": orphan_count,

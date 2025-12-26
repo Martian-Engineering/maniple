@@ -461,12 +461,12 @@ def list_git_worktrees(repo_path: Path) -> list[dict]:
     return worktrees
 
 
-def list_claude_team_worktrees(repo_path: Path) -> list[dict]:
+def list_local_worktrees(repo_path: Path) -> list[dict]:
     """
-    List all claude-team worktrees for a repository.
+    List all local worktrees in a repository's .worktrees/ directory.
 
-    Finds worktrees in ~/.claude-team/worktrees/{repo-hash}/ and
-    cross-references them with git's worktree list.
+    Finds worktrees in {repo}/.worktrees/ and cross-references them
+    with git's worktree list to determine registration status.
 
     Args:
         repo_path: Path to the repository
@@ -474,20 +474,20 @@ def list_claude_team_worktrees(repo_path: Path) -> list[dict]:
     Returns:
         List of dicts, each containing:
             - path: Path to the worktree directory
-            - name: Worktree directory name (e.g., "John-abc123-1703001234")
+            - name: Worktree directory name (e.g., "cic-abc-fix-bug")
             - branch: Branch name (if found in git worktree list)
             - commit: Current HEAD commit hash (if found)
             - registered: True if git knows about this worktree
             - exists: True if the directory exists on disk
 
     Example:
-        worktrees = list_claude_team_worktrees(Path("/path/to/repo"))
+        worktrees = list_local_worktrees(Path("/path/to/repo"))
         for wt in worktrees:
             status = "active" if wt["registered"] else "orphaned"
             print(f"{wt['name']}: {status}")
     """
     repo_path = Path(repo_path).resolve()
-    base_dir = get_worktree_base_for_repo(repo_path)
+    local_worktrees_dir = repo_path / LOCAL_WORKTREE_DIR
 
     # Get git's view of worktrees
     try:
@@ -499,12 +499,12 @@ def list_claude_team_worktrees(repo_path: Path) -> list[dict]:
 
     worktrees = []
 
-    # Check if base directory exists
-    if not base_dir.exists():
+    # Check if .worktrees directory exists
+    if not local_worktrees_dir.exists():
         return worktrees
 
     # Scan the directory for worktree folders
-    for item in base_dir.iterdir():
+    for item in local_worktrees_dir.iterdir():
         if not item.is_dir():
             continue
 
@@ -528,3 +528,5 @@ def list_claude_team_worktrees(repo_path: Path) -> list[dict]:
         })
 
     return worktrees
+
+
