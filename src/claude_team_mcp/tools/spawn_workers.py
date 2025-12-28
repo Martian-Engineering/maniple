@@ -298,54 +298,73 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             pane_sessions: list = []  # list of iTerm sessions
 
             if layout == "auto":
-                # Try to find existing windows with space
-                # Build set of iTerm session IDs from all managed sessions
+                # Try to find an existing window where the ENTIRE batch fits.
+                # This keeps spawn batches together rather than spreading across windows.
                 managed_iterm_ids: set[str] = {
                     s.iterm_session.session_id
                     for s in registry.list_all()
                     if s.iterm_session is not None
                 }
 
-                for i in range(worker_count):
-                    result = await find_available_window(
-                        app,
-                        max_panes=MAX_PANES_PER_TAB,
-                        managed_session_ids=managed_iterm_ids,
-                    )
+                # Find a window with enough space for ALL workers
+                result = await find_available_window(
+                    app,
+                    max_panes=MAX_PANES_PER_TAB,
+                    managed_session_ids=managed_iterm_ids,
+                )
 
-                    if result:
-                        # Found a window with space - split into it
-                        window, tab, existing_session = result
-                        current_pane_count = len(tab.sessions)
+                target_tab = None
+                initial_pane_count = 0
+                first_session = None  # Session to split from
 
-                        # Determine split direction based on current pane count
+                if result:
+                    window, tab, existing_session = result
+                    initial_pane_count = len(tab.sessions)
+                    available_slots = MAX_PANES_PER_TAB - initial_pane_count
+
+                    if worker_count <= available_slots:
+                        # Entire batch fits in this window
+                        target_tab = tab
+                        first_session = existing_session
+                        logger.debug(
+                            f"Batch of {worker_count} fits in existing window "
+                            f"({initial_pane_count} panes, {available_slots} slots)"
+                        )
+
+                if target_tab:
+                    # Reuse existing window - track pane count locally (iTerm objects stale)
+                    local_pane_count = initial_pane_count
+                    # Track created sessions for quad splitting
+                    created_sessions: list = []
+
+                    for i in range(worker_count):
+                        # Determine split direction based on local_pane_count
                         # Incremental quad: TL→TR(vsplit)→BL(hsplit)→BR(hsplit)
-                        if current_pane_count == 1:
+                        if local_pane_count == 1:
                             # First split: vertical (left/right)
                             new_session = await split_pane(
-                                existing_session,
+                                first_session,
                                 vertical=True,
                                 before=False,
                                 profile=PROFILE_NAME,
                                 profile_customizations=profile_customizations[i],
                             )
-                        elif current_pane_count == 2:
+                        elif local_pane_count == 2:
                             # Second split: horizontal from left pane (creates bottom-left)
-                            # Get the left pane (first session)
-                            left_session = tab.sessions[0]
+                            # Use first_session (the original TL pane)
                             new_session = await split_pane(
-                                left_session,
+                                first_session,
                                 vertical=False,
                                 before=False,
                                 profile=PROFILE_NAME,
                                 profile_customizations=profile_customizations[i],
                             )
-                        else:  # current_pane_count == 3
+                        else:  # local_pane_count == 3
                             # Third split: horizontal from right pane (creates bottom-right)
-                            # Get the right pane (second session after splits)
-                            right_session = tab.sessions[1]
+                            # The TR pane is the first one we created
+                            tr_session = created_sessions[0] if created_sessions else first_session
                             new_session = await split_pane(
-                                right_session,
+                                tr_session,
                                 vertical=False,
                                 before=False,
                                 profile=PROFILE_NAME,
@@ -353,33 +372,39 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                             )
 
                         pane_sessions.append(new_session)
-                        # Update managed IDs for next iteration
-                        managed_iterm_ids.add(new_session.session_id)
-                    else:
-                        # No window with space - create new window
-                        # For the first worker when no windows exist, create a new window
-                        if i == 0:
-                            # Create new window with single pane
-                            panes = await create_multi_pane_layout(
-                                connection,
-                                "single",
-                                profile=PROFILE_NAME,
-                                profile_customizations={"main": profile_customizations[i]},
-                            )
-                            pane_sessions.append(panes["main"])
-                            managed_iterm_ids.add(panes["main"].session_id)
-                        else:
-                            # Subsequent workers when no space - split from last created
-                            last_session = pane_sessions[-1]
-                            new_session = await split_pane(
-                                last_session,
-                                vertical=True,
-                                before=False,
-                                profile=PROFILE_NAME,
-                                profile_customizations=profile_customizations[i],
-                            )
-                            pane_sessions.append(new_session)
-                            managed_iterm_ids.add(new_session.session_id)
+                        created_sessions.append(new_session)
+                        local_pane_count += 1
+                else:
+                    # No window with enough space for entire batch - create new window
+                    logger.debug(
+                        f"No window with space for batch of {worker_count}, creating new window"
+                    )
+                    # Use same layout logic as layout="new"
+                    if worker_count == 1:
+                        window_layout = "single"
+                        pane_names = ["main"]
+                    elif worker_count == 2:
+                        window_layout = "vertical"
+                        pane_names = ["left", "right"]
+                    elif worker_count == 3:
+                        window_layout = "triple_vertical"
+                        pane_names = ["left", "middle", "right"]
+                    else:  # 4
+                        window_layout = "quad"
+                        pane_names = ["top_left", "top_right", "bottom_left", "bottom_right"]
+
+                    customizations_dict = {
+                        pane_names[i]: profile_customizations[i] for i in range(worker_count)
+                    }
+
+                    panes = await create_multi_pane_layout(
+                        connection,
+                        window_layout,
+                        profile=PROFILE_NAME,
+                        profile_customizations=customizations_dict,
+                    )
+
+                    pane_sessions = [panes[name] for name in pane_names[:worker_count]]
 
             else:  # layout == "new"
                 # Create new window with appropriate layout
