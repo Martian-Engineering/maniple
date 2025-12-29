@@ -87,6 +87,24 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 - Path: Spawn worker at this location
                 - "auto": Create worktree at .worktrees/<bead>-<annotation> or
                   .worktrees/<name>-<uuid>-<annotation>, auto-adds to .gitignore
+
+                **Important**: When using "auto" for ALL workers (no explicit paths),
+                the project must have a `.mcp.json` that sets `CLAUDE_TEAM_PROJECT_DIR`.
+                Add this to your project's `.mcp.json`:
+                ```json
+                {
+                  "mcpServers": {
+                    "claude-team": {
+                      "command": "uvx",
+                      "args": ["--from", "claude-team-mcp", "claude-team"],
+                      "env": {"CLAUDE_TEAM_PROJECT_DIR": "${PWD}"}
+                    }
+                  }
+                }
+                ```
+                The `${PWD}` expands to the project directory when Claude Code starts.
+                If at least one worker has an explicit path, others can use "auto"
+                and will inherit from it.
             name: Optional worker name override. Leaving this empty allows us to auto-pick names
                 from themed sets (Beatles, Marx Brothers, etc.) which aids visual identification.
             annotation: Optional task description. Shown on badge second line, used in
@@ -219,7 +237,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             main_repo_paths: dict[int, Path] = {}  # index -> main repo (for "auto")
 
             # Find the main repo path for "auto" workers
-            # Use the first non-auto path, or cwd
+            # Priority: first explicit path > CLAUDE_TEAM_PROJECT_DIR env var > error
             main_repo_for_auto: Optional[Path] = None
             for w in workers:
                 if w["project_path"] != "auto":
@@ -227,8 +245,26 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     if candidate.is_dir():
                         main_repo_for_auto = candidate
                         break
-            if main_repo_for_auto is None:
-                main_repo_for_auto = Path.cwd()
+
+            # Check if any workers use "auto"
+            has_auto_workers = any(w["project_path"] == "auto" for w in workers)
+
+            if main_repo_for_auto is None and has_auto_workers:
+                # No explicit path provided - check for env var from .mcp.json
+                project_dir = os.environ.get("CLAUDE_TEAM_PROJECT_DIR")
+                if project_dir:
+                    main_repo_for_auto = Path(project_dir).resolve()
+                    logger.info(f"Using CLAUDE_TEAM_PROJECT_DIR: {main_repo_for_auto}")
+                else:
+                    # No way to determine the project directory
+                    return error_response(
+                        "project_path='auto' requires CLAUDE_TEAM_PROJECT_DIR",
+                        hint=(
+                            "Add a .mcp.json to your project with: "
+                            '"env": {"CLAUDE_TEAM_PROJECT_DIR": "${PWD}"}\n'
+                            "Or use explicit paths instead of 'auto'."
+                        ),
+                    )
 
             for i, (w, name) in enumerate(zip(workers, resolved_names)):
                 project_path = w["project_path"]
