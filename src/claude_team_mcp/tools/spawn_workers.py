@@ -44,12 +44,13 @@ logger = logging.getLogger("claude-team-mcp")
 class WorkerConfig(TypedDict, total=False):
     """Configuration for a single worker."""
 
-    project_path: Required[str]  # Required: Path or "auto" for local worktree
+    project_path: Required[str]  # Required: Path to repo, or "auto" to use env var
     name: str  # Optional: Worker name override. None = auto-pick from themed sets.
     annotation: str  # Optional: Task description (badge, branch, worker annotation)
     bead: str  # Optional: Beads issue ID (for badge, branch naming)
     prompt: str  # Optional: Custom prompt (None = standard worker prompt)
     skip_permissions: bool  # Optional: Default False
+    use_worktree: bool  # Optional: Create isolated worktree (default True)
 
 
 def register_tools(mcp: FastMCP, ensure_connection) -> None:
@@ -83,14 +84,11 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
            - 4 workers: quad layout (2x2 grid)
 
         **WorkerConfig fields:**
-            project_path: Required. Path to project, or "auto" to create local worktree.
-                - Path: Spawn worker at this location
-                - "auto": Create worktree at .worktrees/<bead>-<annotation> or
-                  .worktrees/<name>-<uuid>-<annotation>, auto-adds to .gitignore
+            project_path: Required. Path to the repository.
+                - Explicit path: Use this repo (e.g., "/path/to/repo")
+                - "auto": Use CLAUDE_TEAM_PROJECT_DIR from environment
 
-                **Important**: When using "auto" for ALL workers (no explicit paths),
-                the project must have a `.mcp.json` that sets `CLAUDE_TEAM_PROJECT_DIR`.
-                Add this to your project's `.mcp.json`:
+                **Note**: When using "auto", the project needs a `.mcp.json`:
                 ```json
                 {
                   "mcpServers": {
@@ -102,9 +100,10 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                   }
                 }
                 ```
-                The `${PWD}` expands to the project directory when Claude Code starts.
-                If at least one worker has an explicit path, others can use "auto"
-                and will inherit from it.
+            use_worktree: Whether to create an isolated worktree (default True).
+                - True: Creates worktree at <repo>/.worktrees/<bead>-<annotation>
+                  or <repo>/.worktrees/<name>-<uuid>-<annotation>
+                - False: Worker uses the repo directory directly (no isolation)
             name: Optional worker name override. Leaving this empty allows us to auto-pick names
                 from themed sets (Beatles, Marx Brothers, etc.) which aids visual identification.
             annotation: Optional task description. Shown on badge second line, used in
@@ -231,75 +230,62 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     resolved_names.append(next(auto_name_iter))
 
             # Resolve project paths and create worktrees if needed
-            # Workers with project_path="auto" get local worktrees
             resolved_paths: list[str] = []
             worktree_paths: dict[int, Path] = {}  # index -> worktree path
-            main_repo_paths: dict[int, Path] = {}  # index -> main repo (for "auto")
+            main_repo_paths: dict[int, Path] = {}  # index -> main repo
 
-            # Find the main repo path for "auto" workers
-            # Priority: first explicit path > CLAUDE_TEAM_PROJECT_DIR env var > error
-            main_repo_for_auto: Optional[Path] = None
-            for w in workers:
-                if w["project_path"] != "auto":
-                    candidate = Path(w["project_path"]).expanduser().resolve()
-                    if candidate.is_dir():
-                        main_repo_for_auto = candidate
-                        break
-
-            # Check if any workers use "auto"
-            has_auto_workers = any(w["project_path"] == "auto" for w in workers)
-
-            if main_repo_for_auto is None and has_auto_workers:
-                # No explicit path provided - check for env var from .mcp.json
-                project_dir = os.environ.get("CLAUDE_TEAM_PROJECT_DIR")
-                if project_dir:
-                    main_repo_for_auto = Path(project_dir).resolve()
-                    logger.info(f"Using CLAUDE_TEAM_PROJECT_DIR: {main_repo_for_auto}")
-                else:
-                    # No way to determine the project directory
-                    return error_response(
-                        "project_path='auto' requires CLAUDE_TEAM_PROJECT_DIR",
-                        hint=(
-                            "Add a .mcp.json to your project with: "
-                            '"env": {"CLAUDE_TEAM_PROJECT_DIR": "${PWD}"}\n'
-                            "Or use explicit paths instead of 'auto'."
-                        ),
-                    )
+            # Get CLAUDE_TEAM_PROJECT_DIR for "auto" paths
+            env_project_dir = os.environ.get("CLAUDE_TEAM_PROJECT_DIR")
 
             for i, (w, name) in enumerate(zip(workers, resolved_names)):
                 project_path = w["project_path"]
+                use_worktree = w.get("use_worktree", True)  # Default True
+                bead = w.get("bead")
+                annotation = w.get("annotation")
 
+                # Step 1: Resolve repo path
                 if project_path == "auto":
-                    # Create local worktree
-                    bead = w.get("bead")
-                    annotation = w.get("annotation")
+                    if env_project_dir:
+                        repo_path = Path(env_project_dir).resolve()
+                    else:
+                        return error_response(
+                            "project_path='auto' requires CLAUDE_TEAM_PROJECT_DIR",
+                            hint=(
+                                "Add a .mcp.json to your project with: "
+                                '"env": {"CLAUDE_TEAM_PROJECT_DIR": "${PWD}"}\n'
+                                "Or use an explicit path."
+                            ),
+                        )
+                else:
+                    repo_path = Path(project_path).expanduser().resolve()
+                    if not repo_path.is_dir():
+                        return error_response(
+                            f"Project path does not exist for worker {i}: {repo_path}",
+                            hint=HINTS["project_path_missing"],
+                        )
 
+                # Step 2: Create worktree if requested (default True)
+                if use_worktree:
                     try:
                         worktree_path = create_local_worktree(
-                            repo_path=main_repo_for_auto,
+                            repo_path=repo_path,
                             worker_name=name,
                             bead_id=bead,
                             annotation=annotation,
                         )
                         worktree_paths[i] = worktree_path
-                        main_repo_paths[i] = main_repo_for_auto
+                        main_repo_paths[i] = repo_path
                         resolved_paths.append(str(worktree_path))
                         logger.info(f"Created local worktree for {name} at {worktree_path}")
                     except WorktreeError as e:
                         logger.warning(
                             f"Failed to create worktree for {name}: {e}. "
-                            "Using main repo instead."
+                            "Using repo directly."
                         )
-                        resolved_paths.append(str(main_repo_for_auto))
+                        resolved_paths.append(str(repo_path))
                 else:
-                    # Use provided path
-                    resolved = os.path.abspath(os.path.expanduser(project_path))
-                    if not os.path.isdir(resolved):
-                        return error_response(
-                            f"Project path does not exist for worker {i}: {resolved}",
-                            hint=HINTS["project_path_missing"],
-                        )
-                    resolved_paths.append(resolved)
+                    # No worktree - use repo directly
+                    resolved_paths.append(str(repo_path))
 
             # Pre-generate session IDs for Stop hook injection
             session_ids = [str(uuid.uuid4())[:8] for _ in workers]
