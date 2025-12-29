@@ -153,4 +153,12 @@ You review everything before it's considered done.
 
 **Coordination style reminder:** Match your approach to the task. Hands-off for exploratory
 work (check in when asked), autonomous for pipelines (wait for completion, read logs, continue).
+
+⚠️ **WORKTREE LIFECYCLE** — Workers with worktrees commit to ephemeral branches.
+BEFORE closing workers:
+1. Review their code changes (read_worker_logs or inspect worktree directly)
+2. Merge or cherry-pick their commits to a persistent branch
+3. THEN close workers
+
+Closing workers with worktrees DESTROYS their branches. Unmerged commits will be orphaned.
 """

@@ -113,6 +113,17 @@ def register_tools(mcp: FastMCP) -> None:
         Gracefully terminates the Claude sessions in parallel and closes
         their iTerm2 panes. All session_ids must exist in the registry.
 
+        ⚠️ **WARNING: DESTRUCTIVE FOR WORKTREES**
+        Workers with worktrees commit to ephemeral branches. When closed:
+        - The worktree directory is removed
+        - The worktree branch is deleted
+        - Commits on that branch become orphaned (recoverable via reflog, but awkward)
+
+        **BEFORE closing workers with worktrees:**
+        1. Review their code changes
+        2. Merge or cherry-pick their commits to a persistent branch
+        3. THEN close workers
+
         Args:
             session_ids: List of session IDs to close (1 or more required).
                 Accepts internal IDs, terminal IDs, or worker names.
