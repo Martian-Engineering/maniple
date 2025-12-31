@@ -4,37 +4,37 @@ An MCP server that allows one Claude Code session to spawn and manage a team of 
 
 ## Introduction
 
-`claude-team` is an MCP server and a set of somewhat opinionated slash commands for allowing Claude Code to orchestrate a "team" of other Claude Code sessions. It uses the iTerm2 API to spawn new terminal sessions and run Claude Code within them, because iTerm2 is fairly ubiquitous and has a nice API (that and this author uses it heavily). 
+`claude-team` is an MCP server and a set of slash commands for allowing Claude Code to orchestrate a "team" of other Claude Code sessions. It uses the iTerm2 API to spawn new terminal sessions and run Claude Code within them.
 
 ### Why?
 
-- **Parallelism:** Many development tasks can be logically parallelized, but managing that paralellism is difficult for humans with limited attention spans. Claude, meanwhile, is very effective at it. 
-- **Context management:** Offloading implementation to an agent gives the implementing agent a fresh context window (smarter), and keeps the manager's context free of implementation details.
+- **Parallelism:** Many development tasks can be logically parallelized, but managing that parallelism is difficult for humans with limited attention spans. Claude, meanwhile, is very effective at it.
+- **Context management:** Offloading implementation to a worker gives the implementing agent a fresh context window (smarter), and keeps the manager's context free of implementation details.
 - **Background work:** Sometimes you want to have Claude Code go research something or answer a question without blocking the main thread of work.
 - **Visibility:** `claude-team` spawns real Claude Code sessions. You can watch them, interrupt and take control, or close them out.
 
 But, *why not just use Claude Code sub-agents*, you ask? They're opaque -- they go off and do things and you, the user, cannot effectively monitor their work, interject, or continue a conversation with them. Using a full Claude Code session obviates this problem.
 
-### Workflow
+### Git Worktrees: Isolated Branches per Worker
 
-A generally accepted best practice in agentic development is to first plan work to be done, and then transition to implementation after a back-and-forth that produces a plan.
+A key feature of `claude-team` is **git worktree support**. When spawning workers with `use_worktrees: true`, each worker gets:
 
-I use the excellent [beads](https://github.com/steveyegge/beads?tab=readme-ov-file) tool throughout my planning process, and it pairs extraordinarily well with `claude-team`. Here's how:
+- **Its own working directory** - A dedicated git worktree at `~/.claude-team/worktrees/{repo-hash}/{worker-name}/`
+- **Its own branch** - Automatically created branch named `{WorkerName}-{hash}` (e.g., `Groucho-a1b2c3`)
+- **Shared repository history** - All worktrees share the same `.git` database, so commits are immediately visible across workers
 
-1. Begin with planning — Claude Code's plan mode is effective
-2. Ask Claude to turn the plan into `beads` issues, usually an epic and subtasks with appropriate dependencies. [These instructions](./CLAUDE.md#plan-mode-workflow) are useful in your project's `CLAUDE.md`
-3. Use the [/spawn-workers](./commands/spawn-workers.md) slash command to delegate parallelizable work to workers in independent worktrees.
-4. Review, merge back to your working branch, or submit PRs
-
-Once you've spawned workers, *let them cook and keep planning new tasks!* Notice a bug? File it as an issue and spawn a worker if it can be tackled independently. Leverage your main Claude Code session as the place where you *coordinate* and *plan* work, and offload the implementation via `claude-team`.
+This means workers can make commits, run tests, and modify files without conflicting with each other or the main working directory. When work is complete, branches can be merged or submitted as PRs.
 
 ## Features
 
-- **Spawn Sessions**: Create new Claude Code sessions in iTerm2 windows or split panes
-- **Send Messages**: Inject prompts into managed sessions
-- **Read Responses**: Retrieve conversation state from session JSONL files
-- **Monitor Status**: Check if sessions are idle, processing, or waiting for input
-- **Coordinate Work**: Manage multi-agent workflows from a single Claude Code session
+- **Spawn Workers**: Create new Claude Code sessions in iTerm2 with multi-pane layouts
+- **Git Worktrees**: Isolate each worker in its own branch and working directory
+- **Send Messages**: Inject prompts into managed workers (single or broadcast)
+- **Read Logs**: Retrieve conversation history from worker JSONL files
+- **Monitor Status**: Check if workers are idle, processing, or waiting for input
+- **Idle Detection**: Wait for workers to complete using stop-hook markers
+- **Visual Identity**: Each worker gets a unique tab color and themed name (Marx Brothers, Beatles, etc.)
+- **Session Recovery**: Discover and adopt orphaned Claude Code sessions
 
 ## Requirements
 
@@ -59,6 +59,8 @@ This automatically configures the MCP server - no manual setup needed.
 
 ### From PyPI
 
+Once published, install via:
+
 ```bash
 uvx --from claude-team-mcp claude-team
 ```
@@ -80,7 +82,7 @@ Add to your Claude Code MCP settings. You can configure this at:
 - **Global**: `~/.claude/settings.json`
 - **Project**: `.claude/settings.json` in your project directory
 
-### Using PyPI package (recommended)
+### Using PyPI package
 
 ```json
 {
@@ -110,111 +112,149 @@ After adding the configuration, restart Claude Code for it to take effect.
 
 ## MCP Tools
 
-### Session Management
+### Worker Management
 
 | Tool | Description |
 |------|-------------|
-| `spawn_session` | Create a new Claude Code session in a new window or split pane |
-| `spawn_team` | Spawn multiple sessions in a multi-pane layout (vertical, horizontal, quad) |
-| `list_sessions` | List all managed sessions with status |
-| `get_session_status` | Get detailed status including screen preview |
-| `close_session` | Gracefully terminate a session |
-| `discover_sessions` | Find existing Claude Code sessions running in iTerm2 |
-| `import_session` | Import an unmanaged iTerm2 session into the registry |
+| `spawn_workers` | Create workers in a new window with multi-pane layout (single, vertical, horizontal, quad, triple_vertical) |
+| `list_workers` | List all managed workers with status |
+| `examine_worker` | Get detailed worker status including conversation stats and last response preview |
+| `close_workers` | Gracefully terminate one or more workers |
+| `discover_workers` | Find existing Claude Code sessions running in iTerm2 |
+| `adopt_worker` | Import a discovered iTerm2 session into the managed registry |
 
-### Messaging
-
-| Tool | Description |
-|------|-------------|
-| `send_message` | Send a prompt to a session, optionally wait for response |
-| `broadcast_message` | Send the same message to multiple sessions in parallel |
-| `get_response` | Get the latest response from a session |
-| `get_conversation_history` | Get paginated conversation history from a session |
-
-### Task Completion
+### Communication
 
 | Tool | Description |
 |------|-------------|
-| `get_task_status` | Check if a delegated task is complete (via markers, git, beads, idle) |
-| `wait_for_completion` | Block until a task completes or times out |
-| `cancel_task` | Cancel tracking of a task without stopping the session |
+| `message_workers` | Send a message to one or more workers (supports wait modes: none, any, all) |
+| `read_worker_logs` | Get paginated conversation history from a worker's JSONL file |
+| `annotate_worker` | Add a coordinator note to a worker (visible in list_workers output) |
+
+### Idle Detection
+
+| Tool | Description |
+|------|-------------|
+| `check_idle_workers` | Quick non-blocking check if workers are idle |
+| `wait_idle_workers` | Block until workers are idle (supports "any" or "all" modes) |
 
 ### Utilities
 
 | Tool | Description |
 |------|-------------|
+| `list_worktrees` | List git worktrees created by claude-team for a repository |
 | `bd_help` | Get a quick reference guide for using Beads issue tracking |
+
+### Worker Identification
+
+Workers can be referenced by any of three identifiers:
+- **Internal ID**: Short hex string (e.g., `3962c5c4`)
+- **Terminal ID**: Prefixed iTerm UUID (e.g., `iterm:6D2074A3-2D5B-4823-B257-18721A7F5A04`)
+- **Worker name**: Human-friendly name (e.g., `Groucho`, `Aragorn`)
+
+All tools accept any of these formats.
 
 ### Tool Details
 
-#### spawn_session
+#### spawn_workers
+
 ```
 Arguments:
-  project_path: str      - Directory where Claude Code should run
-  session_name: str      - Optional friendly name for the session
-  layout: str            - "auto" (default), "new_window", "split_vertical", or "split_horizontal"
+  projects: dict[str, str]     - Map of pane names to project paths
+  layout: str                  - "auto", "single", "vertical", "horizontal", "quad", or "triple_vertical"
+  skip_permissions: bool       - If True, start Claude with --dangerously-skip-permissions
+  custom_names: list[str]      - Override automatic themed name selection
+  custom_prompt: str           - Custom prompt instead of standard worker pre-prompt
+  include_beads_instructions: bool - Append beads guidance to custom prompt (default: True)
+  use_worktrees: bool          - Create isolated git worktree for each worker
 
 Returns:
-  session_id, name, project_path, status, claude_session_id
+  sessions, layout, count, name_set, mode, use_worktrees, coordinator_guidance
 ```
 
-#### send_message
+Layout pane names:
+- `single`: `["main"]`
+- `vertical`: `["left", "right"]`
+- `horizontal`: `["top", "bottom"]`
+- `quad`: `["top_left", "top_right", "bottom_left", "bottom_right"]`
+- `triple_vertical`: `["left", "middle", "right"]`
+
+#### message_workers
+
 ```
 Arguments:
-  session_id: str              - ID of target session
-  message: str                 - The prompt to send
-  wait_for_response: bool      - If True, wait for Claude to respond
-  timeout: float               - Max seconds to wait (default: 120)
+  session_ids: list[str]   - Worker IDs to message (accepts ID, terminal ID, or name)
+  message: str             - The prompt to send
+  wait_mode: str           - "none" (default), "any", or "all"
+  timeout: float           - Max seconds to wait (default: 600)
 
 Returns:
-  success, session_id, message_sent, [response]
+  success, session_ids, results, [idle_session_ids, all_idle, timed_out]
 ```
 
-#### get_response
+#### wait_idle_workers
+
 ```
 Arguments:
-  session_id: str    - ID of target session
-  wait: bool         - If True, wait if session is processing
-  timeout: float     - Max seconds to wait (default: 60)
+  session_ids: list[str]   - Worker IDs to wait on
+  mode: str                - "all" (default) or "any"
+  timeout: float           - Max seconds to wait (default: 600)
+  poll_interval: float     - Seconds between checks (default: 2)
 
 Returns:
-  session_id, status, is_processing, last_response, tool_uses, message_count
+  session_ids, idle_session_ids, all_idle, waiting_on, mode, waited_seconds, timed_out
 ```
+
+## Slash Commands
+
+The following slash commands are available for common workflows. Install them with:
+
+```bash
+make install-commands
+```
+
+| Command | Description |
+|---------|-------------|
+| `/spawn-workers` | Analyze tasks, create worktrees, and spawn workers with appropriate prompts |
+| `/check-workers` | Generate a status report for all active workers |
+| `/merge-worker` | Directly merge a worker's branch back to parent (for internal changes) |
+| `/pr-worker` | Create a pull request from a worker's branch |
+| `/team-summary` | Generate end-of-session summary of all worker activity |
+| `/cleanup-worktrees` | Remove worktrees for merged branches |
 
 ## Usage Patterns
 
-### Basic: Spawn and Send
+### Basic: Spawn and Message
 
-From your Claude Code session, you can spawn workers and send them tasks:
-
-```
-"Spawn a new Claude session in /path/to/frontend"
-→ Uses spawn_session tool
-→ Returns session_id: "worker-1"
-
-"Send worker-1 the message: Review the React components"
-→ Uses send_message tool
-
-"Check on worker-1's progress"
-→ Uses get_session_status tool
-```
-
-### Parallel Work Distribution
-
-Spawn multiple workers for parallel tasks:
+From your Claude Code session, spawn workers and send them tasks:
 
 ```
-"Create three worker sessions:
- - worker-frontend in /path/to/frontend
- - worker-backend in /path/to/backend
- - worker-tests in /path/to/tests"
+"Spawn two workers for frontend and backend work"
+→ Uses spawn_workers with projects={"left": "/path/to/frontend", "right": "/path/to/backend"}
+→ Returns workers named e.g. "Simon" and "Garfunkel"
 
-"Send each worker their task:
- - frontend: Update the login page styles
- - backend: Add rate limiting to the API
- - tests: Write integration tests for auth"
+"Send Simon the message: Review the React components"
+→ Uses message_workers with session_ids=["Simon"]
 
-"Wait for all workers and collect their responses"
+"Check on Garfunkel's progress"
+→ Uses examine_worker with session_id="Garfunkel"
+```
+
+### Parallel Work with Worktrees
+
+Spawn workers in isolated branches for parallel development:
+
+```
+"Spawn three workers with worktrees to work on different features"
+→ Uses spawn_workers with use_worktrees=true
+→ Creates worktrees at ~/.claude-team/worktrees/{repo}/
+→ Each worker gets their own branch (e.g., "Larry-a1b2c3", "Curly-d4e5f6", "Moe-g7h8i9")
+
+"Message all workers with their tasks, then wait for completion"
+→ Uses message_workers with wait_mode="all"
+
+"Create PRs for each worker's branch"
+→ Uses /pr-worker for each completed worker
 ```
 
 ### Coordinated Workflow
@@ -222,41 +262,48 @@ Spawn multiple workers for parallel tasks:
 Use the manager to coordinate between workers:
 
 ```
-"Spawn a backend worker and have it create a new API endpoint"
-→ Wait for response
+"Spawn a backend worker to create a new API endpoint"
+→ Wait for completion with wait_idle_workers
 
 "Now spawn a frontend worker and tell it about the new endpoint"
-→ Pass context from backend worker's response
+→ Pass context from read_worker_logs of the backend worker
 
-"Finally, spawn a test worker to write tests for the integration"
+"Spawn a test worker to write integration tests"
+→ Coordinate based on both previous workers' output
 ```
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│              Manager Claude Code Session                     │
-│              (has claude-team MCP server)                    │
-├─────────────────────────────────────────────────────────────┤
-│                    MCP Tools                                 │
-│  spawn_session │ send_message │ get_response │ list_sessions │
-└────────────────┬────────────────────────────────────────────┘
-                 │
-        ┌────────┼────────┐
-        ▼        ▼        ▼
-   ┌─────────┐ ┌─────────┐ ┌─────────┐
-   │Worker 1 │ │Worker 2 │ │Worker 3 │
-   │(iTerm2) │ │(iTerm2) │ │(iTerm2) │
-   │         │ │         │ │         │
-   │ Claude  │ │ Claude  │ │ Claude  │
-   │  Code   │ │  Code   │ │  Code   │
-   └─────────┘ └─────────┘ └─────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                Manager Claude Code Session                        │
+│                (has claude-team MCP server)                       │
+├──────────────────────────────────────────────────────────────────┤
+│                         MCP Tools                                 │
+│  spawn_workers │ message_workers │ wait_idle_workers │ etc.      │
+└───────────────────────────┬──────────────────────────────────────┘
+                            │
+               ┌────────────┼────────────┐
+               ▼            ▼            ▼
+         ┌──────────┐ ┌──────────┐ ┌──────────┐
+         │ Groucho  │ │ Harpo    │ │ Chico    │
+         │ (iTerm2) │ │ (iTerm2) │ │ (iTerm2) │
+         │          │ │          │ │          │
+         │  Claude  │ │  Claude  │ │  Claude  │
+         │   Code   │ │   Code   │ │   Code   │
+         │          │ │          │ │          │
+         │ worktree │ │ worktree │ │ worktree │
+         │ branch:  │ │ branch:  │ │ branch:  │
+         │ Groucho- │ │ Harpo-   │ │ Chico-   │
+         │ a1b2c3   │ │ d4e5f6   │ │ g7h8i9   │
+         └──────────┘ └──────────┘ └──────────┘
 ```
 
 The manager maintains:
-- **Session Registry**: Maps session IDs to iTerm2 sessions
+- **Session Registry**: Maps worker IDs/names to iTerm2 sessions
 - **iTerm2 Connection**: Persistent connection for terminal control
-- **JSONL Monitoring**: Reads Claude's session files for conversation state
+- **JSONL Monitoring**: Reads Claude's session files for conversation state and idle detection
+- **Worktree Tracking**: Manages git worktrees for isolated worker branches
 
 ## Development
 
@@ -269,6 +316,9 @@ uv run pytest
 
 # Run the server directly (for debugging)
 uv run python -m claude_team_mcp
+
+# Install slash commands
+make install-commands
 ```
 
 ## Troubleshooting
@@ -278,12 +328,19 @@ uv run python -m claude_team_mcp
 - Enable: iTerm2 → Preferences → General → Magic → Enable Python API
 
 ### "Session not found"
-- The session may have been closed externally
-- Use `list_sessions` to see active sessions
+- The worker may have been closed externally
+- Use `list_workers` to see active workers
+- Workers can be referenced by ID, terminal ID, or name
 
 ### "No JSONL session file found"
 - Claude Code may still be starting up
 - Wait a few seconds and try again
+- Check that Claude Code is actually running in the worker pane
+
+### Worktree issues
+- Use `list_worktrees` to see worktrees for a repository
+- Orphaned worktrees can be cleaned up with `list_worktrees` + `remove_orphans=true`
+- Worktrees are stored at `~/.claude-team/worktrees/{repo-hash}/`
 
 ## License
 

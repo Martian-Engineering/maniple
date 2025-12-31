@@ -5,19 +5,40 @@ An MCP server that enables a "manager" Claude Code session to spawn and orchestr
 ## Project Structure
 
 ```
-src/claude_team_mcp/           # Main MCP server package
-├── server.py                  # FastMCP server with all 13 MCP tool implementations
-├── registry.py                # Session tracking (ManagedSession, SessionRegistry)
+src/claude_team_mcp/
+├── server.py                  # FastMCP server entry point, registers all tools
+├── registry.py                # Worker tracking (ManagedSession, SessionRegistry)
 ├── session_state.py           # JSONL parsing for Claude conversation logs
 ├── iterm_utils.py             # Low-level iTerm2 API wrappers
-├── task_completion.py         # Multi-strategy task completion detection
+├── idle_detection.py          # Stop hook completion detection
 ├── profile.py                 # iTerm2 profile/theme management
 ├── colors.py                  # Golden ratio tab color generation
-└── formatting.py              # Title/badge formatting utilities
+├── formatting.py              # Title/badge formatting utilities
+├── names.py                   # Worker name generation (themed name sets)
+├── worker_prompt.py           # Worker system prompt generation
+├── worktree.py                # Git worktree management
+├── subprocess_cache.py        # Cached subprocess calls
+├── tools/                     # MCP tool implementations (one per file)
+│   ├── spawn_workers.py       # Create worker sessions
+│   ├── list_workers.py        # List managed workers
+│   ├── examine_worker.py      # Get detailed worker status
+│   ├── message_workers.py     # Send prompts to workers
+│   ├── check_idle_workers.py  # Check if workers are idle
+│   ├── wait_idle_workers.py   # Wait for workers to finish
+│   ├── read_worker_logs.py    # Get conversation history
+│   ├── annotate_worker.py     # Add coordinator notes
+│   ├── close_workers.py       # Terminate workers
+│   ├── discover_workers.py    # Find orphaned iTerm sessions
+│   ├── adopt_worker.py        # Import orphaned sessions
+│   ├── list_worktrees.py      # List git worktrees
+│   └── bd_help.py             # Beads quick reference
+└── utils/                     # Shared utilities
+    ├── constants.py           # Shared constants
+    ├── errors.py              # Error response helpers
+    └── worktree_detection.py  # Worktree path detection
 
+commands/                      # Slash commands for Claude Code
 scripts/                       # Utility scripts
-└── install-commands.py        # Install slash commands to ~/.claude/commands/
-
 tests/                         # Pytest unit tests
 ```
 
@@ -35,14 +56,23 @@ make sync                  # Sync dependencies
 
 | Module | Purpose |
 |--------|---------|
-| `server.py` | Entry point; defines all MCP tools (`spawn_session`, `send_message`, `get_response`, etc.) |
-| `registry.py` | Tracks managed sessions, states: SPAWNING → READY → BUSY → CLOSED |
+| `server.py` | Entry point; registers all MCP tools from `tools/` directory |
+| `registry.py` | Tracks workers, states: SPAWNING → READY → BUSY → CLOSED. `resolve()` accepts internal ID, terminal ID, or name |
 | `session_state.py` | Parses Claude's JSONL files at `~/.claude/projects/{slug}/{session}.jsonl` |
 | `iterm_utils.py` | Terminal control: `send_text`, `send_prompt`, window/pane creation |
-| `task_completion.py` | Detects completion via markers, git commits, beads issues, idle time |
-| `profile.py` | Auto dark/light mode, screen dimensions, font configuration |
+| `idle_detection.py` | Stop hook completion detection via JSONL markers |
+| `names.py` | Themed name sets (Marx Brothers, LOTR, etc.) for worker identification |
+| `worktree.py` | Git worktree creation/cleanup for isolated worker branches |
 
 ## Critical Implementation Details
+
+### Worker Identification
+Workers can be referenced by any of three identifiers:
+- **Internal ID**: Short hex string (e.g., `3962c5c4`)
+- **Terminal ID**: Prefixed iTerm UUID (e.g., `iterm:6D2074A3-2D5B-4823-B257-18721A7F5A04`)
+- **Worker name**: Human-friendly name (e.g., `Groucho`, `Aragorn`)
+
+All tools accept any of these formats via `registry.resolve()`.
 
 ### Enter Key Handling
 **Use `\x0d` (carriage return) for Enter, NOT `\n`**
@@ -57,27 +87,24 @@ Claude stores conversations at:
 ```
 Where `{project-slug}` = project path with `/` → `-` (e.g., `/Users/josh/code` → `-Users-josh-code`)
 
-### Completion Detection Strategies
-1. **Convention markers**: `TASK_COMPLETE`, `TASK_FAILED` in conversation
-2. **Natural language**: Pattern matching for completion phrases
-3. **Git commits**: New commits since task started
-4. **Beads issues**: Issue status changed to closed
-5. **Idle detection**: No JSONL file changes for threshold period
+### Idle Detection (Stop Hooks)
+Workers are spawned with a stop hook that fires when Claude finishes responding. The hook writes a marker to the JSONL file that `idle_detection.py` watches for. This is the primary completion detection mechanism.
 
 ### Layout Options
-- `new_window`: Fresh iTerm2 window
-- `split_vertical` / `split_horizontal`: Split existing pane
-- `quad`: 4-pane grid [top_left, top_right, bottom_left, bottom_right]
-- `auto_layout`: Smart reuse of windows with < 4 panes
+- `single`: 1 pane, full window (main)
+- `vertical`: 2 panes side by side (left, right)
+- `horizontal`: 2 panes stacked (top, bottom)
+- `quad`: 4 panes in 2x2 grid (top_left, top_right, bottom_left, bottom_right)
+- `triple_vertical`: 3 panes side by side (left, middle, right)
 
 ## Running & Testing
 
 ```bash
-# Sync dependencies
-uv sync
+# Sync dependencies (with dev tools)
+uv sync --group dev
 
 # Run tests
-uv run pytest
+uv run --group dev pytest
 
 # Run server directly (debugging)
 uv run python -m claude_team_mcp

@@ -9,7 +9,7 @@ import colorsys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import iterm2
+    from iterm2.color import Color as ItermColor
 
 
 # Golden ratio conjugate (φ - 1), used for even hue distribution
@@ -24,7 +24,7 @@ def generate_tab_color(
     index: int,
     saturation: float = DEFAULT_SATURATION,
     lightness: float = DEFAULT_LIGHTNESS,
-) -> "iterm2.Color":
+) -> "ItermColor":
     """
     Generate a distinct tab color for a given index.
 
@@ -51,7 +51,7 @@ def generate_tab_color(
         # Colors remain visually distinct even for many sessions
         color10 = generate_tab_color(10)
     """
-    import iterm2
+    from iterm2.color import Color
 
     # Calculate hue using golden ratio distribution
     # Multiply index by golden ratio conjugate and take fractional part
@@ -62,7 +62,7 @@ def generate_tab_color(
     r, g, b = colorsys.hls_to_rgb(hue, lightness, saturation)
 
     # iterm2.Color expects integer RGB values 0-255
-    return iterm2.Color(
+    return Color(
         r=int(r * 255),
         g=int(g * 255),
         b=int(b * 255),

@@ -2,7 +2,7 @@
 """
 Install slash commands from this repository to the user's global Claude commands.
 
-Copies .claude/commands/*.md to ~/.claude/commands/ for global availability.
+Copies commands/*.md to ~/.claude/commands/ for global availability.
 
 Usage:
     uv run scripts/install-commands.py [--force] [--dry-run]
@@ -37,7 +37,7 @@ def main():
     # Find repo root (where this script lives is scripts/, go up one level)
     script_dir = Path(__file__).parent
     repo_root = script_dir.parent
-    source_dir = repo_root / ".claude" / "commands"
+    source_dir = repo_root / "commands"
     target_dir = Path.home() / ".claude" / "commands"
 
     # Verify source directory exists

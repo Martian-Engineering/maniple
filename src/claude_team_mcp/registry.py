@@ -5,12 +5,52 @@ Tracks all spawned Claude Code sessions, maintaining the mapping between
 our session IDs, iTerm2 session objects, and Claude JSONL session IDs.
 """
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from pathlib import Path
+from typing import TYPE_CHECKING, Optional
 
-from .session_state import find_active_session, get_project_dir, parse_session
+if TYPE_CHECKING:
+    from iterm2.session import Session as ItermSession
+
+from .session_state import get_project_dir, parse_session
+
+
+@dataclass(frozen=True)
+class TerminalId:
+    """
+    Terminal-agnostic identifier for a session in a terminal emulator.
+
+    Designed for extensibility - same structure works for iTerm, Zed, VS Code, etc.
+    After MCP restart, registry is empty but terminal IDs persist. This allows
+    tools to accept terminal IDs directly for recovery scenarios.
+
+    Attributes:
+        terminal_type: Terminal emulator type ("iterm", "zed", "vscode", etc.)
+        native_id: Terminal's native session ID (e.g., iTerm's UUID)
+    """
+
+    terminal_type: str
+    native_id: str
+
+    def __str__(self) -> str:
+        """For display: 'iterm:DB29DB03-...'"""
+        return f"{self.terminal_type}:{self.native_id}"
+
+    @classmethod
+    def from_string(cls, s: str) -> "TerminalId":
+        """
+        Parse 'iterm:DB29DB03-...' format.
+
+        Falls back to treating bare IDs as iTerm for backwards compatibility.
+        """
+        if ":" in s:
+            terminal_type, native_id = s.split(":", 1)
+            return cls(terminal_type, native_id)
+        # Assume bare ID is iTerm for backwards compatibility
+        return cls("iterm", s)
 
 
 class SessionStatus(str, Enum):
@@ -19,35 +59,6 @@ class SessionStatus(str, Enum):
     SPAWNING = "spawning"  # Claude is starting up
     READY = "ready"  # Claude is idle, waiting for input
     BUSY = "busy"  # Claude is processing/responding
-    CLOSED = "closed"  # Session has been terminated
-
-
-@dataclass
-class TaskInfo:
-    """
-    Information about a delegated task.
-
-    Tracks the task that was sent to a session, including the baseline
-    state when the task was delegated.
-    """
-
-    task_id: str  # Unique task identifier
-    description: str  # Task description/prompt sent
-    started_at: datetime = field(default_factory=datetime.now)
-    baseline_message_uuid: Optional[str] = None  # Last message UUID before task
-    beads_issue_id: Optional[str] = None  # Optional linked beads issue
-
-    def to_dict(self) -> dict:
-        """Convert to dictionary for MCP tool responses."""
-        return {
-            "task_id": self.task_id,
-            "description": self.description[:200] + "..."
-            if len(self.description) > 200
-            else self.description,
-            "started_at": self.started_at.isoformat(),
-            "baseline_message_uuid": self.baseline_message_uuid,
-            "beads_issue_id": self.beads_issue_id,
-        }
 
 
 @dataclass
@@ -60,60 +71,52 @@ class ManagedSession:
     """
 
     session_id: str  # Our assigned ID (e.g., "worker-1")
-    iterm_session: object  # iterm2.Session
+    iterm_session: "ItermSession"
     project_path: str
     claude_session_id: Optional[str] = None  # Discovered from JSONL
     name: Optional[str] = None  # Optional friendly name
     status: SessionStatus = SessionStatus.SPAWNING
     created_at: datetime = field(default_factory=datetime.now)
     last_activity: datetime = field(default_factory=datetime.now)
-    current_task: Optional[TaskInfo] = None  # Currently delegated task
-    task_history: list[TaskInfo] = field(default_factory=list)  # Completed tasks
+
+    # Coordinator annotations and worktree tracking
+    coordinator_annotation: Optional[str] = None  # Notes from coordinator about assignment
+    worktree_path: Optional[Path] = None  # Path to worker's git worktree if any
+    main_repo_path: Optional[Path] = None  # Path to main git repo (for worktree cleanup)
+
+    # Terminal-agnostic identifier (auto-populated from iterm_session if not set)
+    terminal_id: Optional[TerminalId] = None
+
+    def __post_init__(self):
+        """Auto-populate terminal_id from iterm_session if not set."""
+        if self.terminal_id is None and self.iterm_session is not None:
+            self.terminal_id = TerminalId("iterm", self.iterm_session.session_id)
 
     def to_dict(self) -> dict:
         """Convert to dictionary for MCP tool responses."""
-        result = {
+        return {
             "session_id": self.session_id,
+            "terminal_id": str(self.terminal_id) if self.terminal_id else None,
             "name": self.name or self.session_id,
             "project_path": self.project_path,
             "claude_session_id": self.claude_session_id,
             "status": self.status.value,
             "created_at": self.created_at.isoformat(),
             "last_activity": self.last_activity.isoformat(),
-            "has_active_task": self.current_task is not None,
+            "coordinator_annotation": self.coordinator_annotation,
+            "worktree_path": str(self.worktree_path) if self.worktree_path else None,
+            "main_repo_path": str(self.main_repo_path) if self.main_repo_path else None,
         }
-        if self.current_task:
-            result["current_task"] = self.current_task.to_dict()
-        return result
 
     def update_activity(self) -> None:
         """Update the last_activity timestamp."""
         self.last_activity = datetime.now()
 
-    def discover_claude_session(self) -> Optional[str]:
-        """
-        Try to discover the Claude session ID from JSONL files.
-
-        Looks for recently modified session files in the project's
-        Claude directory. Note: This finds the most recently modified
-        JSONL, which may not be correct when multiple sessions exist.
-        Prefer discover_claude_session_by_marker() for accurate correlation.
-
-        Returns:
-            Session ID if found, None otherwise
-        """
-        session_id = find_active_session(self.project_path, max_age_seconds=60)
-        if session_id:
-            self.claude_session_id = session_id
-        return session_id
-
     def discover_claude_session_by_marker(self, max_age_seconds: int = 120) -> Optional[str]:
         """
         Discover the Claude session ID by searching for this session's marker.
 
-        This is more accurate than discover_claude_session() when multiple
-        sessions exist for the same project. Requires that a marker message
-        was previously sent to the session.
+        Requires that a marker message was previously sent to the session.
 
         Args:
             max_age_seconds: Only check JSONL files modified within this time
@@ -141,9 +144,9 @@ class ManagedSession:
         Returns:
             Path object, or None if session cannot be discovered
         """
-        # Auto-discover if not already known
+        # Auto-discover if not already known (using marker-based discovery)
         if not self.claude_session_id:
-            self.discover_claude_session()
+            self.discover_claude_session_by_marker()
 
         if not self.claude_session_id:
             return None
@@ -161,62 +164,53 @@ class ManagedSession:
             return None
         return parse_session(jsonl_path)
 
-    def start_task(
-        self,
-        task_id: str,
-        description: str,
-        beads_issue_id: Optional[str] = None,
-    ) -> TaskInfo:
+    def is_idle(self) -> bool:
         """
-        Start tracking a new delegated task.
+        Check if this session is idle using stop hook detection.
 
-        Captures the baseline message UUID for completion detection.
-
-        Args:
-            task_id: Unique identifier for this task
-            description: Task description/prompt
-            beads_issue_id: Optional linked beads issue
+        A session is idle if its Stop hook has fired and no messages
+        have been sent after it.
 
         Returns:
-            The created TaskInfo
+            True if idle, False if working or JSONL not available
         """
-        # Get baseline message UUID
-        baseline_uuid = None
+        from .idle_detection import is_idle as check_is_idle
+
+        jsonl_path = self.get_jsonl_path()
+        if not jsonl_path or not jsonl_path.exists():
+            return False
+        return check_is_idle(jsonl_path, self.session_id)
+
+    def get_conversation_stats(self) -> dict | None:
+        """
+        Get conversation statistics for this session.
+
+        Returns:
+            Dict with message counts and previews, or None if JSONL not available
+        """
         state = self.get_conversation_state()
-        if state and state.last_assistant_message:
-            baseline_uuid = state.last_assistant_message.uuid
-
-        # Create task info
-        task = TaskInfo(
-            task_id=task_id,
-            description=description,
-            baseline_message_uuid=baseline_uuid,
-            beads_issue_id=beads_issue_id,
-        )
-
-        # Archive current task if exists
-        if self.current_task:
-            self.task_history.append(self.current_task)
-
-        self.current_task = task
-        self.update_activity()
-        return task
-
-    def complete_task(self) -> Optional[TaskInfo]:
-        """
-        Mark current task as complete and archive it.
-
-        Returns:
-            The completed TaskInfo, or None if no active task
-        """
-        if not self.current_task:
+        if not state:
             return None
 
-        completed = self.current_task
-        self.task_history.append(completed)
-        self.current_task = None
-        self.update_activity()
-        return completed
+        convo = state.conversation
+        user_msgs = [m for m in convo if m.role == "user"]
+        assistant_msgs = [m for m in convo if m.role == "assistant"]
+
+        return {
+            "total_messages": len(convo),
+            "user_messages": len(user_msgs),
+            "assistant_messages": len(assistant_msgs),
+            "last_user_prompt": (
+                user_msgs[-1].content[:200] + "..."
+                if user_msgs and len(user_msgs[-1].content) > 200
+                else (user_msgs[-1].content if user_msgs else None)
+            ),
+            "last_assistant_preview": (
+                assistant_msgs[-1].content[:200] + "..."
+                if assistant_msgs and len(assistant_msgs[-1].content) > 200
+                else (assistant_msgs[-1].content if assistant_msgs else None)
+            ),
+        }
 
 
 class SessionRegistry:
@@ -230,16 +224,14 @@ class SessionRegistry:
     def __init__(self):
         """Initialize an empty registry."""
         self._sessions: dict[str, ManagedSession] = {}
-        self._counter: int = 0
 
-    def _generate_id(self, prefix: str = "worker") -> str:
-        """Generate a unique session ID."""
-        self._counter += 1
-        return f"{prefix}-{self._counter}"
+    def _generate_id(self) -> str:
+        """Generate a unique session ID as short UUID."""
+        return str(uuid.uuid4())[:8]  # e.g., "a3f2b1c9"
 
     def add(
         self,
-        iterm_session: object,
+        iterm_session: "ItermSession",
         project_path: str,
         name: Optional[str] = None,
         session_id: Optional[str] = None,
@@ -295,6 +287,36 @@ class SessionRegistry:
                 return session
         return None
 
+    def resolve(self, identifier: str) -> Optional[ManagedSession]:
+        """
+        Resolve a session by any known identifier.
+
+        Lookup order (most specific first):
+        1. Internal session_id (e.g., "d875b833")
+        2. Terminal native ID (e.g., "DB29DB03-AA52-4FBF-879A-4DA2C5F9F823")
+        3. Session name
+
+        After MCP restart, internal IDs are lost until import. This method
+        allows tools to accept terminal IDs directly for recovery scenarios.
+
+        Args:
+            identifier: Any session identifier (internal ID, terminal ID, or name)
+
+        Returns:
+            ManagedSession if found, None otherwise
+        """
+        # 1. Try internal session_id (fast dict lookup)
+        if identifier in self._sessions:
+            return self._sessions[identifier]
+
+        # 2. Try terminal ID (e.g., "iterm:UUID")
+        for session in self._sessions.values():
+            if session.terminal_id and str(session.terminal_id) == identifier:
+                return session
+
+        # 3. Try name (last resort)
+        return self.get_by_name(identifier)
+
     def list_all(self) -> list[ManagedSession]:
         """
         Get all registered sessions.
@@ -321,25 +343,30 @@ class SessionRegistry:
         Remove a session from the registry.
 
         Args:
-            session_id: ID of session to remove
+            session_id: ID of session to remove.
+                Accepts internal IDs, terminal IDs, or worker names.
 
         Returns:
             The removed session, or None if not found
         """
-        return self._sessions.pop(session_id, None)
+        session = self.resolve(session_id)
+        if session:
+            return self._sessions.pop(session.session_id, None)
+        return None
 
     def update_status(self, session_id: str, status: SessionStatus) -> bool:
         """
         Update a session's status.
 
         Args:
-            session_id: ID of session to update
+            session_id: ID of session to update.
+                Accepts internal IDs, terminal IDs, or worker names.
             status: New status
 
         Returns:
             True if session was found and updated
         """
-        session = self._sessions.get(session_id)
+        session = self.resolve(session_id)
         if session:
             session.status = status
             session.update_activity()

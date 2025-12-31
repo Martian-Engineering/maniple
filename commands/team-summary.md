@@ -4,10 +4,11 @@ Generate an end-of-session summary of all worker activity.
 
 ## Process
 
-1. List all sessions (active and recently closed)
-2. For each worker's project path, check git log for commits
-3. Check beads issues that were closed: `bd list --status=closed`
-4. Compile summary of work completed
+1. Get all workers via `list_workers` (includes active and closed)
+2. For each worker's worktree path, check git log for commits
+3. Check beads issues that were closed: `bd list --status closed`
+4. Get worktree status via `list_worktrees(repo_path)`
+5. Compile summary of work completed
 
 ## Output Format
 
@@ -16,11 +17,11 @@ Generate an end-of-session summary of all worker activity.
 
 ### Completed Work
 
-| Issue | Worker | Branch | Status |
-|-------|--------|--------|--------|
-| cic-abc | worker-1 | cic-abc/feature-name | Merged |
-| cic-xyz | worker-2 | cic-xyz/bug-fix | PR Open |
-| cic-123 | worker-3 | cic-123/refactor | Ready to merge |
+| Bead | Worker | Branch | Status |
+|------|--------|--------|--------|
+| cic-abc | Groucho | cic-abc-feature-name | Merged |
+| cic-xyz | Harpo | cic-xyz-bug-fix | PR Open |
+| cic-123 | Chico | cic-123-refactor | Ready to merge |
 
 ### Git Activity
 
@@ -31,20 +32,20 @@ Generate an end-of-session summary of all worker activity.
 ```
 
 **Branches:**
-- `cic-abc/feature-name` - merged to main
-- `cic-xyz/bug-fix` - PR #42 open
-- `cic-123/refactor` - awaiting review
+- `cic-abc-feature-name` - merged to main
+- `cic-xyz-bug-fix` - PR #42 open
+- `cic-123-refactor` - awaiting review
 
 ### Worktrees
 
 | Path | Branch | Status |
 |------|--------|--------|
-| .worktrees/cic-abc | cic-abc/feature-name | Can remove (merged) |
-| .worktrees/cic-xyz | cic-xyz/bug-fix | Keep (PR open) |
+| .worktrees/cic-abc-feature-name | cic-abc-feature-name | Can remove (merged) |
+| .worktrees/cic-xyz-bug-fix | cic-xyz-bug-fix | Keep (PR open) |
 
 ### Statistics
 - Workers spawned: X
-- Issues completed: Y
+- Beads completed: Y
 - PRs opened: Z
 - Branches merged: W
 ```
@@ -53,4 +54,5 @@ Generate an end-of-session summary of all worker activity.
 
 - Run this at end of session before cleanup
 - Helps identify what still needs review/merge
-- Use output to guide `/cleanup-worktrees` or `/pr-worker` commands
+- Suggest `/cleanup-worktrees` for merged branches
+- Suggest `/pr-worker` or `/merge-worker` for unmerged work

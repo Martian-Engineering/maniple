@@ -39,12 +39,6 @@ Documentation = "https://github.com/Martian-Engineering/claude-team#readme"
 Issues = "https://github.com/Martian-Engineering/claude-team/issues"
 Changelog = "https://github.com/Martian-Engineering/claude-team/releases"
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
-]
-
 [project.scripts]
 claude-team = "claude_team_mcp:main"
 
@@ -61,5 +55,8 @@ testpaths = ["tests"]
 
 [dependency-groups]
 dev = [
+    "pyright>=1.1.407",
     "pytest>=9.0.2",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.14.10",
 ]

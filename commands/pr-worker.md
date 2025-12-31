@@ -5,11 +5,11 @@ Create a pull request from a worker's branch: $ARGUMENTS
 ## Process
 
 1. Identify the worker session or branch from $ARGUMENTS
-   - Can be session ID (e.g., "worker-1") or branch name (e.g., "cic-abc/feature")
+   - Can be worker name (e.g., "Groucho") or branch name (e.g., "cic-abc-feature")
 
-2. If session ID provided:
-   - Get session info via `get_session_status`
-   - Find the worktree/branch from project path
+2. If worker name provided:
+   - Get worker info via `list_workers` or `examine_worker`
+   - Find the worktree/branch from worktree_path
 
 3. Detect the parent branch (branch the worktree diverged from):
    ```bash
@@ -21,7 +21,7 @@ Create a pull request from a worker's branch: $ARGUMENTS
 4. Gather PR information:
    - Get commits on branch: `git log <parent>..<branch> --oneline`
    - Get changed files: `git diff <parent>..<branch> --stat`
-   - Extract issue ID from branch name if present
+   - Extract bead ID from branch name if present
 
 5. Push branch if not already pushed:
    ```bash
@@ -30,7 +30,7 @@ Create a pull request from a worker's branch: $ARGUMENTS
 
 6. Create PR using gh CLI (targeting parent branch):
    ```bash
-   gh pr create --base <parent-branch> --title "<issue-id>: <summary>" --body "$(cat <<'EOF'
+   gh pr create --base <parent-branch> --title "<bead-id>: <summary>" --body "$(cat <<'EOF'
    ## Summary
    <bullet points from commits>
 
@@ -42,7 +42,7 @@ Create a pull request from a worker's branch: $ARGUMENTS
    - [ ] Manual verification
 
    ---
-   Related: <issue-id>
+   Related: <bead-id>
    EOF
    )"
    ```
@@ -54,7 +54,7 @@ Create a pull request from a worker's branch: $ARGUMENTS
 ```
 ## Pull Request Created
 
-**Branch:** cic-abc/feature-name
+**Branch:** cic-abc-feature-name
 **PR:** https://github.com/org/repo/pull/42
 **Title:** cic-abc: Implement feature X
 
@@ -74,5 +74,11 @@ Create a pull request from a worker's branch: $ARGUMENTS
 ## Notes
 
 - Requires `gh` CLI to be authenticated
-- Branch must have commits ahead of main
-- Does not close the worker session (do that separately if desired)
+- Branch must have commits ahead of parent
+- Does not close the worker session — use `close_workers([session_id])` separately if desired
+
+## If Small Change
+
+**Stop and notify the user** if the change is trivial (single file, minor fix). Let them know they may want to use `/merge-worker` instead for a direct merge without PR overhead.
+
+Allow the user flexibility to proceed with PR if they prefer — this is a suggestion, not a hard block.

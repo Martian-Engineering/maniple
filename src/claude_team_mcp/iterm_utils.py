@@ -7,8 +7,15 @@ from the original primitives.py for use in the MCP server.
 
 import logging
 import re
-from typing import Optional, Callable
-from pathlib import Path
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from iterm2.app import App as ItermApp
+    from iterm2.connection import Connection as ItermConnection
+    from iterm2.profile import LocalWriteOnlyProfile as ItermLocalWriteOnlyProfile
+    from iterm2.session import Session as ItermSession
+    from iterm2.tab import Tab as ItermTab
+    from iterm2.window import Window as ItermWindow
 
 from .subprocess_cache import cached_system_profiler
 
@@ -47,7 +54,7 @@ KEYS = {
 # Terminal Control
 # =============================================================================
 
-async def send_text(session: "iterm2.Session", text: str) -> None:
+async def send_text(session: "ItermSession", text: str) -> None:
     """
     Send raw text to an iTerm2 session.
 
@@ -56,7 +63,7 @@ async def send_text(session: "iterm2.Session", text: str) -> None:
     await session.async_send_text(text)
 
 
-async def send_key(session: "iterm2.Session", key: str) -> None:
+async def send_key(session: "ItermSession", key: str) -> None:
     """
     Send a special key to an iTerm2 session.
 
@@ -74,7 +81,7 @@ async def send_key(session: "iterm2.Session", key: str) -> None:
     await session.async_send_text(key_code)
 
 
-async def send_prompt(session: "iterm2.Session", text: str, submit: bool = True) -> None:
+async def send_prompt(session: "ItermSession", text: str, submit: bool = True) -> None:
     """
     Send a prompt to an iTerm2 session, optionally submitting it.
 
@@ -118,7 +125,7 @@ async def send_prompt(session: "iterm2.Session", text: str, submit: bool = True)
         await session.async_send_text(KEYS["enter"])
 
 
-async def read_screen(session: "iterm2.Session") -> list[str]:
+async def read_screen(session: "ItermSession") -> list[str]:
     """
     Read all lines from an iTerm2 session's screen.
 
@@ -132,7 +139,7 @@ async def read_screen(session: "iterm2.Session") -> list[str]:
     return [screen.line(i).string for i in range(screen.number_of_lines)]
 
 
-async def read_screen_text(session: "iterm2.Session") -> str:
+async def read_screen_text(session: "ItermSession") -> str:
     """
     Read screen content as a single string.
 
@@ -200,10 +207,10 @@ def _calculate_screen_frame() -> tuple[float, float, float, float]:
 
 
 async def create_window(
-    connection: "iterm2.Connection",
+    connection: "ItermConnection",
     profile: Optional[str] = None,
-    profile_customizations: Optional["iterm2.LocalWriteOnlyProfile"] = None,
-) -> "iterm2.Window":
+    profile_customizations: Optional["ItermLocalWriteOnlyProfile"] = None,
+) -> "ItermWindow":
     """
     Create a new iTerm2 window with screen-filling dimensions.
 
@@ -220,14 +227,26 @@ async def create_window(
     Returns:
         New window object
     """
-    import iterm2
+    from iterm2.util import Frame, Point, Size
+    from iterm2.window import Window
 
     # Create the window
-    window = await iterm2.Window.async_create(
-        connection,
-        profile=profile,
-        profile_customizations=profile_customizations,
-    )
+    # Note: We conditionally pass profile_customizations only when not None
+    # due to iterm2 library's type stubs not marking it as Optional
+    if profile_customizations is not None:
+        window = await Window.async_create(
+            connection,
+            profile=profile if profile is not None else "",
+            profile_customizations=profile_customizations,
+        )
+    else:
+        window = await Window.async_create(
+            connection,
+            profile=profile if profile is not None else "",
+        )
+
+    if window is None:
+        raise RuntimeError("Failed to create iTerm2 window")
 
     # Exit fullscreen mode if the window opened in fullscreen
     # (can happen if user's default profile or iTerm2 settings use fullscreen)
@@ -241,9 +260,9 @@ async def create_window(
 
     # Set window frame to fill screen without triggering fullscreen mode
     x, y, width, height = _calculate_screen_frame()
-    frame = iterm2.Frame(
-        origin=iterm2.Point(x, y),
-        size=iterm2.Size(width, height),
+    frame = Frame(
+        origin=Point(int(x), int(y)),
+        size=Size(int(width), int(height)),
     )
     await window.async_set_frame(frame)
 
@@ -253,26 +272,13 @@ async def create_window(
     return window
 
 
-async def create_tab(window: "iterm2.Window") -> "iterm2.Tab":
-    """
-    Create a new tab in an existing window.
-
-    Args:
-        window: iTerm2 window object
-
-    Returns:
-        New tab object
-    """
-    return await window.async_create_tab()
-
-
 async def split_pane(
-    session: "iterm2.Session",
+    session: "ItermSession",
     vertical: bool = True,
     before: bool = False,
     profile: Optional[str] = None,
-    profile_customizations: Optional["iterm2.LocalWriteOnlyProfile"] = None,
-) -> "iterm2.Session":
+    profile_customizations: Optional["ItermLocalWriteOnlyProfile"] = None,
+) -> "ItermSession":
     """
     Split an iTerm2 session into two panes.
 
@@ -295,7 +301,7 @@ async def split_pane(
     )
 
 
-async def close_pane(session: "iterm2.Session", force: bool = False) -> bool:
+async def close_pane(session: "ItermSession", force: bool = False) -> bool:
     """
     Close an iTerm2 session/pane.
 
@@ -317,29 +323,26 @@ async def close_pane(session: "iterm2.Session", force: bool = False) -> bool:
 # Shell Readiness Detection
 # =============================================================================
 
-# Common shell prompt endings that indicate the shell is ready for input.
-# These appear at the end of the last non-empty line when shell is idle.
-SHELL_PROMPT_PATTERNS = ['$ ', '% ', '> ', '# ', '❯ ', '➜ ']
+# Marker used to detect shell readiness - must be unique enough not to appear randomly
+SHELL_READY_MARKER = "CLAUDE_TEAM_READY_7f3a9c"
 
 
 async def wait_for_shell_ready(
-    session: "iterm2.Session",
+    session: "ItermSession",
     timeout_seconds: float = 10.0,
     poll_interval: float = 0.1,
-    stable_count: int = 2,
 ) -> bool:
     """
     Wait for the shell to be ready to accept input.
 
-    Polls the screen content and waits for a stable shell prompt to appear.
-    A prompt is considered "stable" when the screen content hasn't changed
-    for `stable_count` consecutive polls AND ends with a recognized prompt.
+    Sends an echo command with a unique marker and waits for it to appear
+    in the terminal output. This proves the shell is accepting and executing
+    commands, regardless of prompt style.
 
     Args:
         session: iTerm2 session to monitor
         timeout_seconds: Maximum time to wait for shell readiness
         poll_interval: Time between screen content checks
-        stable_count: Number of consecutive stable reads before considering ready
 
     Returns:
         True if shell became ready, False if timeout was reached
@@ -347,51 +350,44 @@ async def wait_for_shell_ready(
     import asyncio
     import time
 
-    start_time = time.monotonic()
-    last_content = None
-    stable_reads = 0
+    # Send the marker command
+    await send_prompt(session, f'echo "{SHELL_READY_MARKER}"')
 
+    # Wait for marker to appear in output (not in the command itself)
+    # We look for the marker at the start of a line, which indicates the echo
+    # actually executed and produced output, not just that the command was displayed
+    start_time = time.monotonic()
     while (time.monotonic() - start_time) < timeout_seconds:
         try:
             content = await read_screen_text(session)
-
-            # Find the last non-empty line (the prompt line)
-            lines = content.rstrip().split('\n')
-            last_line = ''
-            for line in reversed(lines):
-                stripped = line.rstrip()
-                if stripped:
-                    last_line = stripped
-                    break
-
-            # Check if content is stable (same as last read)
-            if content == last_content:
-                stable_reads += 1
-            else:
-                stable_reads = 0
-                last_content = content
-
-            # Check if we have a stable shell prompt
-            if stable_reads >= stable_count:
-                # Look for shell prompt at end of last line
-                for pattern in SHELL_PROMPT_PATTERNS:
-                    if last_line.endswith(pattern.rstrip()):
-                        return True
-                # Also check if line ends with common prompt chars
-                if last_line and last_line[-1] in '$%>#':
+            # Check each line - the output will be the marker on its own line
+            # (not preceded by 'echo "' which would be the command)
+            for line in content.split('\n'):
+                stripped = line.strip()
+                if stripped == SHELL_READY_MARKER:
                     return True
-
         except Exception:
-            # Screen read failed, retry
             pass
-
         await asyncio.sleep(poll_interval)
 
     return False
 
 
+# =============================================================================
+# Claude Readiness Detection
+# =============================================================================
+
+# Patterns that indicate Claude Code has started and is ready for input.
+# These appear in Claude's startup banner (the ASCII robot art).
+CLAUDE_READY_PATTERNS = [
+    "Claude Code v",   # Version line in banner
+    "▐▛███▜▌",         # Top of robot head
+    "▝▜█████▛▘",       # Middle of robot
+]
+
+
 async def wait_for_claude_ready(
-    session: "iterm2.Session",
+    session: "ItermSession",
     timeout_seconds: float = 15.0,
     poll_interval: float = 0.2,
     stable_count: int = 2,
@@ -456,190 +452,116 @@ async def wait_for_claude_ready(
 
 
 # =============================================================================
-# JSONL Session Detection
-# =============================================================================
-
-
-def get_claude_projects_dir() -> Path:
-    """
-    Get the Claude projects directory path.
-
-    Returns:
-        Path to ~/.claude/projects/
-    """
-    return Path.home() / ".claude" / "projects"
-
-
-def project_path_to_slug(project_path: str) -> str:
-    """
-    Convert a project path to Claude's slug format.
-
-    Claude stores conversations at ~/.claude/projects/{slug}/{session}.jsonl
-    where slug is the project path with '/' replaced by '-'.
-
-    Args:
-        project_path: Absolute project path (e.g., /Users/josh/code)
-
-    Returns:
-        Slug string (e.g., -Users-josh-code)
-    """
-    return project_path.replace("/", "-")
-
-
-async def wait_for_jsonl_session(
-    project_path: str,
-    poll_interval_ms: int = 200,
-    timeout_seconds: float = 10.0,
-    min_file_size: int = 1,
-) -> Optional[Path]:
-    """
-    Wait for a JSONL session file to be created for a project.
-
-    Polls the Claude projects directory for new JSONL files matching the
-    project slug. Returns when a file exists with content (size > 0).
-
-    Args:
-        project_path: Absolute project path
-        poll_interval_ms: Milliseconds between polls (default 200ms)
-        timeout_seconds: Maximum wait time (default 10s)
-        min_file_size: Minimum file size in bytes to consider valid (default 1)
-
-    Returns:
-        Path to the JSONL file if found, None if timeout reached
-    """
-    import asyncio
-    import time
-
-    slug = project_path_to_slug(project_path)
-    projects_dir = get_claude_projects_dir()
-    slug_dir = projects_dir / slug
-
-    start_time_monotonic = time.monotonic()
-    start_time_real = time.time()  # For comparing with file mtime
-    poll_interval_sec = poll_interval_ms / 1000.0
-
-    # Track files and their mtimes before we started, so we can detect new/modified ones
-    existing_files: dict[str, float] = {}
-    if slug_dir.exists():
-        for f in slug_dir.glob("*.jsonl"):
-            try:
-                existing_files[f.name] = f.stat().st_mtime
-            except OSError:
-                pass
-
-    while (time.monotonic() - start_time_monotonic) < timeout_seconds:
-        try:
-            if slug_dir.exists():
-                # Look for JSONL files that are new or modified since we started
-                for jsonl_file in slug_dir.glob("*.jsonl"):
-                    try:
-                        stat = jsonl_file.stat()
-                        file_size = stat.st_size
-                        file_mtime = stat.st_mtime
-
-                        if file_size >= min_file_size:
-                            # Check if this is a new file or modified since we started
-                            is_new = jsonl_file.name not in existing_files
-                            is_modified = (
-                                not is_new
-                                and file_mtime > existing_files[jsonl_file.name]
-                            )
-
-                            if is_new or is_modified:
-                                logger.debug(
-                                    f"Found JSONL session file: {jsonl_file} "
-                                    f"(size={file_size} bytes, "
-                                    f"{'new' if is_new else 'modified'})"
-                                )
-                                return jsonl_file
-                    except OSError:
-                        # File may have been deleted/moved, continue checking
-                        continue
-        except Exception as e:
-            # Directory access failed, retry on next poll
-            logger.debug(f"Error checking for JSONL files: {e}")
-
-        await asyncio.sleep(poll_interval_sec)
-
-    logger.warning(
-        f"Timeout waiting for JSONL session file for project {project_path} "
-        f"(slug={slug}, timeout={timeout_seconds}s)"
-    )
-    return None
-
-
-# =============================================================================
 # Claude Session Control
 # =============================================================================
 
+def build_stop_hook_settings_file(marker_id: str) -> str:
+    """
+    Build a settings file for Stop hook injection.
+
+    The hook embeds a marker in the command text itself, which gets logged
+    to the JSONL in the stop_hook_summary's hookInfos array. This provides
+    reliable completion detection without needing stderr or exit code hacks.
+
+    We write to a file instead of passing JSON inline due to a bug in Claude Code
+    v2.0.72+ where inline JSON causes the file watcher to incorrectly watch the
+    temp directory, crashing on Unix sockets. See:
+    https://github.com/anthropics/claude-code/issues/14438
+
+    Args:
+        marker_id: Unique ID to embed in the marker (typically session_id)
+
+    Returns:
+        Path to the settings file (suitable for --settings flag)
+    """
+    import json
+    from pathlib import Path
+
+    # Use a stable directory that won't have Unix sockets
+    settings_dir = Path.home() / ".claude" / "claude-team-settings"
+    settings_dir.mkdir(parents=True, exist_ok=True)
+
+    settings = {
+        "hooks": {
+            "Stop": [{
+                "hooks": [{
+                    "type": "command",
+                    "command": f"echo [worker-done:{marker_id}]"
+                }]
+            }]
+        }
+    }
+
+    # Use marker_id as filename for deterministic, reusable files
+    settings_file = settings_dir / f"worker-{marker_id}.json"
+    settings_file.write_text(json.dumps(settings, indent=2))
+
+    return str(settings_file)
+
+
 async def start_claude_in_session(
-    session: "iterm2.Session",
+    session: "ItermSession",
     project_path: str,
-    resume_session: Optional[str] = None,
     dangerously_skip_permissions: bool = False,
     env: Optional[dict[str, str]] = None,
     shell_ready_timeout: float = 10.0,
-    jsonl_poll_interval_ms: int = 200,
-    jsonl_timeout_seconds: float = 10.0,
-) -> Optional[Path]:
+    claude_ready_timeout: float = 30.0,
+    stop_hook_marker_id: Optional[str] = None,
+) -> None:
     """
     Start Claude Code in an existing iTerm2 session.
 
-    Changes to the project directory and launches Claude Code. Waits for shell
-    readiness before sending commands, then polls for JSONL session file
-    creation to detect when Claude has fully initialized.
+    Changes to the project directory and launches Claude Code in a single
+    atomic command (cd && claude). Waits for shell readiness before sending
+    the command, then waits for Claude's startup banner to appear.
 
     Args:
         session: iTerm2 session to use
         project_path: Directory to run Claude in
-        resume_session: Optional session ID to resume
         dangerously_skip_permissions: If True, start with --dangerously-skip-permissions
         env: Optional dict of environment variables to set before running claude
-        shell_ready_timeout: Max seconds to wait for shell prompt before each command
-        jsonl_poll_interval_ms: Milliseconds between JSONL file checks (default 200ms)
-        jsonl_timeout_seconds: Max seconds to wait for JSONL file creation (default 10s)
+        shell_ready_timeout: Max seconds to wait for shell prompt
+        claude_ready_timeout: Max seconds to wait for Claude to start and show banner
+        stop_hook_marker_id: If provided, inject a Stop hook that logs this marker
+            to the JSONL for completion detection
 
-    Returns:
-        Path to the JSONL session file if found, None if timeout reached
+    Raises:
+        RuntimeError: If shell not ready or Claude fails to start within timeout
     """
-    # Wait for shell to be ready before sending the combined cd && claude command.
-    # We use a single wait and combine the commands with && to ensure cd succeeds
-    # before claude runs, while avoiding the latency of two separate wait cycles.
-    await wait_for_shell_ready(session, timeout_seconds=shell_ready_timeout)
+    # Wait for shell to be ready
+    shell_ready = await wait_for_shell_ready(session, timeout_seconds=shell_ready_timeout)
+    if not shell_ready:
+        raise RuntimeError(
+            f"Shell not ready after {shell_ready_timeout}s in {project_path}. "
+            "Terminal may still be initializing."
+        )
 
     # Build claude command with flags
-    cmd = "claude"
+    claude_cmd = "claude"
     if dangerously_skip_permissions:
-        cmd += " --dangerously-skip-permissions"
-    if resume_session:
-        cmd += f" --resume {resume_session}"
+        claude_cmd += " --dangerously-skip-permissions"
+    if stop_hook_marker_id:
+        settings_file = build_stop_hook_settings_file(stop_hook_marker_id)
+        claude_cmd += f" --settings {settings_file}"
 
-    # Prepend environment variables if provided
+    # Prepend environment variables to claude (not cd)
     if env:
         env_exports = " ".join(f"{k}={v}" for k, v in env.items())
-        cmd = f"{env_exports} {cmd}"
+        claude_cmd = f"{env_exports} {claude_cmd}"
 
-    # Combine cd and claude into single command - cd must succeed for claude to run
-    combined_cmd = f"cd {project_path} && {cmd}"
-    await send_prompt(session, combined_cmd)
+    # Combine cd and claude into atomic command to avoid race condition.
+    # Shell executes "cd /path && claude" as a unit - if cd fails, claude won't run.
+    # This eliminates the need for a second wait_for_shell_ready after cd.
+    cmd = f"cd {project_path} && {claude_cmd}"
 
-    # Wait for Claude's TUI to be ready by polling terminal for prompt/status bar.
-    # This is more reliable than JSONL detection since JSONL is created before TUI.
-    await wait_for_claude_ready(
-        session,
-        timeout_seconds=jsonl_timeout_seconds,
-        poll_interval=jsonl_poll_interval_ms / 1000.0,
-    )
+    await send_prompt(session, cmd)
 
-    # Now find the JSONL session file for identification purposes.
-    # The file should exist at this point since Claude's TUI is up.
-    jsonl_path = await wait_for_jsonl_session(
-        project_path=project_path,
-        poll_interval_ms=jsonl_poll_interval_ms,
-        timeout_seconds=2.0,  # Short timeout since Claude is already running
-    )
-
-    return jsonl_path
+    # Wait for Claude to actually start (detect banner, not blind sleep)
+    if not await wait_for_claude_ready(session, timeout_seconds=claude_ready_timeout):
+        raise RuntimeError(
+            f"Claude failed to start in {project_path} within {claude_ready_timeout}s. "
+            "Check that 'claude' command is available and authentication is configured."
+        )
 
 
 # =============================================================================
@@ -648,6 +570,7 @@ async def start_claude_in_session(
 
 # Valid pane names for each layout type
 LAYOUT_PANE_NAMES = {
+    "single": ["main"],
     "vertical": ["left", "right"],
     "horizontal": ["top", "bottom"],
     "quad": ["top_left", "top_right", "bottom_left", "bottom_right"],
@@ -656,11 +579,11 @@ LAYOUT_PANE_NAMES = {
 
 
 async def create_multi_pane_layout(
-    connection: "iterm2.Connection",
+    connection: "ItermConnection",
     layout: str,
     profile: Optional[str] = None,
-    pane_customizations: Optional[dict[str, "iterm2.LocalWriteOnlyProfile"]] = None,
-) -> dict[str, "iterm2.Session"]:
+    profile_customizations: Optional[dict[str, "ItermLocalWriteOnlyProfile"]] = None,
+) -> dict[str, "ItermSession"]:
     """
     Create a new iTerm2 window with a multi-pane layout.
 
@@ -670,12 +593,13 @@ async def create_multi_pane_layout(
     Args:
         connection: iTerm2 connection object
         layout: Layout type - one of:
+            - "single": 1 pane, full window (main)
             - "vertical": 2 panes side by side (left, right)
             - "horizontal": 2 panes stacked (top, bottom)
             - "quad": 4 panes in 2x2 grid (top_left, top_right, bottom_left, bottom_right)
             - "triple_vertical": 3 panes side by side (left, middle, right)
         profile: Optional profile name to use for all panes
-        pane_customizations: Optional dict mapping pane names to LocalWriteOnlyProfile
+        profile_customizations: Optional dict mapping pane names to LocalWriteOnlyProfile
             objects with per-pane customizations (tab color, badge, etc.)
 
     Returns:
@@ -691,8 +615,8 @@ async def create_multi_pane_layout(
 
     # Helper to get customizations for a specific pane
     def get_customization(pane_name: str):
-        if pane_customizations:
-            return pane_customizations.get(pane_name)
+        if profile_customizations:
+            return profile_customizations.get(pane_name)
         return None
 
     # Get the first pane name for the initial window
@@ -704,11 +628,20 @@ async def create_multi_pane_layout(
         profile=profile,
         profile_customizations=get_customization(first_pane),
     )
-    initial_session = window.current_tab.current_session
+    current_tab = window.current_tab
+    if current_tab is None:
+        raise RuntimeError("Failed to get current tab from new window")
+    initial_session = current_tab.current_session
+    if initial_session is None:
+        raise RuntimeError("Failed to get initial session from new window")
 
-    panes: dict[str, "iterm2.Session"] = {}
+    panes: dict[str, "ItermSession"] = {}
 
-    if layout == "vertical":
+    if layout == "single":
+        # Single pane - no splitting needed, just use initial session
+        panes["main"] = initial_session
+
+    elif layout == "vertical":
         # Split into left and right
         panes["left"] = initial_session
         panes["right"] = await split_pane(
@@ -782,14 +715,15 @@ async def create_multi_pane_layout(
 
 
 async def create_multi_claude_layout(
-    connection: "iterm2.Connection",
+    connection: "ItermConnection",
     projects: dict[str, str],
     layout: str,
     skip_permissions: bool = False,
     project_envs: Optional[dict[str, dict[str, str]]] = None,
     profile: Optional[str] = None,
-    pane_customizations: Optional[dict[str, "iterm2.LocalWriteOnlyProfile"]] = None,
-) -> dict[str, "iterm2.Session"]:
+    profile_customizations: Optional[dict[str, "ItermLocalWriteOnlyProfile"]] = None,
+    pane_marker_ids: Optional[dict[str, str]] = None,
+) -> dict[str, "ItermSession"]:
     """
     Create a multi-pane window and start Claude Code in each pane.
 
@@ -801,13 +735,16 @@ async def create_multi_claude_layout(
         projects: Dict mapping pane names to project paths. Keys must match
             the expected pane names for the layout (e.g., for 'quad':
             'top_left', 'top_right', 'bottom_left', 'bottom_right')
-        layout: Layout type (vertical, horizontal, quad, triple_vertical)
+        layout: Layout type (single, vertical, horizontal, quad, triple_vertical)
         skip_permissions: If True, start Claude with --dangerously-skip-permissions
         project_envs: Optional dict mapping pane names to env var dicts. Each
             pane can have its own environment variables set before starting Claude.
         profile: Optional profile name to use for all panes
-        pane_customizations: Optional dict mapping pane names to LocalWriteOnlyProfile
+        profile_customizations: Optional dict mapping pane names to LocalWriteOnlyProfile
             objects with per-pane customizations (tab color, badge, etc.)
+        pane_marker_ids: Optional dict mapping pane names to marker IDs for Stop hook
+            injection. Each worker will have a Stop hook that logs its marker ID
+            to the JSONL for completion detection.
 
     Returns:
         Dict mapping pane names to iTerm2 sessions (after Claude is started)
@@ -833,7 +770,7 @@ async def create_multi_claude_layout(
         connection,
         layout,
         profile=profile,
-        pane_customizations=pane_customizations,
+        profile_customizations=profile_customizations,
     )
 
     # Start Claude in all panes in parallel.
@@ -842,11 +779,13 @@ async def create_multi_claude_layout(
     async def start_claude_for_pane(pane_name: str, project_path: str) -> None:
         session = panes[pane_name]
         pane_env = project_envs.get(pane_name) if project_envs else None
+        marker_id = pane_marker_ids.get(pane_name) if pane_marker_ids else None
         await start_claude_in_session(
             session=session,
             project_path=project_path,
             dangerously_skip_permissions=skip_permissions,
             env=pane_env,
+            stop_hook_marker_id=marker_id,
         )
 
     await asyncio.gather(*[
@@ -866,7 +805,7 @@ async def create_multi_claude_layout(
 MAX_PANES_PER_TAB = 4  # Maximum panes before considering tab "full"
 
 
-def count_panes_in_tab(tab: "iterm2.Tab") -> int:
+def count_panes_in_tab(tab: "ItermTab") -> int:
     """
     Count the number of panes (sessions) in a tab.
 
@@ -879,7 +818,7 @@ def count_panes_in_tab(tab: "iterm2.Tab") -> int:
     return len(tab.sessions)
 
 
-def count_panes_in_window(window: "iterm2.Window") -> int:
+def count_panes_in_window(window: "ItermWindow") -> int:
     """
     Count total panes across all tabs in a window.
 
@@ -899,46 +838,46 @@ def count_panes_in_window(window: "iterm2.Window") -> int:
 
 
 async def find_available_window(
-    app: "iterm2.App",
+    app: "ItermApp",
     max_panes: int = MAX_PANES_PER_TAB,
     managed_session_ids: Optional[set[str]] = None,
-) -> Optional[tuple["iterm2.Window", "iterm2.Tab", "iterm2.Session"]]:
+) -> Optional[tuple["ItermWindow", "ItermTab", "ItermSession"]]:
     """
     Find a window with an available tab that has room for more panes.
 
     Searches terminal windows for a tab with fewer than max_panes sessions.
-    If managed_session_ids is provided, only considers windows that contain
-    at least one managed session (to avoid splitting into user's unrelated windows).
+    If managed_session_ids is provided, only considers tabs that contain
+    at least one managed session (to avoid splitting into user's unrelated tabs).
+
+    Note: When managed_session_ids is an empty set, no tabs will match (correct
+    behavior - an empty registry means we have no managed sessions to reuse,
+    so a new window should be created).
 
     Args:
         app: iTerm2 app object
         max_panes: Maximum panes before considering a tab full (default 4)
         managed_session_ids: Optional set of iTerm2 session IDs that are managed
-            by claude-team. If provided, only windows containing at least one
-            of these sessions will be considered.
+            by claude-team. If provided (including empty set), only tabs
+            containing at least one of these sessions will be considered.
+            Pass None to consider all tabs.
 
     Returns:
         Tuple of (window, tab, session) if found, None if all tabs are full
     """
     for window in app.terminal_windows:
-        # If we have managed session IDs, check if this window contains any
-        if managed_session_ids is not None:
-            window_has_managed_session = False
-            for tab in window.tabs:
-                for session in tab.sessions:
-                    if session.session_id in managed_session_ids:
-                        window_has_managed_session = True
-                        break
-                if window_has_managed_session:
-                    break
-            if not window_has_managed_session:
-                # Skip this window - it doesn't contain any managed sessions
-                continue
-
-        # Check if any tab has room for more panes
         for tab in window.tabs:
-            pane_count = count_panes_in_tab(tab)
-            if pane_count < max_panes:
+            # If we have managed session IDs filter, check if this tab contains any
+            # Note: empty set is valid (matches nothing) - use `is not None` check
+            if managed_session_ids is not None:
+                tab_has_managed = any(
+                    s.session_id in managed_session_ids for s in tab.sessions
+                )
+                if not tab_has_managed:
+                    # Skip this tab - it doesn't contain any managed sessions
+                    continue
+
+            # Check if this tab has room for more panes
+            if count_panes_in_tab(tab) < max_panes:
                 # Return the current session in this tab as the split target
                 current_session = tab.current_session
                 if current_session:
@@ -947,9 +886,9 @@ async def find_available_window(
 
 
 async def get_window_for_session(
-    app: "iterm2.App",
-    session: "iterm2.Session",
-) -> Optional["iterm2.Window"]:
+    app: "ItermApp",
+    session: "ItermSession",
+) -> Optional["ItermWindow"]:
     """
     Find the window containing a given session.
 
@@ -968,44 +907,3 @@ async def get_window_for_session(
     return None
 
 
-async def find_claude_session(
-    app: "iterm2.App",
-    project_path: str,
-    match_fn: Optional[Callable[[str], bool]] = None,
-) -> Optional["iterm2.Session"]:
-    """
-    Find an iTerm2 session that appears to be running Claude Code.
-
-    Searches all windows/tabs for sessions whose screen contains
-    indicators of Claude Code (e.g., project path, "Opus", prompt char).
-
-    Args:
-        app: iTerm2 app object
-        project_path: Expected project path
-        match_fn: Optional custom matcher function(screen_text) -> bool
-
-    Returns:
-        iTerm2 session if found, None otherwise
-    """
-    # Default matcher looks for Claude indicators
-    if match_fn is None:
-        project_name = Path(project_path).name
-
-        def match_fn(text: str) -> bool:
-            return (
-                project_name in text
-                and ("Opus" in text or "Sonnet" in text or "Haiku" in text)
-                and ">" in text
-            )
-
-    for window in app.terminal_windows:
-        for tab in window.tabs:
-            for session in tab.sessions:
-                try:
-                    text = await read_screen_text(session)
-                    if match_fn(text):
-                        return session
-                except Exception:
-                    continue
-
-    return None

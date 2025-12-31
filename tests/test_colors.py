@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import colorsys
 
 # Import the pure functions that don't need iterm2
-from src.claude_team_mcp.colors import (
+from claude_team_mcp.colors import (
     GOLDEN_RATIO_CONJUGATE,
     DEFAULT_SATURATION,
     DEFAULT_LIGHTNESS,
@@ -92,18 +92,25 @@ class TestGenerateTabColor:
 
     def test_returns_iterm2_color(self):
         """generate_tab_color should return an iterm2.Color object."""
-        # Mock the iterm2 module
-        mock_color = MagicMock()
+        # Mock the iterm2 module and its color submodule
+        mock_color_instance = MagicMock()
+        mock_color_class = MagicMock(return_value=mock_color_instance)
+        mock_color_module = MagicMock()
+        mock_color_module.Color = mock_color_class
         mock_iterm2 = MagicMock()
-        mock_iterm2.Color.return_value = mock_color
+        mock_iterm2.color = mock_color_module
 
-        with patch.dict('sys.modules', {'iterm2': mock_iterm2}):
-            from src.claude_team_mcp.colors import generate_tab_color
+        # Must patch both 'iterm2' and 'iterm2.color' for submodule imports
+        with patch.dict('sys.modules', {
+            'iterm2': mock_iterm2,
+            'iterm2.color': mock_color_module,
+        }):
+            from claude_team_mcp.colors import generate_tab_color
             result = generate_tab_color(0)
 
             # Verify Color was called with RGB values
-            mock_iterm2.Color.assert_called_once()
-            call_kwargs = mock_iterm2.Color.call_args[1]
+            mock_color_class.assert_called_once()
+            call_kwargs = mock_color_class.call_args[1]
             assert 'r' in call_kwargs
             assert 'g' in call_kwargs
             assert 'b' in call_kwargs
@@ -111,7 +118,6 @@ class TestGenerateTabColor:
     def test_different_indices_produce_different_colors(self):
         """Different indices should produce different colors."""
         mock_colors = []
-        mock_iterm2 = MagicMock()
 
         def capture_color(**kwargs):
             color = MagicMock()
@@ -119,10 +125,18 @@ class TestGenerateTabColor:
             mock_colors.append(color)
             return color
 
-        mock_iterm2.Color.side_effect = capture_color
+        mock_color_class = MagicMock(side_effect=capture_color)
+        mock_color_module = MagicMock()
+        mock_color_module.Color = mock_color_class
+        mock_iterm2 = MagicMock()
+        mock_iterm2.color = mock_color_module
 
-        with patch.dict('sys.modules', {'iterm2': mock_iterm2}):
-            from src.claude_team_mcp.colors import generate_tab_color
+        # Must patch both 'iterm2' and 'iterm2.color' for submodule imports
+        with patch.dict('sys.modules', {
+            'iterm2': mock_iterm2,
+            'iterm2.color': mock_color_module,
+        }):
+            from claude_team_mcp.colors import generate_tab_color
             for i in range(5):
                 generate_tab_color(i)
 
