@@ -1,0 +1,7 @@
+{
+  "last_failure": "2025-12-31T00:36:05.109029-08:00",
+  "failure_count": 1,
+  "backoff_until": "2025-12-31T00:36:35.10903-08:00",
+  "needs_manual_sync": false,
+  "failure_reason": "git pull failed in worktree: exit status 128\nFrom github.com:Martian-Engineering/claude-team\n * branch            beads-sync -\u003e FETCH_HEAD\nfatal: Cannot rebase onto multiple branches.\n"
+}
