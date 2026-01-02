@@ -119,6 +119,9 @@ DUOS: dict[str, list[str]] = {
     "tia_tamera": ["Tia", "Tamera"],
     "statler_waldorf": ["Statler", "Waldorf"],
     "laverne_shirley": ["Laverne", "Shirley"],
+    # Star Trek
+    "kirk_khan": ["Kirk", "Khan"],
+    "picard_q": ["Picard", "Q"],
 }
 
 # Terrific trios - famous threesomes
