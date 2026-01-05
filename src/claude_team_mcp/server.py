@@ -341,14 +341,14 @@ def run_server(transport: str = "stdio", port: int = 8766):
     Run the MCP server.
 
     Args:
-        transport: Transport mode - "stdio" or "sse" (HTTP)
-        port: Port for SSE/HTTP transport (default 8766)
+        transport: Transport mode - "stdio" or "streamable-http"
+        port: Port for HTTP transport (default 8766)
     """
-    if transport == "sse":
-        logger.info(f"Starting Claude Team MCP Server (HTTP/SSE on port {port})...")
-        # Create server with configured port for SSE mode
+    if transport == "streamable-http":
+        logger.info(f"Starting Claude Team MCP Server (HTTP on port {port})...")
+        # Create server with configured port for HTTP mode
         server = create_mcp_server(host="127.0.0.1", port=port)
-        server.run(transport="sse")
+        server.run(transport="streamable-http")
     else:
         logger.info("Starting Claude Team MCP Server (stdio)...")
         mcp.run(transport="stdio")
@@ -362,19 +362,19 @@ def main():
     parser.add_argument(
         "--http",
         action="store_true",
-        help="Run in HTTP/SSE mode instead of stdio",
+        help="Run in HTTP mode (streamable-http) instead of stdio",
     )
     parser.add_argument(
         "--port",
         type=int,
         default=8766,
-        help="Port for HTTP/SSE mode (default: 8766)",
+        help="Port for HTTP mode (default: 8766)",
     )
 
     args = parser.parse_args()
 
     if args.http:
-        run_server(transport="sse", port=args.port)
+        run_server(transport="streamable-http", port=args.port)
     else:
         run_server(transport="stdio")
 
