@@ -1,6 +1,6 @@
 [project]
 name = "claude-team-mcp"
-version = "0.2.1"
+version = "0.3.0"
 description = "MCP server for managing multiple Claude Code sessions via iTerm2"
 readme = "README.md"
 requires-python = ">=3.11"
