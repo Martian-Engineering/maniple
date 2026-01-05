@@ -33,6 +33,22 @@ logger = logging.getLogger("claude-team-mcp")
 
 
 # =============================================================================
+# Singleton Registry (persists across MCP sessions for HTTP mode)
+# =============================================================================
+
+_global_registry: SessionRegistry | None = None
+
+
+def get_global_registry() -> SessionRegistry:
+    """Get or create the global singleton registry."""
+    global _global_registry
+    if _global_registry is None:
+        _global_registry = SessionRegistry()
+        logger.info("Created global singleton registry")
+    return _global_registry
+
+
+# =============================================================================
 # Application Context
 # =============================================================================
 
@@ -162,11 +178,11 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
         logger.error("Make sure iTerm2 is running and Python API is enabled")
         raise RuntimeError("Could not connect to iTerm2") from e
 
-    # Create application context with session registry
+    # Create application context with singleton registry (persists across sessions)
     ctx = AppContext(
         iterm_connection=connection,
         iterm_app=app,
-        registry=SessionRegistry(),
+        registry=get_global_registry(),
     )
 
     try:
@@ -180,16 +196,25 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
 
 
 # =============================================================================
-# FastMCP Server
+# FastMCP Server Factory
 # =============================================================================
 
-mcp = FastMCP(
-    "Claude Team Manager",
-    lifespan=app_lifespan,
-)
 
-# Register all tools from the tools package
-register_all_tools(mcp, ensure_connection)
+def create_mcp_server(host: str = "127.0.0.1", port: int = 8766) -> FastMCP:
+    """Create and configure the FastMCP server instance."""
+    server = FastMCP(
+        "Claude Team Manager",
+        lifespan=app_lifespan,
+        host=host,
+        port=port,
+    )
+    # Register all tools from the tools package
+    register_all_tools(server, ensure_connection)
+    return server
+
+
+# Default server instance for stdio mode (backwards compatibility)
+mcp = create_mcp_server()
 
 
 # =============================================================================
@@ -311,11 +336,48 @@ async def resource_session_screen(
 # =============================================================================
 
 
-def run_server():
-    """Run the MCP server with stdio transport."""
-    logger.info("Starting Claude Team MCP Server...")
-    mcp.run(transport="stdio")
+def run_server(transport: str = "stdio", port: int = 8766):
+    """
+    Run the MCP server.
+
+    Args:
+        transport: Transport mode - "stdio" or "sse" (HTTP)
+        port: Port for SSE/HTTP transport (default 8766)
+    """
+    if transport == "sse":
+        logger.info(f"Starting Claude Team MCP Server (HTTP/SSE on port {port})...")
+        # Create server with configured port for SSE mode
+        server = create_mcp_server(host="127.0.0.1", port=port)
+        server.run(transport="sse")
+    else:
+        logger.info("Starting Claude Team MCP Server (stdio)...")
+        mcp.run(transport="stdio")
+
+
+def main():
+    """CLI entry point with argument parsing."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Claude Team MCP Server")
+    parser.add_argument(
+        "--http",
+        action="store_true",
+        help="Run in HTTP/SSE mode instead of stdio",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8766,
+        help="Port for HTTP/SSE mode (default: 8766)",
+    )
+
+    args = parser.parse_args()
+
+    if args.http:
+        run_server(transport="sse", port=args.port)
+    else:
+        run_server(transport="stdio")
 
 
 if __name__ == "__main__":
-    run_server()
+    main()

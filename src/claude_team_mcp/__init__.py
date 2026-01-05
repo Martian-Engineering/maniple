@@ -12,8 +12,8 @@ from .colors import generate_tab_color, get_hue_for_index, hsl_to_rgb_tuple
 
 def main():
     """Entry point for the claude-team command."""
-    from .server import run_server
-    run_server()
+    from .server import main as server_main
+    server_main()
 
 
 __all__ = [
