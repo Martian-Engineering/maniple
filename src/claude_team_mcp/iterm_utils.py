@@ -6,6 +6,7 @@ from the original primitives.py for use in the MCP server.
 """
 
 import logging
+import os
 import re
 from typing import TYPE_CHECKING, Optional
 
@@ -515,6 +516,11 @@ async def start_claude_in_session(
     atomic command (cd && claude). Waits for shell readiness before sending
     the command, then waits for Claude's startup banner to appear.
 
+    The command used to launch Claude Code can be overridden by setting
+    the CLAUDE_TEAM_COMMAND environment variable (defaults to "claude").
+    This is useful for running alternative Claude CLI implementations
+    like "happy" or for testing purposes.
+
     Args:
         session: iTerm2 session to use
         project_path: Directory to run Claude in
@@ -537,7 +543,8 @@ async def start_claude_in_session(
         )
 
     # Build claude command with flags
-    claude_cmd = "claude"
+    # Allow overriding the claude command via environment variable (e.g., "happy")
+    claude_cmd = os.environ.get("CLAUDE_TEAM_COMMAND", "claude")
     if dangerously_skip_permissions:
         claude_cmd += " --dangerously-skip-permissions"
     if stop_hook_marker_id:

@@ -110,6 +110,19 @@ Add to your Claude Code MCP settings. You can configure this at:
 
 After adding the configuration, restart Claude Code for it to take effect.
 
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLAUDE_TEAM_COMMAND` | `claude` | Override the command used to start Claude Code in worker sessions. Useful for running alternative CLI implementations like `happy`. |
+| `CLAUDE_TEAM_PROJECT_DIR` | (none) | When set, allows using `"project_path": "auto"` in worker configs to automatically use this path. |
+
+Example using an alternative CLI:
+
+```bash
+export CLAUDE_TEAM_COMMAND=happy
+```
+
 ## MCP Tools
 
 ### Worker Management
