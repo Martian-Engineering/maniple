@@ -358,3 +358,21 @@ make install-commands
 ## License
 
 MIT
+
+## Upgrading to New Versions
+
+After a new version is published to PyPI, you may need to force-refresh the cached version:
+
+```bash
+# Stop service first
+launchctl bootout gui/$UID/com.claude-team
+
+# Clear cache and reinstall
+uv cache clean --force
+uv tool install --force --refresh claude-team-mcp
+
+# Restart service
+launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.claude-team.plist
+```
+
+This is necessary because `uvx` aggressively caches tool environments.
