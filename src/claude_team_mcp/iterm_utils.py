@@ -578,6 +578,7 @@ async def start_agent_in_session(
     shell_ready_timeout: float = 10.0,
     agent_ready_timeout: float = 30.0,
     stop_hook_marker_id: Optional[str] = None,
+    output_capture_path: Optional[str] = None,
 ) -> None:
     """
     Start an agent CLI in an existing iTerm2 session.
@@ -596,6 +597,8 @@ async def start_agent_in_session(
         agent_ready_timeout: Max seconds to wait for agent to start
         stop_hook_marker_id: If provided, inject a Stop hook for completion detection
             (only used if cli.supports_settings_file() returns True)
+        output_capture_path: If provided, capture agent's stdout/stderr to this file
+            using tee. Useful for agents that output JSONL for idle detection.
 
     Raises:
         RuntimeError: If shell not ready or agent fails to start within timeout
@@ -619,6 +622,11 @@ async def start_agent_in_session(
         settings_file=settings_file,
         env_vars=env,
     )
+
+    # Add output capture via tee if requested
+    # This pipes stdout/stderr to both the terminal and a file (for JSONL parsing)
+    if output_capture_path:
+        agent_cmd = f"{agent_cmd} 2>&1 | tee {output_capture_path}"
 
     # Combine cd and agent into atomic command to avoid race condition.
     # Shell executes "cd /path && agent" as a unit - if cd fails, agent won't run.

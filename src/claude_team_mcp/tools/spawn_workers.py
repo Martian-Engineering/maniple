@@ -16,6 +16,7 @@ from mcp.server.session import ServerSession
 if TYPE_CHECKING:
     from ..server import AppContext
 
+from ..cli_backends import get_cli_backend
 from ..colors import generate_tab_color
 from ..formatting import format_badge_text, format_session_title
 from ..iterm_utils import (
@@ -25,6 +26,7 @@ from ..iterm_utils import (
     find_available_window,
     send_prompt,
     split_pane,
+    start_agent_in_session,
     start_claude_in_session,
 )
 from ..names import pick_names_for_count
@@ -45,6 +47,7 @@ class WorkerConfig(TypedDict, total=False):
     """Configuration for a single worker."""
 
     project_path: Required[str]  # Required: Path to repo, or "auto" to use env var
+    agent_type: str  # Optional: "claude" (default) or "codex"
     name: str  # Optional: Worker name override. None = auto-pick from themed sets.
     annotation: str  # Optional: Task description (badge, branch, worker annotation)
     bead: str  # Optional: Beads issue ID (for badge, branch naming)
@@ -100,6 +103,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                   }
                 }
                 ```
+            agent_type: Which agent CLI to use (default "claude").
+                - "claude": Claude Code CLI (Stop hook idle detection)
+                - "codex": OpenAI Codex CLI (JSONL streaming idle detection)
             use_worktree: Whether to create an isolated worktree (default True).
                 - True: Creates worktree at <repo>/.worktrees/<bead>-<annotation>
                   or <repo>/.worktrees/<name>-<uuid>-<annotation>
@@ -297,6 +303,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
 
                 bead = w.get("bead")
                 annotation = w.get("annotation")
+                agent_type = w.get("agent_type", "claude")
 
                 # Tab title
                 tab_title = format_session_title(name, issue_id=bead, annotation=annotation)
@@ -307,8 +314,10 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 customization.set_tab_color(color)
                 customization.set_use_tab_color(True)
 
-                # Badge (multi-line with bead/name and annotation)
-                badge_text = format_badge_text(name, bead=bead, annotation=annotation)
+                # Badge (multi-line with bead/name, annotation, and agent type indicator)
+                badge_text = format_badge_text(
+                    name, bead=bead, annotation=annotation, agent_type=agent_type
+                )
                 customization.set_badge_text(badge_text)
 
                 # Apply current appearance mode colors
@@ -457,28 +466,62 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
 
                 pane_sessions = [panes[name] for name in pane_names[:worker_count]]
 
-            # Start Claude in all panes
+            # Pre-calculate agent types and JSONL capture paths for Codex workers
             import asyncio
+            import tempfile
 
-            async def start_claude_for_worker(index: int) -> None:
+            agent_types: list[str] = []
+            codex_jsonl_paths: dict[int, Path] = {}  # index -> JSONL capture path
+
+            # Create directory for Codex JSONL capture
+            codex_capture_dir = Path.home() / ".claude" / "claude-team-codex"
+            codex_capture_dir.mkdir(parents=True, exist_ok=True)
+
+            for i, w in enumerate(workers):
+                agent_type = w.get("agent_type", "claude")
+                agent_types.append(agent_type)
+                if agent_type == "codex":
+                    # Create a unique JSONL file for this Codex worker
+                    codex_jsonl_paths[i] = codex_capture_dir / f"{session_ids[i]}.jsonl"
+
+            # Start agent in all panes
+            async def start_agent_for_worker(index: int) -> None:
                 session = pane_sessions[index]
                 project_path = resolved_paths[index]
                 worker_config = workers[index]
                 marker_id = session_ids[index]
+                agent_type = agent_types[index]
 
                 # Check for worktree and set BEADS_DIR if needed
                 beads_dir = get_worktree_beads_dir(project_path)
                 env = {"BEADS_DIR": beads_dir} if beads_dir else None
 
-                await start_claude_in_session(
-                    session=session,
-                    project_path=project_path,
-                    dangerously_skip_permissions=worker_config.get("skip_permissions", False),
-                    env=env,
-                    stop_hook_marker_id=marker_id,
-                )
+                if agent_type == "codex":
+                    # For Codex: use start_agent_in_session with CodexCLI
+                    # No stop hook marker (Codex uses JSONL streaming for idle detection)
+                    cli = get_cli_backend("codex")
+                    # Get the JSONL capture path for this Codex worker
+                    capture_path = codex_jsonl_paths.get(index)
+                    await start_agent_in_session(
+                        session=session,
+                        cli=cli,
+                        project_path=project_path,
+                        dangerously_skip_permissions=worker_config.get("skip_permissions", False),
+                        env=env,
+                        # No stop_hook_marker_id for Codex - it doesn't support settings file
+                        output_capture_path=str(capture_path) if capture_path else None,
+                    )
+                else:
+                    # For Claude: use start_claude_in_session (convenience wrapper)
+                    await start_claude_in_session(
+                        session=session,
+                        project_path=project_path,
+                        dangerously_skip_permissions=worker_config.get("skip_permissions", False),
+                        env=env,
+                        stop_hook_marker_id=marker_id,
+                    )
 
-            await asyncio.gather(*[start_claude_for_worker(i) for i in range(worker_count)])
+            await asyncio.gather(*[start_agent_for_worker(i) for i in range(worker_count)])
 
             # Register all sessions
             managed_sessions = []
@@ -491,35 +534,43 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 )
                 # Set annotation from worker config (if provided)
                 managed.coordinator_annotation = workers[i].get("annotation")
+                # Set agent type
+                managed.agent_type = agent_types[i]
+                # Store Codex JSONL path if applicable
+                if i in codex_jsonl_paths:
+                    managed.codex_jsonl_path = codex_jsonl_paths[i]
                 # Store worktree info if applicable
                 if i in worktree_paths:
                     managed.worktree_path = worktree_paths[i]
                     managed.main_repo_path = main_repo_paths[i]
                 managed_sessions.append(managed)
 
-            # Send marker messages for JSONL correlation
+            # Send marker messages for JSONL correlation (Claude only)
+            # Codex doesn't use JSONL markers for session tracking
             for i, managed in enumerate(managed_sessions):
-                marker_message = generate_marker_message(
-                    managed.session_id,
-                    iterm_session_id=managed.iterm_session.session_id,
-                )
-                await send_prompt(pane_sessions[i], marker_message, submit=True)
-
-            # Wait for markers to appear in JSONL
-            for i, managed in enumerate(managed_sessions):
-                claude_session_id = await await_marker_in_jsonl(
-                    managed.project_path,
-                    managed.session_id,
-                    timeout=30.0,
-                    poll_interval=0.1,
-                )
-                if claude_session_id:
-                    managed.claude_session_id = claude_session_id
-                else:
-                    logger.warning(
-                        f"Marker polling timed out for {managed.session_id}, "
-                        "JSONL correlation unavailable"
+                if managed.agent_type == "claude":
+                    marker_message = generate_marker_message(
+                        managed.session_id,
+                        iterm_session_id=managed.iterm_session.session_id,
                     )
+                    await send_prompt(pane_sessions[i], marker_message, submit=True)
+
+            # Wait for markers to appear in JSONL (Claude only)
+            for i, managed in enumerate(managed_sessions):
+                if managed.agent_type == "claude":
+                    claude_session_id = await await_marker_in_jsonl(
+                        managed.project_path,
+                        managed.session_id,
+                        timeout=30.0,
+                        poll_interval=0.1,
+                    )
+                    if claude_session_id:
+                        managed.claude_session_id = claude_session_id
+                    else:
+                        logger.warning(
+                            f"Marker polling timed out for {managed.session_id}, "
+                            "JSONL correlation unavailable"
+                        )
 
             # Send worker prompts - always use generate_worker_prompt with bead/custom_prompt
             workers_awaiting_task: list[str] = []  # Workers with no bead and no prompt
@@ -536,6 +587,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 worker_prompt = generate_worker_prompt(
                     managed.session_id,
                     resolved_names[i],
+                    agent_type=managed.agent_type,
                     use_worktree=use_worktree,
                     bead=bead,
                     custom_prompt=custom_prompt,
@@ -571,6 +623,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
 
                 worker_summaries.append({
                     "name": name,
+                    "agent_type": agent_types[i],
                     "bead": bead,
                     "custom_prompt": custom_prompt,
                     "awaiting_task": awaiting,

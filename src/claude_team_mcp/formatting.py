@@ -57,19 +57,22 @@ def format_badge_text(
     name: str,
     bead: Optional[str] = None,
     annotation: Optional[str] = None,
+    agent_type: Optional[str] = None,
     max_annotation_length: int = 30,
 ) -> str:
     """
     Format badge text with bead/name on first line, annotation on second.
 
     Creates a multi-line string suitable for iTerm2 badge display:
-    - Line 1: bead ID if provided, otherwise worker name
+    - Line 1: Agent type prefix (if not "claude") + bead ID (if provided) or worker name
     - Line 2: annotation (if provided), truncated if too long
 
     Args:
         name: Worker name (used if bead not provided)
         bead: Optional bead/issue ID (e.g., "cic-3dj")
         annotation: Optional task annotation
+        agent_type: Optional agent type ("claude" or "codex"). If "codex",
+            adds a prefix to the first line.
         max_annotation_length: Maximum length for annotation line (default 30)
 
     Returns:
@@ -90,9 +93,21 @@ def format_badge_text(
 
         >>> format_badge_text("Groucho", annotation="a very long annotation here", max_annotation_length=20)
         'Groucho\\na very long annot...'
+
+        >>> format_badge_text("Groucho", agent_type="codex")
+        '[Codex] Groucho'
+
+        >>> format_badge_text("Groucho", "cic-3dj", agent_type="codex")
+        '[Codex] cic-3dj'
     """
     # First line: bead if provided, otherwise name
     first_line = bead if bead else name
+
+    # Add agent type prefix for non-Claude agents
+    if agent_type and agent_type != "claude":
+        # Capitalize the agent type for display (e.g., "codex" -> "Codex")
+        type_display = agent_type.capitalize()
+        first_line = f"[{type_display}] {first_line}"
 
     # Second line: annotation if provided, with truncation
     if annotation:

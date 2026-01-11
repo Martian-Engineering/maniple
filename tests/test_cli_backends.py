@@ -178,9 +178,9 @@ class TestCodexCLI:
         assert len(patterns) > 0
 
     def test_idle_detection_method(self):
-        """Idle detection should be 'none' (not implemented yet)."""
+        """Idle detection should use JSONL streaming (captures output via tee)."""
         cli = CodexCLI()
-        assert cli.idle_detection_method() == "none"
+        assert cli.idle_detection_method() == "jsonl_stream"
 
     def test_supports_settings_file(self):
         """Codex should NOT support settings file."""

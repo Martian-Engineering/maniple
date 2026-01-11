@@ -85,11 +85,11 @@ class CodexCLI(AgentCLI):
         """
         Codex idle detection method.
 
-        Codex doesn't have Stop hook support. Idle detection will need to be
-        implemented via alternative means (JSONL streaming, output parsing,
-        or timeouts) in later tasks.
+        Codex outputs JSONL events to stdout which are captured via tee
+        when spawning workers. The idle_detection module's is_codex_idle()
+        parses these events to detect TurnCompleted/TurnFailed events.
         """
-        return "none"
+        return "jsonl_stream"
 
     def supports_settings_file(self) -> bool:
         """
