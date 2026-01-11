@@ -138,10 +138,19 @@ class TestCodexCLI:
         cli = CodexCLI()
         assert cli.engine_id == "codex"
 
-    def test_command(self):
-        """Command should be 'codex'."""
-        cli = CodexCLI()
-        assert cli.command() == "codex"
+    def test_command_default(self):
+        """Default command should be 'codex'."""
+        with patch.dict(os.environ, {}, clear=True):
+            # Clear CLAUDE_TEAM_CODEX_COMMAND if set
+            os.environ.pop("CLAUDE_TEAM_CODEX_COMMAND", None)
+            cli = CodexCLI()
+            assert cli.command() == "codex"
+
+    def test_command_from_env(self):
+        """Command should respect CLAUDE_TEAM_CODEX_COMMAND env var."""
+        with patch.dict(os.environ, {"CLAUDE_TEAM_CODEX_COMMAND": "happy codex"}):
+            cli = CodexCLI()
+            assert cli.command() == "happy codex"
 
     def test_build_args_empty_default(self):
         """Default args should be empty list."""
@@ -180,15 +189,26 @@ class TestCodexCLI:
 
     def test_build_full_command_simple(self):
         """build_full_command should return just 'codex' for defaults."""
-        cli = CodexCLI()
-        cmd = cli.build_full_command()
-        assert cmd == "codex"
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("CLAUDE_TEAM_CODEX_COMMAND", None)
+            cli = CodexCLI()
+            cmd = cli.build_full_command()
+            assert cmd == "codex"
 
     def test_build_full_command_with_full_auto(self):
         """build_full_command should add --full-auto."""
-        cli = CodexCLI()
-        cmd = cli.build_full_command(dangerously_skip_permissions=True)
-        assert cmd == "codex --full-auto"
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("CLAUDE_TEAM_CODEX_COMMAND", None)
+            cli = CodexCLI()
+            cmd = cli.build_full_command(dangerously_skip_permissions=True)
+            assert cmd == "codex --full-auto"
+
+    def test_build_full_command_with_env_var(self):
+        """build_full_command should use CLAUDE_TEAM_CODEX_COMMAND."""
+        with patch.dict(os.environ, {"CLAUDE_TEAM_CODEX_COMMAND": "happy codex"}):
+            cli = CodexCLI()
+            cmd = cli.build_full_command(dangerously_skip_permissions=True)
+            assert cmd == "happy codex --full-auto"
 
 
 class TestGetCliBackend:

@@ -7,6 +7,7 @@ This is a basic implementation - full integration will be done in later tasks.
 Codex CLI reference: https://github.com/openai/codex
 """
 
+import os
 from typing import Literal
 
 from .base import AgentCLI
@@ -34,9 +35,10 @@ class CodexCLI(AgentCLI):
         """
         Return the Codex CLI command.
 
-        TODO: Consider CODEX_TEAM_COMMAND env var override if needed.
+        Respects CLAUDE_TEAM_CODEX_COMMAND environment variable for overrides
+        (e.g., "happy codex" wrapper).
         """
-        return "codex"
+        return os.environ.get("CLAUDE_TEAM_CODEX_COMMAND", "codex")
 
     def build_args(
         self,

@@ -115,12 +115,17 @@ After adding the configuration, restart Claude Code for it to take effect.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLAUDE_TEAM_COMMAND` | `claude` | Override the command used to start Claude Code in worker sessions. Useful for running alternative CLI implementations like `happy`. |
+| `CLAUDE_TEAM_CODEX_COMMAND` | `codex` | Override the command used to start Codex in worker sessions. Useful for running wrapped Codex (e.g., `happy codex`). |
 | `CLAUDE_TEAM_PROJECT_DIR` | (none) | When set, allows using `"project_path": "auto"` in worker configs to automatically use this path. |
 
 Example using an alternative CLI:
 
 ```bash
+# For Claude Code workers
 export CLAUDE_TEAM_COMMAND=happy
+
+# For Codex workers
+export CLAUDE_TEAM_CODEX_COMMAND="happy codex"
 ```
 
 ## MCP Tools
