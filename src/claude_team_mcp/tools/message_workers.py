@@ -6,8 +6,6 @@ Provides message_workers for sending messages to Claude Code worker sessions.
 
 import asyncio
 import logging
-import uuid
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from mcp.server.fastmcp import Context, FastMCP
@@ -16,9 +14,7 @@ from mcp.server.session import ServerSession
 if TYPE_CHECKING:
     from ..server import AppContext
 
-from ..cli_backends.codex import codex_cli
 from ..idle_detection import (
-    get_codex_thread_id,
     wait_for_all_idle as wait_for_all_idle_impl,
     wait_for_any_idle as wait_for_any_idle_impl,
     SessionInfo,
@@ -28,88 +24,6 @@ from ..registry import SessionStatus
 from ..utils import error_response, HINTS, WORKER_MESSAGE_HINT
 
 logger = logging.getLogger("claude-team-mcp")
-
-
-async def _send_to_codex_session(session, message: str) -> dict:
-    """
-    Send a message to a Codex worker session via resume command.
-
-    Codex doesn't have an interactive mode like Claude. To send follow-up
-    messages, we spawn a new `codex exec resume <thread_id>` process.
-    The message is piped via stdin using a heredoc.
-
-    This function:
-    1. Discovers the thread_id from the previous JSONL output (if not cached)
-    2. Creates a new unique JSONL path for this turn's output
-    3. Builds and sends the resume command to the terminal
-    4. Updates the session's JSONL path for idle detection
-
-    Args:
-        session: The ManagedSession for the Codex worker
-        message: The message/prompt to send
-
-    Returns:
-        Dict with success status and details
-    """
-    from ..iterm_utils import send_prompt
-
-    # Step 1: Get or discover thread_id
-    thread_id = session.codex_thread_id
-    if not thread_id and session.codex_jsonl_path:
-        thread_id = get_codex_thread_id(session.codex_jsonl_path)
-        if thread_id:
-            # Cache it for future use
-            session.codex_thread_id = thread_id
-
-    if not thread_id:
-        return {
-            "success": False,
-            "error": "Cannot resume Codex session: thread_id not found",
-            "hint": "The initial Codex spawn may not have completed or JSONL is missing",
-        }
-
-    # Step 2: Create new JSONL path for this turn's output
-    # Use a unique suffix to track multiple turns in the same session
-    if session.codex_jsonl_path:
-        base_dir = session.codex_jsonl_path.parent
-        # Generate new path with turn suffix
-        turn_id = str(uuid.uuid4())[:8]
-        new_jsonl_path = base_dir / f"codex-{session.session_id}-turn-{turn_id}.jsonl"
-    else:
-        # Fallback: create in temp directory
-        import tempfile
-        temp_dir = Path(tempfile.gettempdir()) / "claude-team" / "codex"
-        temp_dir.mkdir(parents=True, exist_ok=True)
-        turn_id = str(uuid.uuid4())[:8]
-        new_jsonl_path = temp_dir / f"codex-{session.session_id}-turn-{turn_id}.jsonl"
-
-    # Step 3: Build the resume command
-    # TODO: Determine full_auto from session config (may need to track from spawn)
-    resume_cmd = codex_cli.build_resume_command(
-        thread_id=thread_id,
-        message=message,
-        full_auto=True,  # Assume full_auto for workers (matches spawn behavior)
-        output_jsonl_path=str(new_jsonl_path),
-    )
-
-    # Step 4: Send the command to the terminal
-    # The heredoc command needs to be sent line by line or as a whole and submitted
-    await send_prompt(session.iterm_session, resume_cmd, submit=True)
-
-    # Step 5: Update session's JSONL path for future idle detection
-    session.codex_jsonl_path = new_jsonl_path
-
-    logger.info(
-        f"Sent resume command to Codex session {session.session_id} "
-        f"(thread_id={thread_id}, output={new_jsonl_path})"
-    )
-
-    return {
-        "success": True,
-        "message_sent": message[:100] + "..." if len(message) > 100 else message,
-        "thread_id": thread_id,
-        "jsonl_path": str(new_jsonl_path),
-    }
 
 
 async def _wait_for_sessions_idle(
@@ -276,12 +190,7 @@ def register_tools(mcp: FastMCP) -> None:
                 # Append hint about bd_help tool to help workers understand beads
                 message_with_hint = message + WORKER_MESSAGE_HINT
 
-                # Handle Codex workers differently - use resume command
-                if session.agent_type == "codex":
-                    result = await _send_to_codex_session(session, message_with_hint)
-                    return (sid, result)
-
-                # For Claude workers, send the message directly to the terminal
+                # Send the message directly to the terminal (works for both Claude and Codex)
                 await send_prompt(session.iterm_session, message_with_hint, submit=True)
 
                 return (sid, {

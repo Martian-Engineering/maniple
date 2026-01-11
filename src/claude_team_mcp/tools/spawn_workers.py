@@ -8,7 +8,7 @@ import logging
 import os
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Optional, Required, TypedDict
+from typing import TYPE_CHECKING, Literal, Required, TypedDict
 
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
@@ -20,7 +20,6 @@ from ..cli_backends import get_cli_backend
 from ..colors import generate_tab_color
 from ..formatting import format_badge_text, format_session_title
 from ..iterm_utils import (
-    LAYOUT_PANE_NAMES,
     MAX_PANES_PER_TAB,
     create_multi_pane_layout,
     find_available_window,
@@ -36,7 +35,7 @@ from ..profile import (
     get_or_create_profile,
 )
 from ..registry import SessionStatus
-from ..utils import BEADS_HELP_TEXT, HINTS, error_response, get_worktree_beads_dir
+from ..utils import HINTS, error_response, get_worktree_beads_dir
 from ..worker_prompt import generate_worker_prompt, get_coordinator_guidance
 from ..worktree import WorktreeError, create_local_worktree
 
@@ -466,25 +465,16 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
 
                 pane_sessions = [panes[name] for name in pane_names[:worker_count]]
 
-            # Pre-calculate agent types and JSONL capture paths for Codex workers
+            # Pre-calculate agent types for each worker
             import asyncio
-            import tempfile
 
             agent_types: list[str] = []
-            codex_jsonl_paths: dict[int, Path] = {}  # index -> JSONL capture path
-
-            # Create directory for Codex JSONL capture
-            codex_capture_dir = Path.home() / ".claude" / "claude-team-codex"
-            codex_capture_dir.mkdir(parents=True, exist_ok=True)
 
             for i, w in enumerate(workers):
                 agent_type = w.get("agent_type", "claude")
                 agent_types.append(agent_type)
-                if agent_type == "codex":
-                    # Create a unique JSONL file for this Codex worker
-                    codex_jsonl_paths[i] = codex_capture_dir / f"{session_ids[i]}.jsonl"
 
-            # Start agent in all panes (Claude only - Codex is started with prompt later)
+            # Start agent in all panes (both Claude and Codex)
             async def start_agent_for_worker(index: int) -> None:
                 session = pane_sessions[index]
                 project_path = resolved_paths[index]
@@ -497,9 +487,15 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 env = {"BEADS_DIR": beads_dir} if beads_dir else None
 
                 if agent_type == "codex":
-                    # Codex exec mode requires prompt at launch time (via heredoc)
-                    # Skip starting here - will be started with prompt in the prompt-sending phase
-                    pass
+                    # Start Codex in interactive mode using start_agent_in_session
+                    cli = get_cli_backend("codex")
+                    await start_agent_in_session(
+                        session=session,
+                        cli=cli,
+                        project_path=project_path,
+                        dangerously_skip_permissions=worker_config.get("skip_permissions", False),
+                        env=env,
+                    )
                 else:
                     # For Claude: use start_claude_in_session (convenience wrapper)
                     await start_claude_in_session(
@@ -525,9 +521,6 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 managed.coordinator_annotation = workers[i].get("annotation")
                 # Set agent type
                 managed.agent_type = agent_types[i]
-                # Store Codex JSONL path if applicable
-                if i in codex_jsonl_paths:
-                    managed.codex_jsonl_path = codex_jsonl_paths[i]
                 # Store worktree info if applicable
                 if i in worktree_paths:
                     managed.worktree_path = worktree_paths[i]
@@ -582,27 +575,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     custom_prompt=custom_prompt,
                 )
 
-                if managed.agent_type == "codex":
-                    # Codex exec mode: build full command with prompt via heredoc
-                    cli = get_cli_backend("codex")
-                    beads_dir = get_worktree_beads_dir(resolved_paths[i])
-                    env = {"BEADS_DIR": beads_dir} if beads_dir else None
-                    capture_path = codex_jsonl_paths.get(i)
-
-                    # Build the full codex command with prompt embedded
-                    codex_cmd = cli.build_initial_command(
-                        prompt=worker_prompt,
-                        full_auto=worker_config.get("skip_permissions", False),
-                        output_jsonl_path=str(capture_path) if capture_path else None,
-                        env_vars=env,
-                    )
-
-                    # Wrap with cd to project directory
-                    full_cmd = f"cd {resolved_paths[i]} && {codex_cmd}"
-                    await send_prompt(pane_sessions[i], full_cmd, submit=True)
-                else:
-                    # Claude: send prompt to already-running agent
-                    await send_prompt(pane_sessions[i], worker_prompt, submit=True)
+                # Send prompt to the already-running agent (both Claude and Codex)
+                await send_prompt(pane_sessions[i], worker_prompt, submit=True)
 
             # Mark sessions ready
             result_sessions = {}

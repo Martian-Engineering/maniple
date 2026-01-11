@@ -6,7 +6,6 @@ from the original primitives.py for use in the MCP server.
 """
 
 import logging
-import os
 import re
 from typing import TYPE_CHECKING, Optional
 

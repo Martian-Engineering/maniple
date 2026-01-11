@@ -93,12 +93,6 @@ class ManagedSession:
     # Agent type: "claude" (default) or "codex"
     agent_type: AgentType = "claude"
 
-    # Codex-specific: path to captured JSONL output (set during spawn)
-    codex_jsonl_path: Optional[Path] = None
-
-    # Codex-specific: thread ID for session continuity (extracted from JSONL)
-    codex_thread_id: Optional[str] = None
-
     def __post_init__(self):
         """Auto-populate terminal_id from iterm_session if not set."""
         if self.terminal_id is None and self.iterm_session is not None:
@@ -120,12 +114,6 @@ class ManagedSession:
             "main_repo_path": str(self.main_repo_path) if self.main_repo_path else None,
             "agent_type": self.agent_type,
         }
-        # Include Codex-specific fields only for Codex agents
-        if self.agent_type == "codex":
-            result["codex_jsonl_path"] = (
-                str(self.codex_jsonl_path) if self.codex_jsonl_path else None
-            )
-            result["codex_thread_id"] = self.codex_thread_id
         return result
 
     def update_activity(self) -> None:
@@ -191,18 +179,20 @@ class ManagedSession:
         For Claude: Uses stop hook detection - session is idle if its Stop hook
         has fired and no messages have been sent after it.
 
-        For Codex: Parses the captured JSONL output for TurnCompleted/TurnFailed
-        events which indicate the turn has finished.
+        For Codex: Searches ~/.codex/sessions/ for the session file and checks
+        for agent_message events which indicate the agent finished responding.
 
         Returns:
-            True if idle, False if working or JSONL not available
+            True if idle, False if working or session file not available
         """
         if self.agent_type == "codex":
-            from .idle_detection import is_codex_idle
+            from .idle_detection import find_codex_session_file, is_codex_idle
 
-            if not self.codex_jsonl_path or not self.codex_jsonl_path.exists():
+            # Find the session file (will be discovered from ~/.codex/sessions/)
+            session_file = find_codex_session_file(max_age_seconds=600)
+            if not session_file:
                 return False
-            return is_codex_idle(self.codex_jsonl_path)
+            return is_codex_idle(session_file)
         else:
             # Default: Claude Code with Stop hook detection
             from .idle_detection import is_idle as check_is_idle

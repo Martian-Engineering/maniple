@@ -47,102 +47,47 @@ class CodexCLI(AgentCLI):
         settings_file: str | None = None,
     ) -> list[str]:
         """
-        Build Codex CLI arguments.
+        Build Codex CLI arguments for interactive mode.
 
         Args:
             dangerously_skip_permissions: Maps to --full-auto for Codex
             settings_file: Ignored - Codex doesn't support settings injection
 
         Returns:
-            List of CLI arguments for `codex exec` mode
+            List of CLI arguments for interactive mode
         """
-        # Use exec subcommand with JSON output for pipe-friendly operation
-        args: list[str] = ["exec", "--json"]
+        args: list[str] = []
 
-        # Codex uses --full-auto instead of --dangerously-skip-permissions
+        # Codex uses --full-auto for autonomous operation (no approval prompts)
         if dangerously_skip_permissions:
             args.append("--full-auto")
 
-        # Read prompt from stdin (allows piping or heredoc input)
-        args.append("-")
-
         # Note: settings_file is ignored - Codex doesn't support this
-        # Idle detection uses JSONL output parsing instead
+        # Idle detection uses session file polling instead
 
         return args
 
-    def build_initial_command(
-        self,
-        prompt: str,
-        *,
-        full_auto: bool = False,
-        output_jsonl_path: str | None = None,
-        env_vars: dict[str, str] | None = None,
-    ) -> str:
-        """
-        Build a command to start a new Codex session with an initial prompt.
-
-        Creates a shell command that pipes the prompt to `codex exec`.
-        Uses heredoc for multi-line prompts to preserve formatting.
-
-        Args:
-            prompt: The initial prompt to send
-            full_auto: If True, add --full-auto flag
-            output_jsonl_path: If provided, pipe output through tee to this file
-            env_vars: Optional environment variables to set
-
-        Returns:
-            Complete shell command string ready for execution
-
-        Example output:
-            cat <<'EOF' | codex exec --json --full-auto - | tee /path/to/output.jsonl
-            Your prompt here
-            EOF
-        """
-        cmd = self.command()
-
-        # Build args list
-        args = ["exec", "--json"]
-        if full_auto:
-            args.append("--full-auto")
-        args.append("-")  # Read prompt from stdin
-
-        full_cmd = f"{cmd} {' '.join(args)}"
-
-        # Add output capture via tee if path provided
-        if output_jsonl_path:
-            full_cmd = f"{full_cmd} 2>&1 | tee {output_jsonl_path}"
-
-        # Prepend env vars if provided
-        if env_vars:
-            env_exports = " ".join(f"{k}={v}" for k, v in env_vars.items())
-            full_cmd = f"{env_exports} {full_cmd}"
-
-        # Use heredoc to pipe the prompt - EOF marker with quotes prevents expansion
-        heredoc_cmd = f"cat <<'EOF' | {full_cmd}\n{prompt}\nEOF"
-
-        return heredoc_cmd
 
     def ready_patterns(self) -> list[str]:
         """
-        Return patterns indicating Codex CLI is ready.
+        Return patterns indicating Codex CLI is ready for input.
 
-        TODO: These are placeholder patterns. Need to verify actual
-        Codex CLI startup output in cic-f7w.3.
+        Codex in interactive mode shows a prompt when ready.
+        Based on observed Codex CLI v0.79.0 behavior.
         """
         return [
-            "codex>",  # Assumed prompt pattern
-            "Ready",  # Common ready indicator
-            ">",  # Generic prompt
+            "What can I help you with?",  # Main ready prompt
+            "codex>",  # Alternative prompt pattern
+            "»",  # Codex uses this prompt symbol
         ]
 
     def idle_detection_method(self) -> Literal["stop_hook", "jsonl_stream", "none"]:
         """
         Codex idle detection method.
 
-        Codex outputs JSONL events to stdout which are captured via tee
-        when spawning workers. The idle_detection module's is_codex_idle()
-        parses these events to detect TurnCompleted/TurnFailed events.
+        Codex writes session files to ~/.codex/sessions/YYYY/MM/DD/.
+        The idle_detection module polls these files for agent_message
+        events which indicate the agent has finished responding.
         """
         return "jsonl_stream"
 
@@ -154,55 +99,6 @@ class CodexCLI(AgentCLI):
         """
         return False
 
-    def build_resume_command(
-        self,
-        thread_id: str,
-        message: str,
-        *,
-        full_auto: bool = False,
-        output_jsonl_path: str | None = None,
-    ) -> str:
-        """
-        Build a command to resume a Codex session with a new message.
-
-        Creates a shell command that pipes the message to `codex exec resume`.
-        Uses heredoc for multi-line messages to preserve formatting.
-
-        Args:
-            thread_id: The thread ID to resume
-            message: The message/prompt to send
-            full_auto: If True, add --full-auto flag
-            output_jsonl_path: If provided, pipe output through tee to this file
-
-        Returns:
-            Complete shell command string ready for execution
-
-        Example output:
-            cat <<'EOF' | codex exec --full-auto resume abc123 - | tee /path/to/output.jsonl
-            Your message here
-            EOF
-        """
-        cmd = self.command()
-
-        # Build args list
-        args = ["exec"]
-        if full_auto:
-            args.append("--full-auto")
-        args.append("resume")
-        args.append(thread_id)
-        args.append("-")  # Read prompt from stdin
-
-        full_cmd = f"{cmd} {' '.join(args)}"
-
-        # Add tee for output capture if path provided
-        if output_jsonl_path:
-            full_cmd = f"{full_cmd} | tee {output_jsonl_path}"
-
-        # Use heredoc to pipe the message - EOF marker with quotes prevents expansion
-        # The heredoc preserves multi-line messages correctly
-        heredoc_cmd = f"cat <<'EOF' | {full_cmd}\n{message}\nEOF"
-
-        return heredoc_cmd
 
 
 # Singleton instance for convenience
