@@ -96,6 +96,9 @@ class ManagedSession:
     # Codex-specific: path to captured JSONL output (set during spawn)
     codex_jsonl_path: Optional[Path] = None
 
+    # Codex-specific: thread ID for session continuity (extracted from JSONL)
+    codex_thread_id: Optional[str] = None
+
     def __post_init__(self):
         """Auto-populate terminal_id from iterm_session if not set."""
         if self.terminal_id is None and self.iterm_session is not None:
@@ -117,11 +120,12 @@ class ManagedSession:
             "main_repo_path": str(self.main_repo_path) if self.main_repo_path else None,
             "agent_type": self.agent_type,
         }
-        # Include codex_jsonl_path only for Codex agents
+        # Include Codex-specific fields only for Codex agents
         if self.agent_type == "codex":
             result["codex_jsonl_path"] = (
                 str(self.codex_jsonl_path) if self.codex_jsonl_path else None
             )
+            result["codex_thread_id"] = self.codex_thread_id
         return result
 
     def update_activity(self) -> None:

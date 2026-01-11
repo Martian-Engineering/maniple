@@ -27,10 +27,61 @@ from pathlib import Path
 
 import msgspec
 
-from .schemas.codex import TurnCompleted, TurnFailed, TurnStarted, decode_event
+from .schemas.codex import ThreadStarted, TurnCompleted, TurnFailed, TurnStarted, decode_event
 from .session_state import is_session_stopped
 
 logger = logging.getLogger("claude-team-mcp")
+
+
+def get_codex_thread_id(jsonl_path: Path) -> str | None:
+    """
+    Extract the thread_id from a Codex session's JSONL output.
+
+    Parses the JSONL file looking for a ThreadStarted event, which contains
+    the thread_id needed for session resume commands.
+
+    The ThreadStarted event is typically near the beginning of the file,
+    but we read from the start to find it reliably.
+
+    Args:
+        jsonl_path: Path to the Codex JSONL output file
+
+    Returns:
+        The thread_id string if found, None otherwise
+    """
+    if not jsonl_path.exists():
+        return None
+
+    try:
+        # Read the first portion of the file (ThreadStarted is near the beginning)
+        # Limit read to first 10KB to avoid loading huge files
+        with open(jsonl_path, "rb") as f:
+            content = f.read(10000)
+
+        # Parse lines looking for ThreadStarted
+        lines = content.strip().split(b"\n")
+
+        for line in lines:
+            if not line.strip():
+                continue
+
+            try:
+                event = decode_event(line)
+
+                # Check for ThreadStarted which contains thread_id
+                if isinstance(event, ThreadStarted):
+                    return event.thread_id
+
+            except Exception:
+                # Skip malformed lines (could be partial at end of read)
+                continue
+
+        # No ThreadStarted found
+        return None
+
+    except (OSError, IOError) as e:
+        logger.warning(f"Error reading Codex JSONL {jsonl_path}: {e}")
+        return None
 
 # Default timeout for waiting operations (10 minutes)
 DEFAULT_TIMEOUT = 600.0

@@ -99,6 +99,56 @@ class CodexCLI(AgentCLI):
         """
         return False
 
+    def build_resume_command(
+        self,
+        thread_id: str,
+        message: str,
+        *,
+        full_auto: bool = False,
+        output_jsonl_path: str | None = None,
+    ) -> str:
+        """
+        Build a command to resume a Codex session with a new message.
+
+        Creates a shell command that pipes the message to `codex exec resume`.
+        Uses heredoc for multi-line messages to preserve formatting.
+
+        Args:
+            thread_id: The thread ID to resume
+            message: The message/prompt to send
+            full_auto: If True, add --full-auto flag
+            output_jsonl_path: If provided, pipe output through tee to this file
+
+        Returns:
+            Complete shell command string ready for execution
+
+        Example output:
+            cat <<'EOF' | codex exec --full-auto resume abc123 - | tee /path/to/output.jsonl
+            Your message here
+            EOF
+        """
+        cmd = self.command()
+
+        # Build args list
+        args = ["exec"]
+        if full_auto:
+            args.append("--full-auto")
+        args.append("resume")
+        args.append(thread_id)
+        args.append("-")  # Read prompt from stdin
+
+        full_cmd = f"{cmd} {' '.join(args)}"
+
+        # Add tee for output capture if path provided
+        if output_jsonl_path:
+            full_cmd = f"{full_cmd} | tee {output_jsonl_path}"
+
+        # Use heredoc to pipe the message - EOF marker with quotes prevents expansion
+        # The heredoc preserves multi-line messages correctly
+        heredoc_cmd = f"cat <<'EOF' | {full_cmd}\n{message}\nEOF"
+
+        return heredoc_cmd
+
 
 # Singleton instance for convenience
 codex_cli = CodexCLI()
