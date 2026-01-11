@@ -30,6 +30,7 @@ classifiers = [
 dependencies = [
     "mcp>=1.0.0",
     "iterm2>=2.7",
+    "msgspec>=0.19.0",
 ]
 
 [project.urls]
