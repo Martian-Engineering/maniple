@@ -54,19 +54,74 @@ class CodexCLI(AgentCLI):
             settings_file: Ignored - Codex doesn't support settings injection
 
         Returns:
-            List of CLI arguments
+            List of CLI arguments for `codex exec` mode
         """
-        args: list[str] = []
+        # Use exec subcommand with JSON output for pipe-friendly operation
+        args: list[str] = ["exec", "--json"]
 
         # Codex uses --full-auto instead of --dangerously-skip-permissions
         if dangerously_skip_permissions:
             args.append("--full-auto")
 
+        # Read prompt from stdin (allows piping or heredoc input)
+        args.append("-")
+
         # Note: settings_file is ignored - Codex doesn't support this
-        # If needed, alternative completion detection will be implemented
-        # in later tasks (cic-f7w.3)
+        # Idle detection uses JSONL output parsing instead
 
         return args
+
+    def build_initial_command(
+        self,
+        prompt: str,
+        *,
+        full_auto: bool = False,
+        output_jsonl_path: str | None = None,
+        env_vars: dict[str, str] | None = None,
+    ) -> str:
+        """
+        Build a command to start a new Codex session with an initial prompt.
+
+        Creates a shell command that pipes the prompt to `codex exec`.
+        Uses heredoc for multi-line prompts to preserve formatting.
+
+        Args:
+            prompt: The initial prompt to send
+            full_auto: If True, add --full-auto flag
+            output_jsonl_path: If provided, pipe output through tee to this file
+            env_vars: Optional environment variables to set
+
+        Returns:
+            Complete shell command string ready for execution
+
+        Example output:
+            cat <<'EOF' | codex exec --json --full-auto - | tee /path/to/output.jsonl
+            Your prompt here
+            EOF
+        """
+        cmd = self.command()
+
+        # Build args list
+        args = ["exec", "--json"]
+        if full_auto:
+            args.append("--full-auto")
+        args.append("-")  # Read prompt from stdin
+
+        full_cmd = f"{cmd} {' '.join(args)}"
+
+        # Add output capture via tee if path provided
+        if output_jsonl_path:
+            full_cmd = f"{full_cmd} 2>&1 | tee {output_jsonl_path}"
+
+        # Prepend env vars if provided
+        if env_vars:
+            env_exports = " ".join(f"{k}={v}" for k, v in env_vars.items())
+            full_cmd = f"{env_exports} {full_cmd}"
+
+        # Use heredoc to pipe the prompt - EOF marker with quotes prevents expansion
+        heredoc_cmd = f"cat <<'EOF' | {full_cmd}\n{prompt}\nEOF"
+
+        return heredoc_cmd
 
     def ready_patterns(self) -> list[str]:
         """

@@ -484,7 +484,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     # Create a unique JSONL file for this Codex worker
                     codex_jsonl_paths[i] = codex_capture_dir / f"{session_ids[i]}.jsonl"
 
-            # Start agent in all panes
+            # Start agent in all panes (Claude only - Codex is started with prompt later)
             async def start_agent_for_worker(index: int) -> None:
                 session = pane_sessions[index]
                 project_path = resolved_paths[index]
@@ -497,20 +497,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 env = {"BEADS_DIR": beads_dir} if beads_dir else None
 
                 if agent_type == "codex":
-                    # For Codex: use start_agent_in_session with CodexCLI
-                    # No stop hook marker (Codex uses JSONL streaming for idle detection)
-                    cli = get_cli_backend("codex")
-                    # Get the JSONL capture path for this Codex worker
-                    capture_path = codex_jsonl_paths.get(index)
-                    await start_agent_in_session(
-                        session=session,
-                        cli=cli,
-                        project_path=project_path,
-                        dangerously_skip_permissions=worker_config.get("skip_permissions", False),
-                        env=env,
-                        # No stop_hook_marker_id for Codex - it doesn't support settings file
-                        output_capture_path=str(capture_path) if capture_path else None,
-                    )
+                    # Codex exec mode requires prompt at launch time (via heredoc)
+                    # Skip starting here - will be started with prompt in the prompt-sending phase
+                    pass
                 else:
                     # For Claude: use start_claude_in_session (convenience wrapper)
                     await start_claude_in_session(
@@ -593,7 +582,27 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     custom_prompt=custom_prompt,
                 )
 
-                await send_prompt(pane_sessions[i], worker_prompt, submit=True)
+                if managed.agent_type == "codex":
+                    # Codex exec mode: build full command with prompt via heredoc
+                    cli = get_cli_backend("codex")
+                    beads_dir = get_worktree_beads_dir(resolved_paths[i])
+                    env = {"BEADS_DIR": beads_dir} if beads_dir else None
+                    capture_path = codex_jsonl_paths.get(i)
+
+                    # Build the full codex command with prompt embedded
+                    codex_cmd = cli.build_initial_command(
+                        prompt=worker_prompt,
+                        full_auto=worker_config.get("skip_permissions", False),
+                        output_jsonl_path=str(capture_path) if capture_path else None,
+                        env_vars=env,
+                    )
+
+                    # Wrap with cd to project directory
+                    full_cmd = f"cd {resolved_paths[i]} && {codex_cmd}"
+                    await send_prompt(pane_sessions[i], full_cmd, submit=True)
+                else:
+                    # Claude: send prompt to already-running agent
+                    await send_prompt(pane_sessions[i], worker_prompt, submit=True)
 
             # Mark sessions ready
             result_sessions = {}
