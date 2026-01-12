@@ -630,6 +630,220 @@ def parse_session(jsonl_path: Path) -> SessionState:
 
 
 # =============================================================================
+# Codex Session Parsing
+# =============================================================================
+
+
+def parse_codex_session(jsonl_path: Path) -> SessionState:
+    """
+    Parse a Codex session JSONL file into a SessionState object.
+
+    Codex has a different JSONL format than Claude Code:
+    - Interactive mode uses event_msg and response_item wrappers
+    - Exec mode uses direct ThreadEvent types (item.completed, etc.)
+
+    Args:
+        jsonl_path: Path to the Codex JSONL file
+
+    Returns:
+        Parsed SessionState object with messages extracted
+    """
+    messages = []
+    session_id = jsonl_path.stem
+
+    try:
+        with open(jsonl_path, "r") as f:
+            for line_num, line in enumerate(f):
+                line = line.strip()
+                if not line:
+                    continue
+
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                msg = _parse_codex_event(data, line_num)
+                if msg:
+                    messages.append(msg)
+
+    except FileNotFoundError:
+        pass
+
+    return SessionState(
+        session_id=session_id,
+        project_path="",  # Codex doesn't have project path in the same way
+        jsonl_path=jsonl_path,
+        messages=messages,
+        last_modified=jsonl_path.stat().st_mtime if jsonl_path.exists() else 0,
+    )
+
+
+def _parse_codex_event(data: dict, line_num: int) -> Optional[Message]:
+    """
+    Parse a single Codex JSONL event into a Message if applicable.
+
+    Handles both interactive mode format (wrapped events) and exec mode format
+    (direct ThreadEvent types).
+
+    Args:
+        data: Parsed JSON dict from JSONL line
+        line_num: Line number for UUID generation
+
+    Returns:
+        Message object if this event represents a message, None otherwise
+    """
+    event_type = data.get("type", "")
+    now = datetime.now()
+
+    # Interactive mode: event_msg wrapper
+    if event_type == "event_msg":
+        payload = data.get("payload", {})
+        payload_type = payload.get("type")
+
+        if payload_type == "agent_message":
+            # Agent response message
+            text = payload.get("text", "")
+            if text:
+                return Message(
+                    uuid=payload.get("id", f"codex-{line_num}"),
+                    parent_uuid=None,
+                    role="assistant",
+                    content=text,
+                    timestamp=now,
+                )
+
+        elif payload_type == "user_message":
+            # User input message
+            text = payload.get("text", "")
+            if text:
+                return Message(
+                    uuid=payload.get("id", f"codex-user-{line_num}"),
+                    parent_uuid=None,
+                    role="user",
+                    content=text,
+                    timestamp=now,
+                )
+
+    # Interactive mode: response_item wrapper
+    elif event_type == "response_item":
+        payload = data.get("payload", {})
+        payload_type = payload.get("type")
+        role = payload.get("role", "")
+
+        if payload_type == "message":
+            # Extract content from the message
+            content_list = payload.get("content", [])
+            text_parts = []
+            for item in content_list:
+                if isinstance(item, dict) and item.get("type") == "output_text":
+                    text_parts.append(item.get("text", ""))
+                elif isinstance(item, dict) and item.get("type") == "input_text":
+                    text_parts.append(item.get("text", ""))
+                elif isinstance(item, dict) and item.get("type") == "text":
+                    text_parts.append(item.get("text", ""))
+
+            text = "".join(text_parts)
+            if text:
+                return Message(
+                    uuid=payload.get("id", f"codex-resp-{line_num}"),
+                    parent_uuid=None,
+                    role=role if role else "assistant",
+                    content=text,
+                    timestamp=now,
+                )
+
+        elif payload_type == "agent_message":
+            # Direct agent_message in payload
+            text = payload.get("text", "")
+            if text:
+                return Message(
+                    uuid=payload.get("id", f"codex-agent-{line_num}"),
+                    parent_uuid=None,
+                    role="assistant",
+                    content=text,
+                    timestamp=now,
+                )
+
+    # Exec mode: item.completed events
+    elif event_type == "item.completed":
+        item = data.get("item", {})
+        item_type = item.get("type")
+
+        if item_type == "agent_message":
+            text = item.get("text", "")
+            if text:
+                return Message(
+                    uuid=item.get("id", f"codex-exec-{line_num}"),
+                    parent_uuid=None,
+                    role="assistant",
+                    content=text,
+                    timestamp=now,
+                )
+
+        elif item_type == "reasoning":
+            # Reasoning/thinking block
+            text = item.get("text", "")
+            if text:
+                return Message(
+                    uuid=item.get("id", f"codex-think-{line_num}"),
+                    parent_uuid=None,
+                    role="assistant",
+                    content="",  # Put reasoning in thinking field instead
+                    timestamp=now,
+                    thinking=text,
+                )
+
+        elif item_type == "command_execution":
+            # Shell command execution
+            cmd = item.get("command", "")
+            output = item.get("aggregated_output", "")
+            exit_code = item.get("exit_code")
+            status = item.get("status", "")
+            if cmd:
+                content = f"Command: {cmd}\n"
+                if output:
+                    content += f"Output:\n{output}\n"
+                if exit_code is not None:
+                    content += f"Exit code: {exit_code}"
+                return Message(
+                    uuid=item.get("id", f"codex-cmd-{line_num}"),
+                    parent_uuid=None,
+                    role="assistant",
+                    content=content,
+                    timestamp=now,
+                    tool_uses=[{
+                        "name": "command_execution",
+                        "input": {"command": cmd, "status": status},
+                    }],
+                )
+
+        elif item_type == "file_change":
+            # File modification
+            changes = item.get("changes", [])
+            if changes:
+                change_lines = []
+                for c in changes:
+                    path = c.get("path", "")
+                    kind = c.get("kind", "")
+                    change_lines.append(f"  {kind}: {path}")
+                content = "File changes:\n" + "\n".join(change_lines)
+                return Message(
+                    uuid=item.get("id", f"codex-file-{line_num}"),
+                    parent_uuid=None,
+                    role="assistant",
+                    content=content,
+                    timestamp=now,
+                    tool_uses=[{
+                        "name": "file_change",
+                        "input": {"changes": changes},
+                    }],
+                )
+
+    return None
+
+
+# =============================================================================
 # Stop Hook Detection
 # =============================================================================
 

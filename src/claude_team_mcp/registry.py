@@ -147,22 +147,33 @@ class ManagedSession:
         """
         Get the path to this session's JSONL file.
 
-        Automatically tries to discover the session if not already known.
+        For Claude workers: uses marker-based discovery in ~/.claude/projects/.
+        For Codex workers: searches ~/.codex/sessions/ for matching session files.
 
         Returns:
             Path object, or None if session cannot be discovered
         """
-        # Auto-discover if not already known (using marker-based discovery)
-        if not self.claude_session_id:
-            self.discover_claude_session_by_marker()
+        if self.agent_type == "codex":
+            # For Codex, search the sessions directory
+            from .idle_detection import find_codex_session_file
 
-        if not self.claude_session_id:
-            return None
-        return get_project_dir(self.project_path) / f"{self.claude_session_id}.jsonl"
+            return find_codex_session_file(max_age_seconds=600)
+        else:
+            # For Claude, use marker-based discovery
+            # Auto-discover if not already known
+            if not self.claude_session_id:
+                self.discover_claude_session_by_marker()
+
+            if not self.claude_session_id:
+                return None
+            return get_project_dir(self.project_path) / f"{self.claude_session_id}.jsonl"
 
     def get_conversation_state(self):
         """
         Parse and return the current conversation state.
+
+        For Claude workers: uses parse_session() for Claude's JSONL format.
+        For Codex workers: uses parse_codex_session() for Codex's JSONL format.
 
         Returns:
             SessionState object, or None if JSONL not available
@@ -170,7 +181,13 @@ class ManagedSession:
         jsonl_path = self.get_jsonl_path()
         if not jsonl_path or not jsonl_path.exists():
             return None
-        return parse_session(jsonl_path)
+
+        if self.agent_type == "codex":
+            from .session_state import parse_codex_session
+
+            return parse_codex_session(jsonl_path)
+        else:
+            return parse_session(jsonl_path)
 
     def is_idle(self) -> bool:
         """
