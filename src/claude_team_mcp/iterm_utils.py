@@ -691,6 +691,8 @@ async def start_agent_in_session(
     # Combine cd and agent into atomic command to avoid race condition.
     # Shell executes "cd /path && agent" as a unit - if cd fails, agent won't run.
     cmd = f"cd {project_path} && {agent_cmd}"
+    
+    logger.info(f"start_agent_in_session: Running command: {cmd[:200]}...")
 
     await send_prompt(session, cmd)
 
