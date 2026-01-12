@@ -135,7 +135,7 @@ async def send_prompt(session: "ItermSession", text: str, submit: bool = True) -
 # Codex uses crossterm in raw mode - batch text sending works fine,
 # but it needs a longer delay before Enter than Claude does.
 # Testing showed 200ms is reliable; 50ms (Claude's default) is too short.
-CODEX_PRE_ENTER_DELAY = 0.25
+CODEX_PRE_ENTER_DELAY = 0.5  # 500ms - longer texts need more time
 
 
 async def send_prompt_for_agent(
