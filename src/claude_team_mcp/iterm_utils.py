@@ -96,9 +96,9 @@ async def send_prompt(session: "ItermSession", text: str, submit: bool = True) -
     The delay scales with text length since longer pastes take more time
     for the terminal to process.
 
-    Note: This function uses burst sending (all text at once), which works
-    for Claude Code but NOT for Codex. Use send_prompt_for_agent() when
-    the target agent is known.
+    Note: This function is primarily for Claude Code. For Codex, use
+    send_prompt_for_agent() which provides the longer pre-Enter delay
+    that Codex requires.
 
     Args:
         session: iTerm2 session object
@@ -131,10 +131,11 @@ async def send_prompt(session: "ItermSession", text: str, submit: bool = True) -
         await session.async_send_text(KEYS["enter"])
 
 
-# Minimum delay between characters for Codex input (in seconds).
-# Codex uses crossterm in raw mode which doesn't handle burst input well.
-# Testing showed 10ms is the minimum reliable delay; we use 12ms for safety.
-CODEX_CHAR_DELAY = 0.012
+# Pre-Enter delay for Codex (in seconds).
+# Codex uses crossterm in raw mode - batch text sending works fine,
+# but it needs a longer delay before Enter than Claude does.
+# Testing showed 200ms is reliable; 50ms (Claude's default) is too short.
+CODEX_PRE_ENTER_DELAY = 0.25
 
 
 async def send_prompt_for_agent(
@@ -146,14 +147,11 @@ async def send_prompt_for_agent(
     """
     Send a prompt to an iTerm2 session, with agent-specific input handling.
 
-    Different agent CLIs have different terminal input processing behaviors:
+    Both Claude and Codex handle batch/burst text input correctly. The key
+    difference is the delay needed before pressing Enter:
 
-    - **Claude Code**: Handles burst input (all characters at once) correctly.
-      Uses bracketed paste mode with delay before Enter.
-
-    - **Codex**: Uses crossterm in raw mode with keyboard enhancement flags.
-      Burst input causes character drops - only the first character is processed.
-      Requires sending characters one-by-one with ~10ms delays between them.
+    - **Claude Code**: 50ms delay before Enter is sufficient.
+    - **Codex**: Needs ~250ms delay before Enter for reliable input processing.
 
     Args:
         session: iTerm2 session object
@@ -164,20 +162,15 @@ async def send_prompt_for_agent(
     import asyncio
 
     if agent_type == "codex":
-        # Codex requires character-by-character sending with delays.
-        # Crossterm's raw mode keyboard processing doesn't handle burst input:
-        # when characters arrive too fast, only the first one is processed.
-        # Testing showed 10ms minimum delay is needed; we use 12ms for safety.
-        for char in text:
-            await session.async_send_text(char)
-            await asyncio.sleep(CODEX_CHAR_DELAY)
-
+        # Codex: batch send text, but use longer pre-Enter delay.
+        # Codex's crossterm raw mode needs more time to process input
+        # before Enter is pressed. 250ms is reliable; 50ms is too short.
+        await session.async_send_text(text)
         if submit:
-            # Small buffer after last character before Enter
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(CODEX_PRE_ENTER_DELAY)
             await session.async_send_text(KEYS["enter"])
     else:
-        # Claude Code and other agents: use burst sending with delay before Enter
+        # Claude Code and other agents: use standard send_prompt
         await send_prompt(session, text, submit=submit)
 
 

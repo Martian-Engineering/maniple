@@ -191,7 +191,7 @@ def register_tools(mcp: FastMCP) -> None:
                 message_with_hint = message + WORKER_MESSAGE_HINT
 
                 # Send the message using agent-specific input handling.
-                # Codex requires char-by-char sending; Claude handles burst input.
+                # Codex needs a longer pre-Enter delay than Claude.
                 await send_prompt_for_agent(
                     session.iterm_session,
                     message_with_hint,
