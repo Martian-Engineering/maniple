@@ -163,11 +163,25 @@ async def send_prompt_for_agent(
 
     if agent_type == "codex":
         # Codex: batch send text, but use longer pre-Enter delay.
-        # Codex's crossterm raw mode needs more time to process input
-        # before Enter is pressed. 250ms is reliable; 50ms is too short.
+        # For long/multi-line prompts, iTerm2's bracketed paste mode needs
+        # time to complete before Enter is sent. Use the same delay
+        # calculation as send_prompt() but ensure at least CODEX_PRE_ENTER_DELAY.
         await session.async_send_text(text)
         if submit:
-            await asyncio.sleep(CODEX_PRE_ENTER_DELAY)
+            # Calculate delay based on text length (same as send_prompt)
+            line_count = text.count("\n")
+            char_count = len(text)
+            if line_count > 0:
+                paste_delay = min(2.0, 0.1 + (line_count * 0.01) + (char_count / 1000 * 0.05))
+            else:
+                paste_delay = 0.05
+            # Use whichever is larger: paste delay or Codex minimum
+            delay = max(CODEX_PRE_ENTER_DELAY, paste_delay)
+            logger.debug(
+                "send_prompt_for_agent: codex chars=%d lines=%d delay=%.3fs",
+                char_count, line_count, delay
+            )
+            await asyncio.sleep(delay)
             await session.async_send_text(KEYS["enter"])
     else:
         # Claude Code and other agents: use standard send_prompt
