@@ -58,9 +58,10 @@ class CodexCLI(AgentCLI):
         """
         args: list[str] = []
 
-        # Codex uses --full-auto for autonomous operation (no approval prompts)
+        # Codex uses --dangerously-bypass-approvals-and-sandbox for autonomous operation
+        # (--full-auto doesn't work through happy wrapper)
         if dangerously_skip_permissions:
-            args.append("--full-auto")
+            args.append("--dangerously-bypass-approvals-and-sandbox")
 
         # Note: settings_file is ignored - Codex doesn't support this
         # Idle detection uses session file polling instead
@@ -79,6 +80,8 @@ class CodexCLI(AgentCLI):
             "What can I help you with?",  # Main ready prompt
             "codex>",  # Alternative prompt pattern
             "»",  # Codex uses this prompt symbol
+            "Waiting for messages",  # Happy codex wrapper
+            "Codex Agent Running",  # Happy codex status bar
         ]
 
     def idle_detection_method(self) -> Literal["stop_hook", "jsonl_stream", "none"]:
