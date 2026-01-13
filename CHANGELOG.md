@@ -19,12 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dynamic delay for Codex based on prompt length
 - `read_worker_logs` now works for Codex sessions
 
-## [0.3.2] - 2026-01-13
+## [0.3.2] - 2026-01-06
 
 ### Fixed
 - Skip `--settings` flag for custom commands like Happy
 
-## [0.3.1] - 2026-01-10
+## [0.3.1] - 2026-01-06
 
 ### Added
 - `CLAUDE_TEAM_COMMAND` env var support for custom Claude binaries (e.g., Happy)
