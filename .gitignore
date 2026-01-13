@@ -53,3 +53,7 @@ htmlcov/
 
 # Git worktrees (internal)
 .worktrees/
+
+# Beads local files (not synced)
+.beads/.local_version
+.beads/last-touched
