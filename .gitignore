@@ -57,3 +57,6 @@ htmlcov/
 # Beads local files (not synced)
 .beads/.local_version
 .beads/last-touched
+.beads/.sync.lock
+.beads/sync-state.json
+.beads/sync_base.jsonl
