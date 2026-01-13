@@ -330,7 +330,11 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 first_session = None  # Session to split from
 
                 # Prefer the coordinator's window when running inside iTerm2.
-                coordinator_session_id = os.environ.get("ITERM_SESSION_ID")
+                # ITERM_SESSION_ID format is "wXtYpZ:UUID" - extract just the UUID.
+                iterm_session_env = os.environ.get("ITERM_SESSION_ID")
+                coordinator_session_id = None
+                if iterm_session_env and ":" in iterm_session_env:
+                    coordinator_session_id = iterm_session_env.split(":", 1)[1]
                 if coordinator_session_id:
                     coordinator_session = None
                     coordinator_tab = None
@@ -393,42 +397,68 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 if target_tab:
                     # Reuse existing window - track pane count locally (iTerm objects stale)
                     local_pane_count = initial_pane_count
-                    # Track created sessions for quad splitting
+                    final_pane_count = initial_pane_count + worker_count
+                    # Track created sessions for splitting
                     created_sessions: list = []
 
                     for i in range(worker_count):
-                        # Determine split direction based on local_pane_count
-                        # Incremental quad: TL→TR(vsplit)→BL(hsplit)→BR(hsplit)
-                        if local_pane_count == 1:
-                            # First split: vertical (left/right)
-                            new_session = await split_pane(
-                                first_session,
-                                vertical=True,
-                                before=False,
-                                profile=None,
-                                profile_customizations=profile_customizations[i],
-                            )
-                        elif local_pane_count == 2:
-                            # Second split: horizontal from left pane (creates bottom-left)
-                            # Use first_session (the original TL pane)
-                            new_session = await split_pane(
-                                first_session,
-                                vertical=False,
-                                before=False,
-                                profile=None,
-                                profile_customizations=profile_customizations[i],
-                            )
-                        else:  # local_pane_count == 3
-                            # Third split: horizontal from right pane (creates bottom-right)
-                            # The TR pane is the first one we created
-                            tr_session = created_sessions[0] if created_sessions else first_session
-                            new_session = await split_pane(
-                                tr_session,
-                                vertical=False,
-                                before=False,
-                                profile=None,
-                                profile_customizations=profile_customizations[i],
-                            )
+                        # Choose layout strategy based on final pane count:
+                        # - 3 panes: coordinator full left, workers stacked right
+                        # - 4 panes: quad (TL→TR→BL→BR)
+                        if final_pane_count == 3:
+                            # Layout: coordinator | worker1
+                            #                    |--------
+                            #                    | worker2
+                            if local_pane_count == 1:
+                                # First split: vertical from coordinator
+                                new_session = await split_pane(
+                                    first_session,
+                                    vertical=True,
+                                    before=False,
+                                    profile=None,
+                                    profile_customizations=profile_customizations[i],
+                                )
+                            else:
+                                # Second split: horizontal from first worker (stack on right)
+                                new_session = await split_pane(
+                                    created_sessions[0],
+                                    vertical=False,
+                                    before=False,
+                                    profile=None,
+                                    profile_customizations=profile_customizations[i],
+                                )
+                        else:
+                            # Quad pattern: TL→TR(vsplit)→BL(hsplit)→BR(hsplit)
+                            if local_pane_count == 1:
+                                # First split: vertical (left/right)
+                                new_session = await split_pane(
+                                    first_session,
+                                    vertical=True,
+                                    before=False,
+                                    profile=None,
+                                    profile_customizations=profile_customizations[i],
+                                )
+                            elif local_pane_count == 2:
+                                # Second split: horizontal from left pane (bottom-left)
+                                new_session = await split_pane(
+                                    first_session,
+                                    vertical=False,
+                                    before=False,
+                                    profile=None,
+                                    profile_customizations=profile_customizations[i],
+                                )
+                            else:  # local_pane_count == 3
+                                # Third split: horizontal from right pane (bottom-right)
+                                tr_session = (
+                                    created_sessions[0] if created_sessions else first_session
+                                )
+                                new_session = await split_pane(
+                                    tr_session,
+                                    vertical=False,
+                                    before=False,
+                                    profile=None,
+                                    profile_customizations=profile_customizations[i],
+                                )
 
                         pane_sessions.append(new_session)
                         created_sessions.append(new_session)
