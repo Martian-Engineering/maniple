@@ -15,12 +15,12 @@ Report status in this exact format:
 ```
 ## Worker Status Report
 
-| Worker | Status | Bead/Task | Duration | Notes |
-|--------|--------|-----------|----------|-------|
-| Groucho | ACTIVE | cic-xyz | 12m | Working on feature |
-| Harpo | READY | - | 5m | Idle, no assignment |
-| Chico | COMPLETED | cic-abc | 8m | Logs indicate task done |
-| Zeppo | STUCK | cic-def | 20m | Reported blocker |
+| Worker | Type | Status | Bead/Task | Duration | Notes |
+|--------|------|--------|-----------|----------|-------|
+| Groucho | claude | ACTIVE | cic-xyz | 12m | Working on feature |
+| Harpo | codex | READY | - | 5m | Idle, no assignment |
+| Chico | claude | COMPLETED | cic-abc | 8m | Logs indicate task done |
+| Zeppo | codex | STUCK | cic-def | 20m | BLOCKED: needs API key |
 
 ### Summary
 - Active: X workers (currently working)
@@ -40,6 +40,8 @@ Report status in this exact format:
 - **STUCK**: `is_idle: true` but logs show the worker is blocked or status is otherwise unclear
 
 To distinguish COMPLETED from STUCK, use `read_worker_logs` to check the worker's final messages for completion language vs. blocker language.
+
+**Codex workers** (`agent_type: "codex"`) explicitly end responses with "COMPLETED" or "BLOCKED: <reason>" — check for these markers in their logs.
 
 ## Notes
 

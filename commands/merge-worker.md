@@ -44,9 +44,10 @@ For changes that need review, use `/pr-worker` instead.
    ```
 
 8. Clean up:
-   - Remove worktree: `git worktree remove .worktrees/<name>`
-   - Delete branch: `git branch -d <branch>`
-   - Close worker if still open: `close_workers([session_id])`
+   - If worker session still open: `close_workers([session_id])` — this automatically removes the worktree
+   - If only worktree remains (worker already closed):
+     - Remove worktree: `git worktree remove .worktrees/<name>`
+     - Delete branch: `git branch -d <branch>`
 
 ## Output Format
 

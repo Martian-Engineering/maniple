@@ -75,7 +75,8 @@ Create a pull request from a worker's branch: $ARGUMENTS
 
 - Requires `gh` CLI to be authenticated
 - Branch must have commits ahead of parent
-- Does not close the worker session — use `close_workers([session_id])` separately if desired
+- Does not close the worker session
+- **Note:** `close_workers` removes the worktree directory but keeps the branch (commits are preserved). You can safely close workers after pushing — the branch remains for the PR
 
 ## If Small Change
 

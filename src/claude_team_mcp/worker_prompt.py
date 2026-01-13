@@ -340,11 +340,11 @@ You review everything before it's considered done.
 **Coordination style reminder:** Match your approach to the task. Hands-off for exploratory
 work (check in when asked), autonomous for pipelines (wait for completion, read logs, continue).
 
-**WORKTREE LIFECYCLE** - Workers with worktrees commit to ephemeral branches.
-BEFORE closing workers:
-1. Review their code changes (read_worker_logs or inspect worktree directly)
-2. Merge or cherry-pick their commits to a persistent branch
-3. THEN close workers
+**WORKTREE LIFECYCLE** — Workers with worktrees commit to ephemeral branches.
+When you close workers:
+1. Worktree directories are removed, but branches (and commits) are preserved
+2. Review commits on worker branches before merging
+3. Merge or cherry-pick to main, then delete the worker branch
 
-Closing workers with worktrees DESTROYS their branches. Unmerged commits will be orphaned.
+Branches persist until explicitly deleted with `git branch -d <branch>`.
 """

@@ -17,11 +17,11 @@ Generate an end-of-session summary of all worker activity.
 
 ### Completed Work
 
-| Bead | Worker | Branch | Status |
-|------|--------|--------|--------|
-| cic-abc | Groucho | cic-abc-feature-name | Merged |
-| cic-xyz | Harpo | cic-xyz-bug-fix | PR Open |
-| cic-123 | Chico | cic-123-refactor | Ready to merge |
+| Bead | Worker | Type | Branch | Status |
+|------|--------|------|--------|--------|
+| cic-abc | Groucho | claude | groucho-a1b2-feature | Merged |
+| cic-xyz | Harpo | codex | harpo-c3d4-bugfix | PR Open |
+| cic-123 | Chico | claude | chico-e5f6-refactor | Ready to merge |
 
 ### Git Activity
 
@@ -40,8 +40,10 @@ Generate an end-of-session summary of all worker activity.
 
 | Path | Branch | Status |
 |------|--------|--------|
-| .worktrees/cic-abc-feature-name | cic-abc-feature-name | Can remove (merged) |
-| .worktrees/cic-xyz-bug-fix | cic-xyz-bug-fix | Keep (PR open) |
+| .worktrees/groucho-a1b2-feature | groucho-a1b2-feature | Can remove (merged) |
+| .worktrees/harpo-c3d4-bugfix | harpo-c3d4-bugfix | Keep (PR open) |
+
+**Note:** Worktrees are automatically removed when workers are closed. Remaining worktrees are from workers that weren't closed or had PRs open.
 
 ### Statistics
 - Workers spawned: X

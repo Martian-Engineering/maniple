@@ -14,45 +14,46 @@ First, analyze the tasks to understand:
 
 ### 2. Spawn Workers
 
-Use `spawn_workers` to create worker sessions. The tool handles worktree creation automatically when `project_path: "auto"` — or you can create custom worktrees manually if you prefer specific branch naming.
+Use `spawn_workers` to create worker sessions. The tool handles worktree creation automatically (default behavior).
 
-**Derive this from context:** If the user has previously expressed a preference for manual worktree setup (e.g., specific branch naming conventions), use explicit paths. Otherwise, default to automatic worktree creation via the tool.
-
-**Automatic worktrees (recommended default):**
+**Standard spawn (recommended):**
 ```python
 spawn_workers(workers=[
-    {"project_path": "auto", "bead": "cic-123", "annotation": "Fix auth bug", "skip_permissions": True},
-    {"project_path": "auto", "bead": "cic-456", "annotation": "Add unit tests", "skip_permissions": True},
+    {"project_path": "/path/to/repo", "bead": "cic-123", "annotation": "Fix auth bug", "skip_permissions": True},
+    {"project_path": "/path/to/repo", "bead": "cic-456", "annotation": "Add unit tests", "skip_permissions": True},
 ])
-# Creates .worktrees/cic-123-fix-auth-bug/ and .worktrees/cic-456-add-unit-tests/
-# Branches named to match, badges show bead + annotation
+# Creates .worktrees/<name>-<uuid>-<annotation>/ automatically
+# Branches isolated per worker, badges show bead + annotation
 ```
 
-**Custom worktrees (if user prefers specific branch names):**
-```bash
-# First create the worktrees manually:
-git worktree add .worktrees/cic-123 -b cic-123/fix-auth-bug
-git worktree add .worktrees/cic-456 -b cic-456/add-unit-tests
-```
+**Spawn Codex workers (for OpenAI Codex CLI):**
 ```python
-# Then spawn workers pointing at them:
 spawn_workers(workers=[
-    {"project_path": ".worktrees/cic-123", "bead": "cic-123", "annotation": "Fix auth bug", "skip_permissions": True},
-    {"project_path": ".worktrees/cic-456", "bead": "cic-456", "annotation": "Add unit tests", "skip_permissions": True},
+    {"project_path": "/path/to/repo", "agent_type": "codex", "bead": "cic-123", "annotation": "Fix auth bug", "skip_permissions": True},
+])
+# Codex workers end responses with "COMPLETED" or "BLOCKED: <reason>"
+```
+
+**Spawn without worktree (work directly in repo):**
+```python
+spawn_workers(workers=[
+    {"project_path": "/path/to/repo", "bead": "cic-123", "use_worktree": False, "skip_permissions": True},
 ])
 ```
 
 **Key fields:**
-- `project_path`: `"auto"` for automatic worktree, or explicit path
+- `project_path`: Path to the repository (required)
+- `agent_type`: `"claude"` (default) or `"codex"` for OpenAI Codex CLI
 - `bead`: The beads issue ID (shown on badge, used in branch naming)
 - `annotation`: Short task description (use the bead title for clarity)
 - `skip_permissions`: Set `True` — without this, workers can only read files
+- `use_worktree`: Set `False` to skip worktree creation (default `True`)
 
 **What workers are instructed to do:** When given a bead, workers receive a beads workflow:
 1. Mark in progress: `bd --no-db update <bead> --status in_progress`
 2. Implement the changes
 3. Close issue: `bd --no-db close <bead>`
-4. Commit with issue reference: `git commit -m "<bead>: <summary>"`
+4. Commit with issue reference: `git add -A && git commit -m "<bead>: <summary>"`
 
 ### 3. Monitor Progress
 
@@ -75,6 +76,8 @@ spawn_workers(workers=[
 - Unblock them with specific directions via `message_workers(session_ids, message="...")`
 - If unclear how to help, ask me what to do before proceeding
 
+**Note on Codex workers:** Codex idle detection uses JSONL polling instead of Stop hooks. Check their output for "COMPLETED" or "BLOCKED: <reason>" status markers.
+
 ### 4. Completion & Cleanup
 
 After each worker completes:
@@ -84,13 +87,15 @@ After each worker completes:
    If the work needs fixes, message them with corrections via `message_workers`
 
 **When all tasks are complete:**
-1. Terminate worker sessions: `close_workers(session_ids)`
-2. Provide a summary:
+1. Review commits in worktrees
+2. Terminate worker sessions: `close_workers(session_ids)` — removes worktree directories but keeps branches
+3. Merge or cherry-pick commits from worker branches to main
+4. Delete worker branches when done: `git branch -d <branch-name>`
+5. Provide a summary:
    - Which issues were completed
    - Any issues encountered
    - Final git log showing commits
 
-**Worktree cleanup:** Worktrees remain in `.worktrees/` for cherry-picking or merging. Use `list_worktrees(repo_path)` to see them. Clean up manually when no longer needed:
-```bash
-git worktree remove .worktrees/<name>
-```
+**Note:** `close_workers` removes worktree directories but preserves branches. Commits remain accessible until you explicitly delete the branch.
+
+To see existing worktrees: `list_worktrees(repo_path)`

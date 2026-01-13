@@ -61,8 +61,10 @@ Clean up worktrees that are no longer needed (merged branches only).
 ## Notes
 
 - Worktrees are stored in `.worktrees/` within the repository
-- Branch names match directory names (e.g., `.worktrees/cic-abc-fix-bug` → branch `cic-abc-fix-bug`)
+- Directory names follow format: `<worker-name>-<uuid>-<annotation>` (e.g., `.worktrees/groucho-a1b2c3d4-fix-auth-bug`)
+- Branch names match directory names
 - This command is conservative — it only removes definitely-safe worktrees
+- **Note:** `close_workers` automatically removes worktrees. This command is for cleaning up worktrees that remain after workers were closed (e.g., from crashed sessions or manual branch creation)
 
 ## Before You Start
 
