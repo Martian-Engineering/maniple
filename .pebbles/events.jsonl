@@ -40,3 +40,8 @@
 {"type":"dep_add","timestamp":"2026-01-20T06:00:44.444603Z","issue_id":"cic-a22","payload":{"dep_type":"blocks","depends_on":"cic-899"}}
 {"type":"dep_add","timestamp":"2026-01-20T06:00:44.463028Z","issue_id":"cic-92f","payload":{"dep_type":"blocks","depends_on":"cic-a22"}}
 {"type":"dep_add","timestamp":"2026-01-20T06:00:44.481073Z","issue_id":"cic-e66","payload":{"dep_type":"blocks","depends_on":"cic-92f"}}
+{"type":"close","timestamp":"2026-01-20T06:04:43.430565Z","issue_id":"cic-899","payload":{}}
+{"type":"close","timestamp":"2026-01-20T06:11:39.993103Z","issue_id":"cic-a22","payload":{}}
+{"type":"close","timestamp":"2026-01-20T06:20:23.190423Z","issue_id":"cic-92f","payload":{}}
+{"type":"close","timestamp":"2026-01-20T06:30:43.293905Z","issue_id":"cic-e66","payload":{}}
+{"type":"close","timestamp":"2026-01-20T06:30:43.314268Z","issue_id":"cic-2e0","payload":{}}
