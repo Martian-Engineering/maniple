@@ -33,7 +33,7 @@ from ..iterm_utils import (
 from ..names import pick_names_for_count
 from ..profile import apply_appearance_colors
 from ..registry import SessionStatus
-from ..utils import HINTS, error_response, get_worktree_beads_dir
+from ..utils import HINTS, error_response, get_worktree_tracker_dir
 from ..worker_prompt import generate_worker_prompt, get_coordinator_guidance
 from ..worktree import WorktreeError, create_local_worktree
 
@@ -541,9 +541,13 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 marker_id = session_ids[index]
                 agent_type = agent_types[index]
 
-                # Check for worktree and set BEADS_DIR if needed
-                beads_dir = get_worktree_beads_dir(project_path)
-                env = {"BEADS_DIR": beads_dir} if beads_dir else None
+                # Check for worktree and set tracker env var if needed.
+                tracker_info = get_worktree_tracker_dir(project_path)
+                if tracker_info:
+                    env_var, tracker_dir = tracker_info
+                    env = {env_var: tracker_dir}
+                else:
+                    env = None
 
                 if agent_type == "codex":
                     # Start Codex in interactive mode using start_agent_in_session
