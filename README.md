@@ -161,7 +161,7 @@ export CLAUDE_TEAM_CODEX_COMMAND="happy codex"
 | Tool | Description |
 |------|-------------|
 | `list_worktrees` | List git worktrees created by claude-team for a repository |
-| `bd_help` | Get a quick reference guide for using Beads issue tracking |
+| `bd_help` | Beads quick reference (use `pb help` for Pebbles projects) |
 
 ### Worker Identification
 
@@ -183,7 +183,6 @@ Arguments:
   skip_permissions: bool       - If True, start Claude with --dangerously-skip-permissions
   custom_names: list[str]      - Override automatic themed name selection
   custom_prompt: str           - Custom prompt instead of standard worker pre-prompt
-  include_beads_instructions: bool - Append beads guidance to custom prompt (default: True)
   use_worktrees: bool          - Create isolated git worktree for each worker
 
 Returns:
@@ -238,6 +237,20 @@ make install-commands
 | `/merge-worker` | Directly merge a worker's branch back to parent (for internal changes) |
 | `/pr-worker` | Create a pull request from a worker's branch |
 | `/team-summary` | Generate end-of-session summary of all worker activity |
+
+## Issue Tracker Support
+
+`claude-team` supports both Pebbles (`pb`) and Beads (`bd --no-db`).
+The tracker is auto-detected by marker directories in the project root:
+
+- `.pebbles` → Pebbles
+- `.beads` → Beads
+
+If both markers exist, Pebbles is selected by default. Worker prompts and
+coordination guidance use the detected tracker commands. For quick references:
+
+- Pebbles: `pb help`
+- Beads: `bd_help` tool
 | `/cleanup-worktrees` | Remove worktrees for merged branches |
 
 ## Usage Patterns

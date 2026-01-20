@@ -21,7 +21,7 @@ Create a pull request from a worker's branch: $ARGUMENTS
 4. Gather PR information:
    - Get commits on branch: `git log <parent>..<branch> --oneline`
    - Get changed files: `git diff <parent>..<branch> --stat`
-   - Extract bead ID from branch name if present
+   - Extract issue ID from branch name if present
 
 5. Push branch if not already pushed:
    ```bash
@@ -30,7 +30,7 @@ Create a pull request from a worker's branch: $ARGUMENTS
 
 6. Create PR using gh CLI (targeting parent branch):
    ```bash
-   gh pr create --base <parent-branch> --title "<bead-id>: <summary>" --body "$(cat <<'EOF'
+   gh pr create --base <parent-branch> --title "<issue-id>: <summary>" --body "$(cat <<'EOF'
    ## Summary
    <bullet points from commits>
 
@@ -42,7 +42,7 @@ Create a pull request from a worker's branch: $ARGUMENTS
    - [ ] Manual verification
 
    ---
-   Related: <bead-id>
+   Related: <issue-id>
    EOF
    )"
    ```

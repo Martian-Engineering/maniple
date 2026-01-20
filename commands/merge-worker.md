@@ -19,7 +19,7 @@ For changes that need review, use `/pr-worker` instead.
    Or check git reflog for the branch point. If unclear, ask user.
 
 3. Verify the work is complete:
-   - Check worker logs via `read_worker_logs` or verify bead is closed
+   - Check worker logs via `read_worker_logs` or verify the issue is closed
    - Review commits: `git log <parent>..<branch> --oneline`
    - If not clearly complete, ask user to confirm before merging
 
