@@ -161,7 +161,6 @@ export CLAUDE_TEAM_CODEX_COMMAND="happy codex"
 | Tool | Description |
 |------|-------------|
 | `list_worktrees` | List git worktrees created by claude-team for a repository |
-| `bd_help` | Get a quick reference guide for using Beads issue tracking |
 
 ### Worker Identification
 
@@ -183,7 +182,6 @@ Arguments:
   skip_permissions: bool       - If True, start Claude with --dangerously-skip-permissions
   custom_names: list[str]      - Override automatic themed name selection
   custom_prompt: str           - Custom prompt instead of standard worker pre-prompt
-  include_beads_instructions: bool - Append beads guidance to custom prompt (default: True)
   use_worktrees: bool          - Create isolated git worktree for each worker
 
 Returns:
