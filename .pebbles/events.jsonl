@@ -28,3 +28,24 @@
 {"type":"dep_add","timestamp":"2025-12-23T04:37:23.162209Z","issue_id":"cic-5xot","payload":{"dep_type":"blocks","depends_on":"cic-bt3a"}}
 {"type":"comment","timestamp":"2026-01-13T23:10:14.082126Z","issue_id":"cic-fgx","payload":{"body":"Close reason: Implemented auto-detect coordinator window with proper ITERM_SESSION_ID parsing and 3-pane layout"}}
 {"type":"close","timestamp":"2026-01-13T23:10:14.082126Z","issue_id":"cic-fgx","payload":{}}
+{"type":"create","timestamp":"2026-01-20T04:09:10.311493Z","issue_id":"cic-367","payload":{"description":"Abstract claude-team issue tracking so it can work with either Beads (bd) or Pebbles (pb), including detection and prompt/help updates.","priority":"1","title":"Issue tracker abstraction","type":"epic"}}
+{"type":"create","timestamp":"2026-01-20T04:09:16.716586Z","issue_id":"cic-90d","payload":{"description":"Add an issue tracker abstraction module with backend registry, command templates, capabilities, and detection (beads vs pebbles).","priority":"1","title":"Phase 1: Issue tracker abstraction module","type":"task"}}
+{"type":"create","timestamp":"2026-01-20T04:09:21.078029Z","issue_id":"cic-107","payload":{"description":"Update worktree detection to return tracker-specific env var paths (e.g., BEADS_DIR or Pebbles equivalent).","priority":"1","title":"Phase 2: Worktree detection for tracker env","type":"task"}}
+{"type":"create","timestamp":"2026-01-20T04:09:26.691584Z","issue_id":"cic-7c5","payload":{"description":"Replace Beads-specific prompt/help strings with backend data (worker_prompt, constants, bd_help/message hint).","priority":"1","title":"Phase 3: Tracker-neutral prompts and help","type":"task"}}
+{"type":"create","timestamp":"2026-01-20T04:09:32.962712Z","issue_id":"cic-a97","payload":{"description":"Update docs and tests to remove Beads-only language and align with the new abstraction.","priority":"2","title":"Phase 4: Tracker-neutral docs and tests","type":"task"}}
+{"type":"dep_add","timestamp":"2026-01-20T04:09:38.868502Z","issue_id":"cic-367","payload":{"dep_type":"blocks","depends_on":"cic-90d"}}
+{"type":"create","timestamp":"2026-01-20T04:09:41.079133Z","issue_id":"cic-b54","payload":{"description":"Update tests and documentation to be tracker-neutral. Adjust tests/test_worker_prompt.py, CLAUDE.md, README.md, and commands/*.md.","priority":"1","title":"Phase 4: Update docs and tests","type":"task"}}
+{"type":"dep_add","timestamp":"2026-01-20T04:09:41.09764Z","issue_id":"cic-367","payload":{"dep_type":"blocks","depends_on":"cic-90d"}}
+{"type":"dep_add","timestamp":"2026-01-20T04:09:41.116226Z","issue_id":"cic-367","payload":{"dep_type":"blocks","depends_on":"cic-107"}}
+{"type":"dep_add","timestamp":"2026-01-20T04:09:41.133989Z","issue_id":"cic-367","payload":{"dep_type":"blocks","depends_on":"cic-7c5"}}
+{"type":"dep_add","timestamp":"2026-01-20T04:09:41.16431Z","issue_id":"cic-107","payload":{"dep_type":"blocks","depends_on":"cic-90d"}}
+{"type":"dep_add","timestamp":"2026-01-20T04:09:41.183647Z","issue_id":"cic-7c5","payload":{"dep_type":"blocks","depends_on":"cic-107"}}
+{"type":"dep_add","timestamp":"2026-01-20T04:09:44.032047Z","issue_id":"cic-367","payload":{"dep_type":"blocks","depends_on":"cic-107"}}
+{"type":"dep_add","timestamp":"2026-01-20T04:09:47.87402Z","issue_id":"cic-367","payload":{"dep_type":"blocks","depends_on":"cic-7c5"}}
+{"type":"dep_add","timestamp":"2026-01-20T04:09:51.578675Z","issue_id":"cic-367","payload":{"dep_type":"blocks","depends_on":"cic-a97"}}
+{"type":"close","timestamp":"2026-01-20T04:09:52.39411Z","issue_id":"cic-a97","payload":{}}
+{"type":"dep_add","timestamp":"2026-01-20T04:09:52.415024Z","issue_id":"cic-367","payload":{"dep_type":"blocks","depends_on":"cic-b54"}}
+{"type":"dep_add","timestamp":"2026-01-20T04:09:52.434493Z","issue_id":"cic-b54","payload":{"dep_type":"blocks","depends_on":"cic-7c5"}}
+{"type":"dep_add","timestamp":"2026-01-20T04:09:54.91112Z","issue_id":"cic-107","payload":{"dep_type":"blocks","depends_on":"cic-90d"}}
+{"type":"dep_add","timestamp":"2026-01-20T04:10:00.488585Z","issue_id":"cic-7c5","payload":{"dep_type":"blocks","depends_on":"cic-107"}}
+{"type":"dep_add","timestamp":"2026-01-20T04:10:06.055452Z","issue_id":"cic-a97","payload":{"dep_type":"blocks","depends_on":"cic-7c5"}}
