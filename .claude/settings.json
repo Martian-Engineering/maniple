@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "claude-opus-4-5-migration@claude-code-plugins": false
+  }
+}

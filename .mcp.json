@@ -1,8 +1,15 @@
 {
   "mcpServers": {
     "claude-team": {
-      "command": "uvx",
-      "args": ["--from", "claude-team-mcp@latest", "claude-team"]
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/Users/phaedrus/Projects/claude-team",
+        "python",
+        "-m",
+        "claude_team_mcp"
+      ]
     }
   }
 }

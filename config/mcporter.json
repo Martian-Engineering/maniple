@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "kernel": {
+      "baseUrl": "https://mcp.onkernel.com/mcp",
+      "headers": {
+        "Authorization": "Bearer sk_307aecb5-1efc-4f10-880d-ce4fe4ea152b.5bPwjUjn8svAmVCWg5EZ7lZdGOATlU14JQ8kPfOwW7Q"
+      }
+    }
+  },
+  "imports": []
+}
