@@ -33,7 +33,7 @@ from ..iterm_utils import (
 from ..names import pick_names_for_count
 from ..profile import apply_appearance_colors
 from ..registry import SessionStatus
-from ..utils import HINTS, error_response, get_worktree_beads_dir
+from ..utils import HINTS, error_response
 from ..worker_prompt import generate_worker_prompt, get_coordinator_guidance
 from ..worktree import WorktreeError, create_local_worktree
 
@@ -113,9 +113,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 branch names, and set as worker annotation. If using a bead, it's
                 recommended to use the bead title as the annotation for clarity.
                 Truncated to 30 chars in badge.
-            bead: Optional beads issue ID. If provided, this IS the worker's assignment.
-                The worker receives beads workflow instructions (mark in_progress, close,
-                commit with issue reference). Used for badge first line and branch naming.
+            bead: Optional assignment ID. If provided, this is used for the worker's
+                assignment label, badge first line, and branch naming.
             prompt: Optional additional instructions. Combined with standard worker prompt,
                 not a replacement. Use for extra context beyond what the bead describes.
             skip_permissions: Whether to start Claude with --dangerously-skip-permissions.
@@ -126,10 +125,10 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
 
         The worker's task is determined by `bead` and/or `prompt`:
 
-        1. **bead only**: Worker assigned to the bead. They'll `bd show <bead>` for details
-           and follow the beads workflow (mark in_progress → implement → close → commit).
+        1. **bead only**: Worker assigned to the label. The prompt includes the assignment
+           label for context.
 
-        2. **bead + prompt**: Worker assigned to bead with additional instructions.
+        2. **bead + prompt**: Worker assigned to the label with additional instructions.
            Gets both the beads workflow and your custom guidance.
 
         3. **prompt only**: Worker assigned a custom task (no beads tracking).
@@ -541,10 +540,6 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 marker_id = session_ids[index]
                 agent_type = agent_types[index]
 
-                # Check for worktree and set BEADS_DIR if needed
-                beads_dir = get_worktree_beads_dir(project_path)
-                env = {"BEADS_DIR": beads_dir} if beads_dir else None
-
                 if agent_type == "codex":
                     # Start Codex in interactive mode using start_agent_in_session
                     cli = get_cli_backend("codex")
@@ -553,7 +548,6 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                         cli=cli,
                         project_path=project_path,
                         dangerously_skip_permissions=worker_config.get("skip_permissions", False),
-                        env=env,
                     )
                 else:
                     # For Claude: use start_claude_in_session (convenience wrapper)
@@ -561,7 +555,6 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                         session=session,
                         project_path=project_path,
                         dangerously_skip_permissions=worker_config.get("skip_permissions", False),
-                        env=env,
                         stop_hook_marker_id=marker_id,
                     )
 

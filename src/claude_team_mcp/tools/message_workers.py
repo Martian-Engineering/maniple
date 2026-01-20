@@ -21,7 +21,7 @@ from ..idle_detection import (
 )
 from ..iterm_utils import send_prompt_for_agent
 from ..registry import SessionStatus
-from ..utils import error_response, HINTS, WORKER_MESSAGE_HINT
+from ..utils import error_response, HINTS
 
 logger = logging.getLogger("claude-team-mcp")
 
@@ -187,14 +187,11 @@ def register_tools(mcp: FastMCP) -> None:
                 # Update status to busy
                 registry.update_status(sid, SessionStatus.BUSY)
 
-                # Append hint about bd_help tool to help workers understand beads
-                message_with_hint = message + WORKER_MESSAGE_HINT
-
                 # Send the message using agent-specific input handling.
                 # Codex needs a longer pre-Enter delay than Claude.
                 await send_prompt_for_agent(
                     session.iterm_session,
-                    message_with_hint,
+                    message,
                     agent_type=session.agent_type,
                     submit=True,
                 )

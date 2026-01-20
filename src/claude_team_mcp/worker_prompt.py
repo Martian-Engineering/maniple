@@ -22,7 +22,7 @@ def generate_worker_prompt(
         name: The friendly name assigned to this worker
         agent_type: The type of agent CLI ("claude" or "codex")
         use_worktree: Whether this worker is in an isolated worktree
-        bead: Optional beads issue ID (if provided, this is the assignment)
+        bead: Optional assignment ID used for labeling/assignment text
         custom_prompt: Optional additional instructions from the coordinator
 
     Returns:
@@ -70,7 +70,7 @@ def _generate_claude_worker_prompt(
         session_id: The unique identifier for this worker session
         name: The friendly name assigned to this worker
         use_worktree: Whether this worker is in an isolated worktree
-        bead: Optional beads issue ID
+        bead: Optional assignment ID used for labeling/assignment text
         custom_prompt: Optional additional instructions
 
     Returns:
@@ -80,22 +80,8 @@ def _generate_claude_worker_prompt(
     next_step = 4
     extra_sections = ""
 
-    # Beads section (if bead provided)
-    if bead:
-        beads_section = f"""
-{next_step}. **Beads workflow.** You're working on `{bead}`. Follow this workflow:
-   - Mark in progress: `bd --no-db update {bead} --status in_progress`
-   - Implement the changes
-   - Close issue: `bd --no-db close {bead}`
-   - Commit with issue reference: `git add -A && git commit -m "{bead}: <summary>"`
-
-   Use `bd --no-db` for all beads commands (required in worktrees).
-"""
-        extra_sections += beads_section
-        next_step += 1
-
-    # Commit section (if worktree but beads section didn't already cover commit)
-    if use_worktree and not bead:
+    # Commit section (if worktree)
+    if use_worktree:
         commit_section = f"""
 {next_step}. **Commit when done.** You're in an isolated worktree branch — commit your
    completed work so it can be easily cherry-picked or merged. Use a clear
@@ -109,8 +95,7 @@ def _generate_claude_worker_prompt(
         # Case 2: bead + custom instructions
         closing = f"""=== YOUR ASSIGNMENT ===
 
-The coordinator assigned you `{bead}` (use `bd show {bead}` for details) and included
-the following instructions:
+The coordinator assigned you `{bead}` and included the following instructions:
 
 {custom_prompt}
 
@@ -119,7 +104,7 @@ Get to work!"""
         # Case 1: bead only
         closing = f"""=== YOUR ASSIGNMENT ===
 
-Your assignment is `{bead}`. Use `bd show {bead}` for details. Get to work!"""
+Your assignment is `{bead}`. Get to work!"""
     elif custom_prompt:
         # Case 3: custom instructions only
         closing = f"""=== YOUR ASSIGNMENT ===
@@ -174,7 +159,7 @@ def _generate_codex_worker_prompt(
         session_id: The unique identifier for this worker session
         name: The friendly name assigned to this worker
         use_worktree: Whether this worker is in an isolated worktree
-        bead: Optional beads issue ID
+        bead: Optional assignment ID used for labeling/assignment text
         custom_prompt: Optional additional instructions
 
     Returns:
@@ -184,22 +169,8 @@ def _generate_codex_worker_prompt(
     next_step = 4
     extra_sections = ""
 
-    # Beads section (if bead provided) - same workflow as Claude
-    if bead:
-        beads_section = f"""
-{next_step}. **Beads workflow.** You're working on `{bead}`. Follow this workflow:
-   - Mark in progress: `bd --no-db update {bead} --status in_progress`
-   - Implement the changes
-   - Close issue: `bd --no-db close {bead}`
-   - Commit with issue reference: `git add -A && git commit -m "{bead}: <summary>"`
-
-   Use `bd --no-db` for all beads commands (required in worktrees).
-"""
-        extra_sections += beads_section
-        next_step += 1
-
-    # Commit section (if worktree but beads section didn't already cover commit)
-    if use_worktree and not bead:
+    # Commit section (if worktree)
+    if use_worktree:
         commit_section = f"""
 {next_step}. **Commit when done.** You're in an isolated worktree branch — commit your
    completed work so it can be easily cherry-picked or merged. Use a clear
@@ -212,8 +183,7 @@ def _generate_codex_worker_prompt(
     if bead and custom_prompt:
         closing = f"""=== YOUR ASSIGNMENT ===
 
-The coordinator assigned you `{bead}` (use `bd show {bead}` for details) and included
-the following instructions:
+The coordinator assigned you `{bead}` and included the following instructions:
 
 {custom_prompt}
 
@@ -221,7 +191,7 @@ Get to work!"""
     elif bead:
         closing = f"""=== YOUR ASSIGNMENT ===
 
-Your assignment is `{bead}`. Use `bd show {bead}` for details. Get to work!"""
+Your assignment is `{bead}`. Get to work!"""
     elif custom_prompt:
         closing = f"""=== YOUR ASSIGNMENT ===
 
@@ -307,10 +277,7 @@ def get_coordinator_guidance(
                 f"- **{name}**{type_indicator}: `{bead}` + custom: \"{short_prompt}\""
             )
         elif bead:
-            worker_lines.append(
-                f"- **{name}**{type_indicator}: `{bead}` "
-                "(beads workflow: mark in_progress -> implement -> close -> commit)"
-            )
+            worker_lines.append(f"- **{name}**{type_indicator}: `{bead}` assignment")
         elif custom_prompt:
             short_prompt = (
                 custom_prompt[:50] + "..." if len(custom_prompt) > 50 else custom_prompt
