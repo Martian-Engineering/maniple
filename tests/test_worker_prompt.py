@@ -32,27 +32,27 @@ class TestGenerateWorkerPrompt:
 class TestAssignmentCases:
     """Tests for the 4 assignment cases in worker prompts."""
 
-    def test_case1_bead_only(self):
-        """With bead only, should show assignment and beads workflow."""
-        prompt = generate_worker_prompt("test", "Worker", bead="cic-123")
-        assert "Your assignment is `cic-123`" in prompt
-        assert "bd show cic-123" in prompt
-        assert "Beads workflow" in prompt
-        assert "bd --no-db update cic-123" in prompt
-        assert "bd --no-db close cic-123" in prompt
+    def test_case1_issue_only(self):
+        """With issue only, should show assignment and tracker workflow."""
+        issue_id = "cic-123"
+        prompt = generate_worker_prompt("test", "Worker", bead=issue_id)
+        assert f"Your assignment is `{issue_id}`" in prompt
+        assert "workflow" in prompt
+        assert "Mark in progress" in prompt
+        assert "Close issue" in prompt
         assert "Get to work!" in prompt
 
-    def test_case2_bead_and_custom_prompt(self):
-        """With bead and custom prompt, should show both."""
+    def test_case2_issue_and_custom_prompt(self):
+        """With issue and custom prompt, should show both."""
+        issue_id = "cic-456"
         prompt = generate_worker_prompt(
             "test", "Worker",
-            bead="cic-456",
+            bead=issue_id,
             custom_prompt="Focus on the edge cases"
         )
-        assert "`cic-456`" in prompt
-        assert "bd show cic-456" in prompt
+        assert f"`{issue_id}`" in prompt
         assert "Focus on the edge cases" in prompt
-        assert "Beads workflow" in prompt
+        assert "workflow" in prompt
         assert "Get to work!" in prompt
 
     def test_case3_custom_prompt_only(self):
@@ -64,31 +64,34 @@ class TestAssignmentCases:
         assert "Review the auth module for security issues" in prompt
         assert "The coordinator assigned you the following task" in prompt
         assert "Get to work!" in prompt
-        # Should not have beads workflow
-        assert "Beads workflow" not in prompt
+        # Should not have tracker workflow
+        assert "workflow" not in prompt
 
-    def test_case4_no_bead_no_prompt(self):
-        """With neither bead nor prompt, should say coordinator will message."""
+    def test_case4_no_issue_no_prompt(self):
+        """With neither issue nor prompt, should say coordinator will message."""
         prompt = generate_worker_prompt("test", "Worker")
         assert "The coordinator will send your first task shortly" in prompt
         # Should not have assignment section
         assert "YOUR ASSIGNMENT" not in prompt
-        assert "Beads workflow" not in prompt
+        assert "workflow" not in prompt
 
 
-class TestBeadsWorkflow:
-    """Tests for beads workflow instructions."""
+class TestIssueTrackerWorkflow:
+    """Tests for issue tracker workflow instructions."""
 
-    def test_beads_workflow_uses_no_db_flag(self):
-        """Beads commands should use --no-db flag."""
-        prompt = generate_worker_prompt("test", "Worker", bead="cic-abc")
-        assert "bd --no-db update" in prompt
-        assert "bd --no-db close" in prompt
+    def test_workflow_includes_update_and_close(self):
+        """Workflow should include update and close commands."""
+        issue_id = "cic-abc"
+        prompt = generate_worker_prompt("test", "Worker", bead=issue_id)
+        assert f"update {issue_id}" in prompt
+        assert f"close {issue_id}" in prompt
+        assert "--status in_progress" in prompt
 
-    def test_beads_workflow_includes_commit_instruction(self):
-        """Beads workflow should include commit with issue reference."""
-        prompt = generate_worker_prompt("test", "Worker", bead="cic-abc")
-        assert 'git commit -m "cic-abc:' in prompt
+    def test_workflow_includes_commit_instruction(self):
+        """Workflow should include commit with issue reference."""
+        issue_id = "cic-abc"
+        prompt = generate_worker_prompt("test", "Worker", bead=issue_id)
+        assert f'git commit -m "{issue_id}:' in prompt
 
 
 class TestGetCoordinatorGuidance:
@@ -105,12 +108,12 @@ class TestGetCoordinatorGuidance:
         guidance = get_coordinator_guidance([{"name": "Groucho", "bead": "cic-123"}])
         assert "TEAM DISPATCHED" in guidance
 
-    def test_shows_worker_with_bead(self):
-        """Should show worker name and bead assignment."""
+    def test_shows_worker_with_issue(self):
+        """Should show worker name and issue assignment."""
         guidance = get_coordinator_guidance([{"name": "Groucho", "bead": "cic-123"}])
         assert "Groucho" in guidance
         assert "cic-123" in guidance
-        assert "beads workflow" in guidance
+        assert "mark in_progress" in guidance
 
     def test_shows_worker_with_custom_prompt(self):
         """Should show worker with custom task."""
@@ -159,28 +162,28 @@ class TestWorktreeMode:
     """Tests for worktree-aware prompt generation."""
 
     def test_worker_prompt_without_worktree_no_commit(self):
-        """Worker prompt without worktree should not mention committing (unless bead)."""
+        """Worker prompt without worktree should not mention committing (unless issue)."""
         prompt = generate_worker_prompt("test", "Worker", use_worktree=False)
-        # Without bead or worktree, no commit instruction
+        # Without issue or worktree, no commit instruction
         assert "Commit when done" not in prompt
 
     def test_worker_prompt_with_worktree_includes_commit(self):
-        """Worker prompt with worktree (no bead) should instruct committing."""
+        """Worker prompt with worktree (no issue) should instruct committing."""
         prompt = generate_worker_prompt("test", "Worker", use_worktree=True)
         assert "Commit when done" in prompt
         assert "cherry-pick" in prompt
 
-    def test_worker_prompt_with_bead_has_commit_in_workflow(self):
-        """Worker prompt with bead has commit as part of beads workflow."""
+    def test_worker_prompt_with_issue_has_commit_in_workflow(self):
+        """Worker prompt with issue has commit as part of tracker workflow."""
         prompt = generate_worker_prompt("test", "Worker", bead="cic-123")
-        # Commit is in the beads workflow, not separate
+        # Commit is in the tracker workflow, not separate
         assert "git commit" in prompt
         assert "cic-123" in prompt
 
-    def test_worktree_with_bead_no_separate_commit_section(self):
-        """With bead, commit is in beads workflow - no separate commit section."""
+    def test_worktree_with_issue_no_separate_commit_section(self):
+        """With issue, commit is in tracker workflow - no separate commit section."""
         prompt = generate_worker_prompt("test", "Worker", use_worktree=True, bead="cic-123")
-        # Should have beads workflow with commit
+        # Should have tracker workflow with commit
         assert 'git commit -m "cic-123:' in prompt
         # Should NOT have separate "Commit when done" section
         assert "Commit when done" not in prompt
@@ -230,22 +233,27 @@ class TestCodexWorkerPrompt:
         assert "COMPLETED" in prompt
         assert "BLOCKED" in prompt
 
-    def test_codex_beads_workflow_same_as_claude(self):
-        """Codex beads workflow should match Claude's (same commands)."""
-        codex_prompt = generate_worker_prompt("test", "Worker", agent_type="codex", bead="cic-123")
-        claude_prompt = generate_worker_prompt("test", "Worker", agent_type="claude", bead="cic-123")
-        # Both should have the same beads commands
-        assert "bd --no-db update cic-123" in codex_prompt
-        assert "bd --no-db update cic-123" in claude_prompt
-        assert "bd --no-db close cic-123" in codex_prompt
-        assert "bd --no-db close cic-123" in claude_prompt
+    def test_codex_tracker_workflow_same_as_claude(self):
+        """Codex tracker workflow should match Claude's."""
+        issue_id = "cic-123"
+        codex_prompt = generate_worker_prompt(
+            "test", "Worker", agent_type="codex", bead=issue_id
+        )
+        claude_prompt = generate_worker_prompt(
+            "test", "Worker", agent_type="claude", bead=issue_id
+        )
+        for prompt in (codex_prompt, claude_prompt):
+            assert f"update {issue_id}" in prompt
+            assert f"close {issue_id}" in prompt
+            assert "--status in_progress" in prompt
 
-    def test_codex_with_bead_only(self):
-        """Codex with bead only should show assignment."""
-        prompt = generate_worker_prompt("test", "Worker", agent_type="codex", bead="cic-456")
-        assert "Your assignment is `cic-456`" in prompt
-        assert "bd show cic-456" in prompt
-        assert "Beads workflow" in prompt
+    def test_codex_with_issue_only(self):
+        """Codex with issue only should show assignment."""
+        issue_id = "cic-456"
+        prompt = generate_worker_prompt("test", "Worker", agent_type="codex", bead=issue_id)
+        assert f"Your assignment is `{issue_id}`" in prompt
+        assert "workflow" in prompt
+        assert "Mark in progress" in prompt
 
     def test_codex_with_custom_prompt(self):
         """Codex with custom prompt should show the task."""

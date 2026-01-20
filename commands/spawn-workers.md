@@ -6,8 +6,8 @@ We're going to tackle tasks described as follows: $ARGUMENTS
 
 ### 1. Task Analysis
 First, analyze the tasks to understand:
-- What beads issues are involved (use `bd show <id>` for details)
-- Dependencies between tasks (use `bd dep tree <id>`)
+- What issue tracker issues are involved (use `pb show <id>` or `bd --no-db show <id>` for details)
+- Dependencies between tasks (use `pb dep tree <id>` or `bd --no-db dep tree <id>`)
 - Which tasks can run in parallel vs must be sequential
 
 **Pay attention to parallelism** — if tasks are blocked by others, hold off on starting blocked ones. Only start as many tasks as make sense given coordination and potential file conflicts.
@@ -23,7 +23,7 @@ spawn_workers(workers=[
     {"project_path": "/path/to/repo", "bead": "cic-456", "annotation": "Add unit tests", "skip_permissions": True},
 ])
 # Creates .worktrees/<name>-<uuid>-<annotation>/ automatically
-# Branches isolated per worker, badges show bead + annotation
+# Branches isolated per worker, badges show issue ID + annotation
 ```
 
 **Spawn Codex workers (for OpenAI Codex CLI):**
@@ -44,16 +44,17 @@ spawn_workers(workers=[
 **Key fields:**
 - `project_path`: Path to the repository (required)
 - `agent_type`: `"claude"` (default) or `"codex"` for OpenAI Codex CLI
-- `bead`: The beads issue ID (shown on badge, used in branch naming)
-- `annotation`: Short task description (use the bead title for clarity)
+- `bead`: The issue ID (Beads or Pebbles; shown on badge, used in branch naming)
+- `annotation`: Short task description (use the issue title for clarity)
 - `skip_permissions`: Set `True` — without this, workers can only read files
 - `use_worktree`: Set `False` to skip worktree creation (default `True`)
 
-**What workers are instructed to do:** When given a bead, workers receive a beads workflow:
-1. Mark in progress: `bd --no-db update <bead> --status in_progress`
+**What workers are instructed to do:** When given an issue ID, workers receive the
+issue tracker workflow using the detected CLI (`pb` or `bd --no-db`):
+1. Mark in progress: `pb update <issue-id> --status in_progress` or `bd --no-db update <issue-id> --status in_progress`
 2. Implement the changes
-3. Close issue: `bd --no-db close <bead>`
-4. Commit with issue reference: `git add -A && git commit -m "<bead>: <summary>"`
+3. Close issue: `pb close <issue-id>` or `bd --no-db close <issue-id>`
+4. Commit with issue reference: `git add -A && git commit -m "<issue-id>: <summary>"`
 
 ### 3. Monitor Progress
 
@@ -83,7 +84,8 @@ spawn_workers(workers=[
 After each worker completes:
 1. Review their work with `read_worker_logs(session_id)`
 2. Verify they committed (check git log in their worktree)
-3. If the work looks good but they forgot to close the bead: `bd close <id>`
+3. If the work looks good but they forgot to close the issue:
+   `pb close <id>` or `bd --no-db close <id>`
    If the work needs fixes, message them with corrections via `message_workers`
 
 **When all tasks are complete:**
