@@ -19,9 +19,10 @@ from ..idle_detection import (
     wait_for_any_idle as wait_for_any_idle_impl,
     SessionInfo,
 )
+from ..issue_tracker import detect_issue_tracker
 from ..iterm_utils import send_prompt_for_agent
 from ..registry import SessionStatus
-from ..utils import error_response, HINTS, WORKER_MESSAGE_HINT
+from ..utils import build_worker_message_hint, error_response, HINTS
 
 logger = logging.getLogger("claude-team-mcp")
 
@@ -187,8 +188,14 @@ def register_tools(mcp: FastMCP) -> None:
                 # Update status to busy
                 registry.update_status(sid, SessionStatus.BUSY)
 
-                # Append hint about bd_help tool to help workers understand beads
-                message_with_hint = message + WORKER_MESSAGE_HINT
+                # Append tracker-specific hint so workers know how to log progress.
+                tracker_path = (
+                    str(session.main_repo_path)
+                    if session.main_repo_path is not None
+                    else session.project_path
+                )
+                tracker_backend = detect_issue_tracker(tracker_path)
+                message_with_hint = message + build_worker_message_hint(tracker_backend)
 
                 # Send the message using agent-specific input handling.
                 # Codex needs a longer pre-Enter delay than Claude.

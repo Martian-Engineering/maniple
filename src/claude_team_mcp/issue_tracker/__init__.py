@@ -80,6 +80,10 @@ class PebblesBackend:
 
 BEADS_BACKEND = BeadsBackend()
 PEBBLES_BACKEND = PebblesBackend()
+BACKEND_REGISTRY: dict[str, IssueTrackerBackend] = {
+    BEADS_BACKEND.name: BEADS_BACKEND,
+    PEBBLES_BACKEND.name: PEBBLES_BACKEND,
+}
 
 
 def detect_issue_tracker(project_path: str) -> IssueTrackerBackend | None:
@@ -123,5 +127,6 @@ __all__ = [
     "PebblesBackend",
     "BEADS_BACKEND",
     "PEBBLES_BACKEND",
+    "BACKEND_REGISTRY",
     "detect_issue_tracker",
 ]

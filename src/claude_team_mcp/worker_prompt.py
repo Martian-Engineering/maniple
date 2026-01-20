@@ -2,8 +2,82 @@
 
 from typing import Literal, Optional
 
+from .issue_tracker import BACKEND_REGISTRY, IssueTrackerBackend, detect_issue_tracker
+from .utils.constants import ISSUE_TRACKER_HELP_TOOL
+
 # Valid agent types for prompt generation
 AgentType = Literal["claude", "codex"]
+
+
+def _resolve_issue_tracker_backend(
+    project_path: Optional[str],
+) -> IssueTrackerBackend | None:
+    """Detect the issue tracker backend for a project path."""
+    if not project_path:
+        return None
+    return detect_issue_tracker(project_path)
+
+
+def _format_tracker_command(
+    backend: IssueTrackerBackend,
+    command: str,
+    **kwargs: str,
+) -> str:
+    """Format a tracker command template with the provided arguments."""
+    template = backend.commands.get(command)
+    if not template:
+        return ""
+    return template.format(**kwargs)
+
+
+def _supported_tracker_list() -> str:
+    """Return a readable list of supported issue trackers."""
+    return ", ".join(sorted(BACKEND_REGISTRY.keys()))
+
+
+def _build_tracker_workflow_section(
+    issue_id: str,
+    backend: IssueTrackerBackend | None,
+    step_number: int,
+) -> tuple[str, str | None]:
+    """Build the issue tracker workflow section and show command hint."""
+    if backend:
+        update_cmd = _format_tracker_command(
+            backend,
+            "update",
+            issue_id=issue_id,
+            status="in_progress",
+        )
+        close_cmd = _format_tracker_command(
+            backend,
+            "close",
+            issue_id=issue_id,
+        )
+        show_cmd = _format_tracker_command(backend, "show", issue_id=issue_id) or None
+        # Provide backend-specific commands when a tracker is detected.
+        section = f"""
+{step_number}. **Issue tracker workflow.** You're working on `{issue_id}`. Follow this workflow:
+   - Mark in progress: `{update_cmd}`
+   - Implement the changes
+   - Close issue: `{close_cmd}`
+   - Commit with issue reference: `git add -A && git commit -m "{issue_id}: <summary>"`
+
+   Use the {backend.name} CLI (`{backend.cli}`) for issue tracker commands.
+"""
+        return section, show_cmd
+
+    supported = _supported_tracker_list()
+    # Fall back to generic instructions when no tracker is detected.
+    section = f"""
+{step_number}. **Issue tracker workflow.** You're working on `{issue_id}`. Follow this workflow:
+   - Mark in progress in the issue tracker
+   - Implement the changes
+   - Close the issue when done
+   - Commit with issue reference: `git add -A && git commit -m "{issue_id}: <summary>"`
+
+   No issue tracker detected. Supported trackers: {supported}. Use `{ISSUE_TRACKER_HELP_TOOL}` for guidance.
+"""
+    return section, None
 
 
 def generate_worker_prompt(
@@ -13,6 +87,7 @@ def generate_worker_prompt(
     agent_type: AgentType = "claude",
     use_worktree: bool = False,
     bead: Optional[str] = None,
+    project_path: Optional[str] = None,
     custom_prompt: Optional[str] = None,
 ) -> str:
     """Generate the pre-prompt text for a worker session.
@@ -22,7 +97,8 @@ def generate_worker_prompt(
         name: The friendly name assigned to this worker
         agent_type: The type of agent CLI ("claude" or "codex")
         use_worktree: Whether this worker is in an isolated worktree
-        bead: Optional beads issue ID (if provided, this is the assignment)
+        bead: Optional issue tracker ID (if provided, this is the assignment)
+        project_path: Optional project path for issue tracker detection
         custom_prompt: Optional additional instructions from the coordinator
 
     Returns:
@@ -40,6 +116,7 @@ def generate_worker_prompt(
             name=name,
             use_worktree=use_worktree,
             bead=bead,
+            project_path=project_path,
             custom_prompt=custom_prompt,
         )
     # Default to Claude prompt for unknown agent types to maintain backward compatibility
@@ -48,6 +125,7 @@ def generate_worker_prompt(
         name=name,
         use_worktree=use_worktree,
         bead=bead,
+        project_path=project_path,
         custom_prompt=custom_prompt,
     )
 
@@ -57,6 +135,7 @@ def _generate_claude_worker_prompt(
     name: str,
     use_worktree: bool = False,
     bead: Optional[str] = None,
+    project_path: Optional[str] = None,
     custom_prompt: Optional[str] = None,
 ) -> str:
     """Generate the pre-prompt for a Claude Code worker session.
@@ -70,31 +149,31 @@ def _generate_claude_worker_prompt(
         session_id: The unique identifier for this worker session
         name: The friendly name assigned to this worker
         use_worktree: Whether this worker is in an isolated worktree
-        bead: Optional beads issue ID
+        bead: Optional issue tracker ID
+        project_path: Optional project path for issue tracker detection
         custom_prompt: Optional additional instructions
 
     Returns:
         Formatted pre-prompt for Claude worker
     """
+    # Detect issue tracker backend so we can use the right commands.
+    tracker_backend = _resolve_issue_tracker_backend(project_path)
+
     # Build optional sections with dynamic numbering
     next_step = 4
     extra_sections = ""
 
-    # Beads section (if bead provided)
+    # Issue tracker section (if issue ID provided)
     if bead:
-        beads_section = f"""
-{next_step}. **Beads workflow.** You're working on `{bead}`. Follow this workflow:
-   - Mark in progress: `bd --no-db update {bead} --status in_progress`
-   - Implement the changes
-   - Close issue: `bd --no-db close {bead}`
-   - Commit with issue reference: `git add -A && git commit -m "{bead}: <summary>"`
-
-   Use `bd --no-db` for all beads commands (required in worktrees).
-"""
-        extra_sections += beads_section
+        tracker_section, show_cmd = _build_tracker_workflow_section(
+            issue_id=bead,
+            backend=tracker_backend,
+            step_number=next_step,
+        )
+        extra_sections += tracker_section
         next_step += 1
 
-    # Commit section (if worktree but beads section didn't already cover commit)
+    # Commit section (if worktree but issue tracker section didn't already cover commit)
     if use_worktree and not bead:
         commit_section = f"""
 {next_step}. **Commit when done.** You're in an isolated worktree branch — commit your
@@ -107,9 +186,12 @@ def _generate_claude_worker_prompt(
     # Closing/assignment section - 4 cases based on bead and custom_prompt
     if bead and custom_prompt:
         # Case 2: bead + custom instructions
+        show_hint = (
+            f"Use `{show_cmd}` for details." if show_cmd else "Use your issue tracker for details."
+        )
         closing = f"""=== YOUR ASSIGNMENT ===
 
-The coordinator assigned you `{bead}` (use `bd show {bead}` for details) and included
+The coordinator assigned you `{bead}` ({show_hint}) and included
 the following instructions:
 
 {custom_prompt}
@@ -117,9 +199,12 @@ the following instructions:
 Get to work!"""
     elif bead:
         # Case 1: bead only
+        show_hint = (
+            f"Use `{show_cmd}` for details." if show_cmd else "Use your issue tracker for details."
+        )
         closing = f"""=== YOUR ASSIGNMENT ===
 
-Your assignment is `{bead}`. Use `bd show {bead}` for details. Get to work!"""
+Your assignment is `{bead}`. {show_hint} Get to work!"""
     elif custom_prompt:
         # Case 3: custom instructions only
         closing = f"""=== YOUR ASSIGNMENT ===
@@ -161,6 +246,7 @@ def _generate_codex_worker_prompt(
     name: str,
     use_worktree: bool = False,
     bead: Optional[str] = None,
+    project_path: Optional[str] = None,
     custom_prompt: Optional[str] = None,
 ) -> str:
     """Generate the pre-prompt for an OpenAI Codex worker session.
@@ -174,31 +260,31 @@ def _generate_codex_worker_prompt(
         session_id: The unique identifier for this worker session
         name: The friendly name assigned to this worker
         use_worktree: Whether this worker is in an isolated worktree
-        bead: Optional beads issue ID
+        bead: Optional issue tracker ID
+        project_path: Optional project path for issue tracker detection
         custom_prompt: Optional additional instructions
 
     Returns:
         Formatted pre-prompt for Codex worker
     """
+    # Detect issue tracker backend so we can use the right commands.
+    tracker_backend = _resolve_issue_tracker_backend(project_path)
+
     # Build optional sections with dynamic numbering
     next_step = 4
     extra_sections = ""
 
-    # Beads section (if bead provided) - same workflow as Claude
+    # Issue tracker section (if issue ID provided) - same workflow as Claude
     if bead:
-        beads_section = f"""
-{next_step}. **Beads workflow.** You're working on `{bead}`. Follow this workflow:
-   - Mark in progress: `bd --no-db update {bead} --status in_progress`
-   - Implement the changes
-   - Close issue: `bd --no-db close {bead}`
-   - Commit with issue reference: `git add -A && git commit -m "{bead}: <summary>"`
-
-   Use `bd --no-db` for all beads commands (required in worktrees).
-"""
-        extra_sections += beads_section
+        tracker_section, show_cmd = _build_tracker_workflow_section(
+            issue_id=bead,
+            backend=tracker_backend,
+            step_number=next_step,
+        )
+        extra_sections += tracker_section
         next_step += 1
 
-    # Commit section (if worktree but beads section didn't already cover commit)
+    # Commit section (if worktree but issue tracker section didn't already cover commit)
     if use_worktree and not bead:
         commit_section = f"""
 {next_step}. **Commit when done.** You're in an isolated worktree branch — commit your
@@ -212,7 +298,7 @@ def _generate_codex_worker_prompt(
     if bead and custom_prompt:
         closing = f"""=== YOUR ASSIGNMENT ===
 
-The coordinator assigned you `{bead}` (use `bd show {bead}` for details) and included
+The coordinator assigned you `{bead}` ({f"Use `{show_cmd}` for details." if show_cmd else "Use your issue tracker for details."}) and included
 the following instructions:
 
 {custom_prompt}
@@ -221,7 +307,7 @@ Get to work!"""
     elif bead:
         closing = f"""=== YOUR ASSIGNMENT ===
 
-Your assignment is `{bead}`. Use `bd show {bead}` for details. Get to work!"""
+Your assignment is `{bead}`. {f"Use `{show_cmd}` for details." if show_cmd else "Use your issue tracker for details."} Get to work!"""
     elif custom_prompt:
         closing = f"""=== YOUR ASSIGNMENT ===
 
@@ -270,7 +356,7 @@ def get_coordinator_guidance(
         worker_summaries: List of dicts with keys:
             - name: Worker name
             - agent_type: Agent type ("claude" or "codex")
-            - bead: Optional bead ID
+            - bead: Optional issue tracker ID
             - custom_prompt: Optional custom instructions (truncated for display)
             - awaiting_task: True if worker has no bead and no prompt
 
@@ -309,7 +395,7 @@ def get_coordinator_guidance(
         elif bead:
             worker_lines.append(
                 f"- **{name}**{type_indicator}: `{bead}` "
-                "(beads workflow: mark in_progress -> implement -> close -> commit)"
+                "(issue tracker workflow: mark in_progress -> implement -> close -> commit)"
             )
         elif custom_prompt:
             short_prompt = (

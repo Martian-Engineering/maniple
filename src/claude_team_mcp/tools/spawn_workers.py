@@ -629,12 +629,18 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 if not bead and not custom_prompt:
                     workers_awaiting_task.append(managed.name)
 
+                tracker_path = (
+                    str(managed.main_repo_path)
+                    if managed.main_repo_path is not None
+                    else managed.project_path
+                )
                 worker_prompt = generate_worker_prompt(
                     managed.session_id,
                     resolved_names[i],
                     agent_type=managed.agent_type,
                     use_worktree=use_worktree,
                     bead=bead,
+                    project_path=tracker_path,
                     custom_prompt=custom_prompt,
                 )
 
