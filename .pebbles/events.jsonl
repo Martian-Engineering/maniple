@@ -28,3 +28,15 @@
 {"type":"dep_add","timestamp":"2025-12-23T04:37:23.162209Z","issue_id":"cic-5xot","payload":{"dep_type":"blocks","depends_on":"cic-bt3a"}}
 {"type":"comment","timestamp":"2026-01-13T23:10:14.082126Z","issue_id":"cic-fgx","payload":{"body":"Close reason: Implemented auto-detect coordinator window with proper ITERM_SESSION_ID parsing and 3-pane layout"}}
 {"type":"close","timestamp":"2026-01-13T23:10:14.082126Z","issue_id":"cic-fgx","payload":{}}
+{"type":"create","timestamp":"2026-01-20T06:00:22.292551Z","issue_id":"cic-2e0","payload":{"description":"Remove all built-in Beads/Pebbles integration. Coordinator handles tracking externally.","priority":"1","title":"Remove issue tracker integration","type":"epic"}}
+{"type":"create","timestamp":"2026-01-20T06:00:44.2813Z","issue_id":"cic-899","payload":{"description":"Delete issue_tracker/__init__.py, issue_tracker_help.py, and remove exports from utils. ~1-2 hours.","priority":"1","title":"Phase 1: Remove issue tracker module, tool, constants","type":"task"}}
+{"type":"create","timestamp":"2026-01-20T06:00:44.303622Z","issue_id":"cic-a22","payload":{"description":"Remove tracker detection from worker_prompt.py, spawn_workers.py, message_workers.py. Keep bead for labeling. ~2-3 hours.","priority":"1","title":"Phase 2: Update worker prompts and spawn logic","type":"task"}}
+{"type":"create","timestamp":"2026-01-20T06:00:44.325073Z","issue_id":"cic-92f","payload":{"description":"Update README.md, CLAUDE.md, commands/*.md. Remove tracker sections. ~1-2 hours.","priority":"1","title":"Phase 3: Update docs and commands","type":"task"}}
+{"type":"create","timestamp":"2026-01-20T06:00:44.348837Z","issue_id":"cic-e66","payload":{"description":"Delete test_issue_tracker.py, update test_worker_prompt.py expectations. ~1-2 hours.","priority":"1","title":"Phase 4: Update tests","type":"task"}}
+{"type":"dep_add","timestamp":"2026-01-20T06:00:44.373519Z","issue_id":"cic-2e0","payload":{"dep_type":"blocks","depends_on":"cic-899"}}
+{"type":"dep_add","timestamp":"2026-01-20T06:00:44.39183Z","issue_id":"cic-2e0","payload":{"dep_type":"blocks","depends_on":"cic-a22"}}
+{"type":"dep_add","timestamp":"2026-01-20T06:00:44.409704Z","issue_id":"cic-2e0","payload":{"dep_type":"blocks","depends_on":"cic-92f"}}
+{"type":"dep_add","timestamp":"2026-01-20T06:00:44.4271Z","issue_id":"cic-2e0","payload":{"dep_type":"blocks","depends_on":"cic-e66"}}
+{"type":"dep_add","timestamp":"2026-01-20T06:00:44.444603Z","issue_id":"cic-a22","payload":{"dep_type":"blocks","depends_on":"cic-899"}}
+{"type":"dep_add","timestamp":"2026-01-20T06:00:44.463028Z","issue_id":"cic-92f","payload":{"dep_type":"blocks","depends_on":"cic-a22"}}
+{"type":"dep_add","timestamp":"2026-01-20T06:00:44.481073Z","issue_id":"cic-e66","payload":{"dep_type":"blocks","depends_on":"cic-92f"}}
