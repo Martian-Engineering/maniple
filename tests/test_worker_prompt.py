@@ -32,10 +32,19 @@ class TestGenerateWorkerPrompt:
 class TestAssignmentCases:
     """Tests for the 4 assignment cases in worker prompts."""
 
-    def test_case1_issue_only(self):
+    def test_case1_issue_only(self, tmp_path):
         """With issue only, should show assignment and tracker workflow."""
+        # Create a project with pebbles marker for testing
+        project_path = tmp_path / "test-repo"
+        project_path.mkdir()
+        (project_path / ".pebbles").mkdir()
+
         issue_id = "cic-123"
-        prompt = generate_worker_prompt("test", "Worker", bead=issue_id)
+        prompt = generate_worker_prompt(
+            "test", "Worker",
+            bead=issue_id,
+            project_path=str(project_path)
+        )
         assert f"Your assignment is `{issue_id}`" in prompt
         assert "workflow" in prompt
         assert "Mark in progress" in prompt
@@ -79,18 +88,36 @@ class TestAssignmentCases:
 class TestIssueTrackerWorkflow:
     """Tests for issue tracker workflow instructions."""
 
-    def test_workflow_includes_update_and_close(self):
+    def test_workflow_includes_update_and_close(self, tmp_path):
         """Workflow should include update and close commands."""
+        # Create a project with pebbles marker for testing
+        project_path = tmp_path / "test-repo"
+        project_path.mkdir()
+        (project_path / ".pebbles").mkdir()
+
         issue_id = "cic-abc"
-        prompt = generate_worker_prompt("test", "Worker", bead=issue_id)
+        prompt = generate_worker_prompt(
+            "test", "Worker",
+            bead=issue_id,
+            project_path=str(project_path)
+        )
         assert f"update {issue_id}" in prompt
         assert f"close {issue_id}" in prompt
-        assert "--status in_progress" in prompt
+        assert "status in_progress" in prompt
 
-    def test_workflow_includes_commit_instruction(self):
+    def test_workflow_includes_commit_instruction(self, tmp_path):
         """Workflow should include commit with issue reference."""
+        # Create a project with pebbles marker for testing
+        project_path = tmp_path / "test-repo"
+        project_path.mkdir()
+        (project_path / ".pebbles").mkdir()
+
         issue_id = "cic-abc"
-        prompt = generate_worker_prompt("test", "Worker", bead=issue_id)
+        prompt = generate_worker_prompt(
+            "test", "Worker",
+            bead=issue_id,
+            project_path=str(project_path)
+        )
         assert f'git commit -m "{issue_id}:' in prompt
 
 
@@ -233,19 +260,30 @@ class TestCodexWorkerPrompt:
         assert "COMPLETED" in prompt
         assert "BLOCKED" in prompt
 
-    def test_codex_tracker_workflow_same_as_claude(self):
+    def test_codex_tracker_workflow_same_as_claude(self, tmp_path):
         """Codex tracker workflow should match Claude's."""
+        # Create a project with pebbles marker for testing
+        project_path = tmp_path / "test-repo"
+        project_path.mkdir()
+        (project_path / ".pebbles").mkdir()
+
         issue_id = "cic-123"
         codex_prompt = generate_worker_prompt(
-            "test", "Worker", agent_type="codex", bead=issue_id
+            "test", "Worker",
+            agent_type="codex",
+            bead=issue_id,
+            project_path=str(project_path)
         )
         claude_prompt = generate_worker_prompt(
-            "test", "Worker", agent_type="claude", bead=issue_id
+            "test", "Worker",
+            agent_type="claude",
+            bead=issue_id,
+            project_path=str(project_path)
         )
         for prompt in (codex_prompt, claude_prompt):
             assert f"update {issue_id}" in prompt
             assert f"close {issue_id}" in prompt
-            assert "--status in_progress" in prompt
+            assert "status in_progress" in prompt
 
     def test_codex_with_issue_only(self):
         """Codex with issue only should show assignment."""
