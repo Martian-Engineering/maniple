@@ -51,3 +51,6 @@
 {"type":"dep_add","timestamp":"2026-01-20T04:10:06.055452Z","issue_id":"cic-a97","payload":{"dep_type":"blocks","depends_on":"cic-7c5"}}
 {"type":"status_update","timestamp":"2026-01-20T05:05:20.944388Z","issue_id":"cic-b54","payload":{"status":"in_progress"}}
 {"type":"close","timestamp":"2026-01-20T05:18:20.542131Z","issue_id":"cic-b54","payload":{}}
+{"type":"create","timestamp":"2026-01-21T19:06:11.932386Z","issue_id":"cic-c09","payload":{"description":"Three tests in test_cli_backends.py are failing because they expect --full-auto flag but implementation uses --dangerously-bypass-approvals-and-sandbox. Need to investigate which is correct and update either the implementation or tests accordingly.","priority":"2","title":"Fix failing Codex CLI tests","type":"task"}}
+{"type":"status_update","timestamp":"2026-01-21T19:06:35.580259Z","issue_id":"cic-c09","payload":{"status":"in_progress"}}
+{"type":"close","timestamp":"2026-01-21T19:08:45.621746Z","issue_id":"cic-c09","payload":{}}

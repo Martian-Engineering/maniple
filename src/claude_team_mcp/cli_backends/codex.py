@@ -58,10 +58,9 @@ class CodexCLI(AgentCLI):
         """
         args: list[str] = []
 
-        # Codex uses --dangerously-bypass-approvals-and-sandbox for autonomous operation
-        # (--full-auto doesn't work through happy wrapper)
+        # Codex uses --full-auto for autonomous operation.
         if dangerously_skip_permissions:
-            args.append("--dangerously-bypass-approvals-and-sandbox")
+            args.append("--full-auto")
 
         # Note: settings_file is ignored - Codex doesn't support this
         # Idle detection uses session file polling instead
