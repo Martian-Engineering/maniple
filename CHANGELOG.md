@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.6.1] - 2026-01-21
 
 ### Fixed
-- Codex skip-permissions flag now uses `--dangerously-bypass-approvals-and-sandbox`
+- Correct Codex skip-permissions flag (use `--dangerously-bypass-approvals-and-sandbox`)
 
 ## [0.6.0] - 2026-01-21
 
