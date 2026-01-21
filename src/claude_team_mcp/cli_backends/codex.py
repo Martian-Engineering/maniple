@@ -22,7 +22,7 @@ class CodexCLI(AgentCLI):
 
     Codex CLI characteristics:
     - Uses `codex` command
-    - Has --full-auto flag for non-interactive mode
+    - Has --dangerously-bypass-approvals-and-sandbox flag for non-interactive mode
     - No known Stop hook equivalent (may need JSONL streaming or timeouts)
     """
 
@@ -50,7 +50,7 @@ class CodexCLI(AgentCLI):
         Build Codex CLI arguments for interactive mode.
 
         Args:
-            dangerously_skip_permissions: Maps to --full-auto for Codex
+            dangerously_skip_permissions: Maps to --dangerously-bypass-approvals-and-sandbox for Codex
             settings_file: Ignored - Codex doesn't support settings injection
 
         Returns:
@@ -58,9 +58,9 @@ class CodexCLI(AgentCLI):
         """
         args: list[str] = []
 
-        # Codex uses --full-auto for autonomous operation.
+        # Codex uses --dangerously-bypass-approvals-and-sandbox for autonomous operation.
         if dangerously_skip_permissions:
-            args.append("--full-auto")
+            args.append("--dangerously-bypass-approvals-and-sandbox")
 
         # Note: settings_file is ignored - Codex doesn't support this
         # Idle detection uses session file polling instead

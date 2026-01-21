@@ -254,7 +254,7 @@ def _generate_codex_worker_prompt(
     Codex workers differ from Claude:
     - No claude-team MCP markers (Codex doesn't parse JSONL markers)
     - No Stop hook idle detection (uses output pattern matching or timeouts)
-    - Runs with --full-auto instead of --dangerously-skip-permissions
+    - Runs with --dangerously-bypass-approvals-and-sandbox instead of --dangerously-skip-permissions
 
     Args:
         session_id: The unique identifier for this worker session

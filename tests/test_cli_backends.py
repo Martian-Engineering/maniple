@@ -158,11 +158,11 @@ class TestCodexCLI:
         args = cli.build_args()
         assert args == []
 
-    def test_build_args_skip_permissions_maps_to_full_auto(self):
-        """skip_permissions should map to --full-auto for Codex."""
+    def test_build_args_skip_permissions_maps_to_bypass_approvals(self):
+        """skip_permissions should map to --dangerously-bypass-approvals-and-sandbox for Codex."""
         cli = CodexCLI()
         args = cli.build_args(dangerously_skip_permissions=True)
-        assert "--full-auto" in args
+        assert "--dangerously-bypass-approvals-and-sandbox" in args
 
     def test_build_args_settings_file_ignored(self):
         """Settings file should be ignored (Codex doesn't support it)."""
@@ -195,20 +195,20 @@ class TestCodexCLI:
             cmd = cli.build_full_command()
             assert cmd == "codex"
 
-    def test_build_full_command_with_full_auto(self):
-        """build_full_command should add --full-auto."""
+    def test_build_full_command_with_bypass_approvals(self):
+        """build_full_command should add --dangerously-bypass-approvals-and-sandbox."""
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("CLAUDE_TEAM_CODEX_COMMAND", None)
             cli = CodexCLI()
             cmd = cli.build_full_command(dangerously_skip_permissions=True)
-            assert cmd == "codex --full-auto"
+            assert cmd == "codex --dangerously-bypass-approvals-and-sandbox"
 
     def test_build_full_command_with_env_var(self):
         """build_full_command should use CLAUDE_TEAM_CODEX_COMMAND."""
         with patch.dict(os.environ, {"CLAUDE_TEAM_CODEX_COMMAND": "happy codex"}):
             cli = CodexCLI()
             cmd = cli.build_full_command(dangerously_skip_permissions=True)
-            assert cmd == "happy codex --full-auto"
+            assert cmd == "happy codex --dangerously-bypass-approvals-and-sandbox"
 
 
 class TestGetCliBackend:
