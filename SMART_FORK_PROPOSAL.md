@@ -11,18 +11,22 @@ Let a user describe what they want to implement, semantically search past Claude
   - `session_state.get_project_dir(project_path)` computes the project slug.
 
 ## qmd Reality Check
-I ran a few tests against the `claude-sessions` collection:
-- `qmd search "smart forking" -c claude-sessions` works and returns Markdown session exports.
-- `qmd vsearch` and `qmd query` both fail with:
+I verified qmd behavior against the `claude-sessions` collection:
+- `qmd collection list` shows `claude-sessions` exists, but `qmd collection show claude-sessions` is not a supported subcommand.
+- `qmd search "smart forking" -c claude-sessions --json` works and returns Markdown session exports.
+- `qmd vsearch "smart forking" -c claude-sessions --json` fails with:
   - `SQLiteError: no such column: claude` (inside qmd `searchVec`).
-- The `claude-sessions` collection points at `**/*.md`, and the files contain session metadata like:
-  - `Session ID: <uuid>`
-  - `Working Directory: <path>`
-  - `Date: <timestamp>`
+- `qmd query "smart forking" -c claude-sessions --json` fails with the same error and then crashes Bun with a segfault.
 
-Implication: semantic search via `qmd query` currently errors, so the Smart Fork implementation should:
+The Markdown session exports include metadata like:
+- `Session ID: <uuid>`
+- `Working Directory: <path>`
+- `Date: <timestamp>`
+
+Implication: semantic search via `qmd query` is currently unreliable in this environment, so the Smart Fork implementation should:
 - Prefer `qmd query` for full semantic + rerank when it works
-- Gracefully fall back to `qmd search` (BM25) or `qmd vsearch` if query fails
+- Gracefully fall back to `qmd vsearch`, then `qmd search` (BM25) if query/vsearch fail
+- Surface the qmd error (and whether a fallback was used) in the response payload
 
 ## Proposed MCP Tool: `smart_fork`
 
@@ -46,6 +50,7 @@ smart_fork(
    - If that errors (currently does), fall back to:
      - `qmd vsearch <intent> -c <collection> --json -n <limit>`
      - If that errors, final fallback: `qmd search <intent> -c <collection> --json -n <limit>`
+   - If qmd is not installed or collection is missing, skip qmd and return a guidance payload (see below).
 
 2. **Parse results**
    - Each result is a Markdown file that includes `Session ID`, `Working Directory`, and `Date`.
@@ -129,8 +134,47 @@ Option A provides a more general capability for any caller to resume/fork.
 - Include a `qmd_error` field if query/vsearch fails so users understand fallback behavior.
 - Add minimal CLI checks to ensure `claude` is on PATH and supports `--fork-session`.
 
+## qmd Not Installed / Missing Collection Handling
+If `qmd` is not available (`shutil.which("qmd")` is None) or the `claude-sessions`
+collection isn’t configured, the tool should:
+- Return a structured error response with a short, actionable setup guide.
+- Provide a manual fallback option: list the most recent N Claude sessions
+  (from `~/.claude/projects/**.jsonl`) so the user can still choose a session ID.
+
+Suggested guidance payload:
+```
+{
+  "error": "qmd_not_available",
+  "message": "qmd is not installed or the claude-sessions collection is missing.",
+  "next_steps": [
+    "Install qmd and add a claude-sessions collection",
+    "Run the claude-code-sessions converter to generate markdown exports",
+    "Re-run smart_fork once indexing completes"
+  ],
+  "fallback_sessions": [
+    {"session_id": "...", "project_path": "...", "last_modified": "..."}
+  ]
+}
+```
+
+## Ongoing Indexing Setup (claude-code-sessions skill)
+There is an existing skill at `/Users/phaedrus/clawd/skills/claude-code-sessions` with
+`scripts/convert.py` that converts `~/.claude/projects/**/*.jsonl` into Markdown for qmd.
+
+Recommended workflow:
+1. **Initial export:**
+   - `python3 ~/clawd/skills/claude-code-sessions/scripts/convert.py ~/claude-sessions-md`
+2. **Add qmd collection (once):**
+   - `qmd collection add claude-sessions ~/claude-sessions-md --pattern "**/*.md"`
+3. **Keep the index fresh:**
+   - `qmd update` (re-index) + `qmd embed claude-sessions` (vectorize)
+   - Or use `convert.py --index`, which runs `qmd update` and `qmd embed` after conversion.
+
+The skill mentions a cron job every ~6 hours; we can either recommend
+that schedule or add a `launchd` job to run the converter + `qmd update`
+periodically (no caching or retry loops needed).
+
 ## Open Questions
 - Do we want to support smart forking from Codex sessions (different log format)?
 - Should we add a small cache of qmd results per query (I assume no, per project guidelines)?
 - Should the user-facing tool return short snippets or full context?
-
