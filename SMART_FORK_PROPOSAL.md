@@ -147,8 +147,8 @@ Suggested guidance payload:
   "error": "qmd_not_available",
   "message": "qmd is not installed or the claude-sessions collection is missing.",
   "next_steps": [
-    "Install qmd and add a claude-sessions collection",
-    "Run the claude-code-sessions converter to generate markdown exports",
+    "Install qmd and ensure it is on PATH",
+    "Start claude-team in HTTP mode with CLAUDE_TEAM_QMD_INDEXING=true",
     "Re-run smart_fork once indexing completes"
   ],
   "fallback_sessions": [
@@ -157,22 +157,34 @@ Suggested guidance payload:
 }
 ```
 
-## Ongoing Indexing Setup (claude-code-sessions skill)
-There is an existing skill at `/Users/phaedrus/clawd/skills/claude-code-sessions` with
-`scripts/convert.py` that converts `~/.claude/projects/**/*.jsonl` into Markdown for qmd.
+## Ongoing Indexing Setup (claude-team managed)
+Conversation forking is only available when claude-team runs as a persistent
+HTTP server. Indexing is opt-in and controlled by an environment flag.
 
-Recommended workflow:
-1. **Initial export:**
-   - `python3 ~/clawd/skills/claude-code-sessions/scripts/convert.py ~/claude-sessions-md`
-2. **Add qmd collection (once):**
-   - `qmd collection add claude-sessions ~/claude-sessions-md --pattern "**/*.md"`
-3. **Keep the index fresh:**
-   - `qmd update` (re-index) + `qmd embed claude-sessions` (vectorize)
-   - Or use `convert.py --index`, which runs `qmd update` and `qmd embed` after conversion.
+### Opt-in and prerequisites
+- Enable with `CLAUDE_TEAM_QMD_INDEXING=true` (HTTP mode only).
+- On startup, claude-team verifies prerequisites:
+  - `qmd` is on PATH
+  - `~/.claude/projects` exists
+  - It can create/read the markdown export directory and qmd collection
+- If any check fails, claude-team exits with a clear, actionable error.
 
-The skill mentions a cron job every ~6 hours; we can either recommend
-that schedule or add a `launchd` job to run the converter + `qmd update`
-periodically (no caching or retry loops needed).
+### Indexing lifecycle (self-contained)
+When enabled, claude-team owns the full lifecycle:
+1. **Bootstrap:** First run converts existing Claude + Codex JSONL logs to Markdown
+   and initializes the `claude-sessions` collection.
+2. **Sync:** Runs `qmd update` and `qmd embed claude-sessions` after conversion.
+3. **Ongoing:** Schedules periodic refreshes to keep the index current.
+
+### Schedule configuration
+- Default: hourly.
+- Override with `CLAUDE_TEAM_INDEX_CRON`, which can be a cron expression or
+  a simple interval string (implementation detail TBD, but user-facing stays env-driven).
+
+### launchd utility
+Provide a small utility/example for running claude-team as a persistent
+launchd service in HTTP mode. This is the recommended way to keep indexing
+fresh and enable conversation forking.
 
 ## Open Questions
 - Do we want to support smart forking from Codex sessions (different log format)?
