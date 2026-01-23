@@ -20,6 +20,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 
 from .iterm_utils import read_screen_text
+from .qmd_indexing import configure_qmd_indexing
 from .registry import SessionRegistry
 from .tools import register_all_tools
 from .utils import error_response, HINTS
@@ -207,7 +208,11 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
 # =============================================================================
 
 
-def create_mcp_server(host: str = "127.0.0.1", port: int = 8766) -> FastMCP:
+def create_mcp_server(
+    host: str = "127.0.0.1",
+    port: int = 8766,
+    transport: str = "stdio",
+) -> FastMCP:
     """Create and configure the FastMCP server instance."""
     server = FastMCP(
         "Claude Team Manager",
@@ -217,11 +222,12 @@ def create_mcp_server(host: str = "127.0.0.1", port: int = 8766) -> FastMCP:
     )
     # Register all tools from the tools package
     register_all_tools(server, ensure_connection)
+    configure_qmd_indexing(server, transport=transport)
     return server
 
 
 # Default server instance for stdio mode (backwards compatibility)
-mcp = create_mcp_server()
+mcp = create_mcp_server(transport="stdio")
 
 
 # =============================================================================
@@ -354,7 +360,11 @@ def run_server(transport: str = "stdio", port: int = 8766):
     if transport == "streamable-http":
         logger.info(f"Starting Claude Team MCP Server (HTTP on port {port})...")
         # Create server with configured port for HTTP mode
-        server = create_mcp_server(host="127.0.0.1", port=port)
+        server = create_mcp_server(
+            host="127.0.0.1",
+            port=port,
+            transport="streamable-http",
+        )
         server.run(transport="streamable-http")
     else:
         logger.info("Starting Claude Team MCP Server (stdio)...")
