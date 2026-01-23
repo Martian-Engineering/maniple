@@ -1,32 +1,32 @@
 # Smart Forking Proposal
 
 ## Goal
-Let a user describe what they want to implement, semantically search past Claude Code sessions, and fork from a selected session to inherit relevant context.
+Let a user describe what they want to implement, semantically search past Claude Code
+and Codex sessions, and fork from a selected session to inherit relevant context.
 
 ## Relevant Architecture (claude-team)
 - MCP server lives in `src/claude_team_mcp/` with tools under `src/claude_team_mcp/tools/`.
 - Session metadata and JSONL parsing live in `src/claude_team_mcp/registry.py` and `src/claude_team_mcp/session_state.py`.
 - Claude CLI backend is `src/claude_team_mcp/cli_backends/claude.py`.
+- Codex CLI backend is `src/claude_team_mcp/cli_backends/codex.py`.
 - Session logs are stored in `~/.claude/projects/<project-slug>/<session-id>.jsonl`.
   - `session_state.get_project_dir(project_path)` computes the project slug.
+- Codex session logs live under `~/.codex/sessions/` (codex CLI).
 
 ## qmd Reality Check
-I verified qmd behavior against the `claude-sessions` collection:
-- `qmd collection list` shows `claude-sessions` exists, but `qmd collection show claude-sessions` is not a supported subcommand.
+I verified qmd behavior against the `claude-sessions` collection (Jan 23, 2026):
+- `qmd collection list` shows `claude-sessions` exists (there is no `collection show` subcommand).
 - `qmd search "smart forking" -c claude-sessions --json` works and returns Markdown session exports.
-- `qmd vsearch "smart forking" -c claude-sessions --json` fails with:
-  - `SQLiteError: no such column: claude` (inside qmd `searchVec`).
-- `qmd query "smart forking" -c claude-sessions --json` fails with the same error and then crashes Bun with a segfault.
+- `qmd vsearch "smart forking" -c claude-sessions --json` works and returns vector-ranked results.
+- `qmd query "smart forking" -c claude-sessions --json` works, including reranking output.
 
 The Markdown session exports include metadata like:
 - `Session ID: <uuid>`
 - `Working Directory: <path>`
 - `Date: <timestamp>`
 
-Implication: semantic search via `qmd query` is currently unreliable in this environment, so the Smart Fork implementation should:
-- Prefer `qmd query` for full semantic + rerank when it works
-- Gracefully fall back to `qmd vsearch`, then `qmd search` (BM25) if query/vsearch fail
-- Surface the qmd error (and whether a fallback was used) in the response payload
+Implication: prefer `qmd query` for semantic + rerank, with fallbacks to
+`qmd vsearch` and `qmd search` if qmd errors or is unavailable.
 
 ## Proposed MCP Tool: `smart_fork`
 
@@ -47,7 +47,7 @@ smart_fork(
 ### Behavior
 1. **Embed + search**
    - Prefer: `qmd query <intent> -c <collection> --json -n <limit>`
-   - If that errors (currently does), fall back to:
+   - If that errors, fall back to:
      - `qmd vsearch <intent> -c <collection> --json -n <limit>`
      - If that errors, final fallback: `qmd search <intent> -c <collection> --json -n <limit>`
    - If qmd is not installed or collection is missing, skip qmd and return a guidance payload (see below).
@@ -58,11 +58,13 @@ smart_fork(
      - `session_id`
      - `working_directory`
      - `date`
+     - `agent_type` (`claude` or `codex`)
      - `snippet` (from qmd result)
      - `score`
      - `source_path` (qmd doc path)
    - Optionally map to JSONL path:
      - `~/.claude/projects/<slug>/<session-id>.jsonl` via `session_state.get_project_dir()`.
+      - `~/.codex/sessions/<session-id>.jsonl` for codex sessions.
 
 3. **Return ranked list**
    - Return top results with scores and a short snippet.
@@ -79,6 +81,7 @@ smart_fork(
       "rank": 1,
       "score": 0.82,
       "session_id": "60309e1e-c4ea-4d6d-8da1-21732781ce4d",
+      "agent_type": "claude",
       "working_directory": "/private/tmp",
       "date": "2026-01-07T00:11:47.756Z",
       "snippet": "...smart approach - models pay more attention...",
@@ -104,6 +107,14 @@ Proposed approach for Smart Fork:
 - Always use `--resume <session-id> --fork-session` to avoid mutating the original session.
 - Do not use `--continue` unless the user explicitly asks for “last session”.
 
+Codex CLI supports:
+- `codex resume <session-id>` (or `--last`)
+- `codex fork <session-id>` (or `--last`)
+
+Proposed approach for Codex Smart Fork:
+- Use `codex fork <session-id>` to create a new session with inherited context.
+- Use `codex resume <session-id>` only when the user explicitly requests resume.
+
 ## Integration with `spawn_workers`
 
 ### Option A: Extend WorkerConfig
@@ -112,11 +123,13 @@ Add optional fields:
 resume_session_id: str | None
 fork_session: bool = False
 continue_session: bool = False
+agent_type: "claude" | "codex"
 ```
 Then in `spawn_workers`, pass these through to the CLI backend to build args:
 - `--resume <id>` when `resume_session_id` is present
 - `--fork-session` when `fork_session` is true
 - `--continue` when `continue_session` is true and no resume id is given
+ - For codex: call `codex fork <id>` or `codex resume <id>` depending on the flags
 
 ### Option B: New Tool `smart_fork`
 `smart_fork`:
@@ -130,6 +143,7 @@ Option A provides a more general capability for any caller to resume/fork.
 ## Suggested Implementation Notes
 - qmd output should be parsed using `--json` to avoid brittle text parsing.
 - Extract `Session ID` from markdown body as a fallback if filename doesn’t match.
+- Include an explicit `Agent: claude|codex` header in markdown exports to make agent detection reliable.
 - If a session’s JSONL file doesn’t exist, include `can_fork=false` and a warning.
 - Include a `qmd_error` field if query/vsearch fails so users understand fallback behavior.
 - Add minimal CLI checks to ensure `claude` is on PATH and supports `--fork-session`.
@@ -172,7 +186,8 @@ HTTP server. Indexing is opt-in and controlled by an environment flag.
 ### Indexing lifecycle (self-contained)
 When enabled, claude-team owns the full lifecycle:
 1. **Bootstrap:** First run converts existing Claude + Codex JSONL logs to Markdown
-   and initializes the `claude-sessions` collection.
+   (include an `Agent:` field in the header) and initializes the `claude-sessions`
+   collection.
 2. **Sync:** Runs `qmd update` and `qmd embed claude-sessions` after conversion.
 3. **Ongoing:** Schedules periodic refreshes to keep the index current.
 
