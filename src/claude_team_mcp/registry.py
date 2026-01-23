@@ -183,9 +183,12 @@ class ManagedSession:
             return None
 
         if self.agent_type == "codex":
+            from .codex_export import export_codex_session_markdown
             from .session_state import parse_codex_session
 
-            return parse_codex_session(jsonl_path)
+            state = parse_codex_session(jsonl_path)
+            export_codex_session_markdown(jsonl_path, messages=state.conversation)
+            return state
         else:
             return parse_session(jsonl_path)
 
