@@ -45,6 +45,9 @@ class CodexCLI(AgentCLI):
         *,
         dangerously_skip_permissions: bool = False,
         settings_file: str | None = None,
+        resume_session_id: str | None = None,
+        continue_session: bool = False,
+        fork_session: bool = False,
     ) -> list[str]:
         """
         Build Codex CLI arguments for interactive mode.
@@ -52,11 +55,40 @@ class CodexCLI(AgentCLI):
         Args:
             dangerously_skip_permissions: Maps to --dangerously-bypass-approvals-and-sandbox for Codex
             settings_file: Ignored - Codex doesn't support settings injection
+            resume_session_id: Resume specific session by ID (codex resume <id>)
+            continue_session: Continue most recent session (codex resume --last)
+            fork_session: Fork instead of resume (codex fork [<id>|--last])
 
         Returns:
             List of CLI arguments for interactive mode
+
+        Note:
+            Codex uses subcommands for session management:
+            - `codex resume [SESSION_ID]` or `codex resume --last`
+            - `codex fork [SESSION_ID]` or `codex fork --last`
+
+            When resume/fork is requested, the subcommand is placed first in args,
+            so the final command becomes: `codex resume <session_id> --flags...`
         """
         args: list[str] = []
+
+        # Determine subcommand based on session options
+        # Fork takes precedence if both resume and fork are specified
+        if fork_session:
+            args.append("fork")
+            if resume_session_id:
+                args.append(resume_session_id)
+            elif continue_session:
+                args.append("--last")
+            else:
+                # Fork without a target - use most recent
+                args.append("--last")
+        elif resume_session_id:
+            args.append("resume")
+            args.append(resume_session_id)
+        elif continue_session:
+            args.append("resume")
+            args.append("--last")
 
         # Codex uses --dangerously-bypass-approvals-and-sandbox for autonomous operation.
         if dangerously_skip_permissions:

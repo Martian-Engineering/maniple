@@ -637,6 +637,9 @@ async def start_agent_in_session(
     agent_ready_timeout: float = 30.0,
     stop_hook_marker_id: Optional[str] = None,
     output_capture_path: Optional[str] = None,
+    resume_session_id: Optional[str] = None,
+    continue_session: bool = False,
+    fork_session: bool = False,
 ) -> None:
     """
     Start an agent CLI in an existing iTerm2 session.
@@ -657,6 +660,9 @@ async def start_agent_in_session(
             (only used if cli.supports_settings_file() returns True)
         output_capture_path: If provided, capture agent's stdout/stderr to this file
             using tee. Useful for agents that output JSONL for idle detection.
+        resume_session_id: If provided, resume this specific session by ID
+        continue_session: If True, continue the most recent session
+        fork_session: If True, fork instead of resume (creates new session ID)
 
     Raises:
         RuntimeError: If shell not ready or agent fails to start within timeout
@@ -679,6 +685,9 @@ async def start_agent_in_session(
         dangerously_skip_permissions=dangerously_skip_permissions,
         settings_file=settings_file,
         env_vars=env,
+        resume_session_id=resume_session_id,
+        continue_session=continue_session,
+        fork_session=fork_session,
     )
 
     # Add output capture via tee if requested
@@ -713,6 +722,9 @@ async def start_claude_in_session(
     shell_ready_timeout: float = 10.0,
     claude_ready_timeout: float = 30.0,
     stop_hook_marker_id: Optional[str] = None,
+    resume_session_id: Optional[str] = None,
+    continue_session: bool = False,
+    fork_session: bool = False,
 ) -> None:
     """
     Start Claude Code in an existing iTerm2 session.
@@ -736,6 +748,9 @@ async def start_claude_in_session(
         claude_ready_timeout: Max seconds to wait for Claude to start and show banner
         stop_hook_marker_id: If provided, inject a Stop hook that logs this marker
             to the JSONL for completion detection
+        resume_session_id: If provided, resume this specific session by ID
+        continue_session: If True, continue the most recent session
+        fork_session: If True, fork instead of resume (creates new session ID)
 
     Raises:
         RuntimeError: If shell not ready or Claude fails to start within timeout
@@ -751,6 +766,9 @@ async def start_claude_in_session(
         shell_ready_timeout=shell_ready_timeout,
         agent_ready_timeout=claude_ready_timeout,
         stop_hook_marker_id=stop_hook_marker_id,
+        resume_session_id=resume_session_id,
+        continue_session=continue_session,
+        fork_session=fork_session,
     )
 
 

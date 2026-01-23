@@ -46,6 +46,9 @@ class AgentCLI(Protocol):
         *,
         dangerously_skip_permissions: bool = False,
         settings_file: str | None = None,
+        resume_session_id: str | None = None,
+        continue_session: bool = False,
+        fork_session: bool = False,
     ) -> list[str]:
         """
         Build the argument list for the CLI command.
@@ -53,9 +56,20 @@ class AgentCLI(Protocol):
         Args:
             dangerously_skip_permissions: If True, add flag to skip permission prompts
             settings_file: Optional path to settings file for hook injection
+            resume_session_id: If provided, resume this specific session by ID
+            continue_session: If True, continue the most recent session
+            fork_session: If True, fork instead of resume (creates new session ID)
 
         Returns:
             List of command-line arguments (not including the command itself)
+
+        Note:
+            Session options (resume_session_id, continue_session, fork_session) are
+            mutually exclusive with starting a fresh session. When any is provided,
+            the CLI starts with existing conversation context.
+
+            For Claude: uses -r/--resume, -c/--continue, --fork-session
+            For Codex: uses subcommands (resume, fork) instead of flags
         """
         ...
 
@@ -101,6 +115,9 @@ class AgentCLI(Protocol):
         dangerously_skip_permissions: bool = False,
         settings_file: str | None = None,
         env_vars: dict[str, str] | None = None,
+        resume_session_id: str | None = None,
+        continue_session: bool = False,
+        fork_session: bool = False,
     ) -> str:
         """
         Build the complete command string including env vars.
@@ -112,6 +129,9 @@ class AgentCLI(Protocol):
             dangerously_skip_permissions: Skip permission prompts
             settings_file: Settings file for hook injection
             env_vars: Environment variables to prepend
+            resume_session_id: Resume a specific session by ID
+            continue_session: Continue the most recent session
+            fork_session: Fork instead of resume (creates new session ID)
 
         Returns:
             Complete command string ready for shell execution
@@ -120,6 +140,9 @@ class AgentCLI(Protocol):
         args = self.build_args(
             dangerously_skip_permissions=dangerously_skip_permissions,
             settings_file=settings_file if self.supports_settings_file() else None,
+            resume_session_id=resume_session_id,
+            continue_session=continue_session,
+            fork_session=fork_session,
         )
 
         if args:

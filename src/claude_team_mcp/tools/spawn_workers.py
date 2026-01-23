@@ -52,6 +52,11 @@ class WorkerConfig(TypedDict, total=False):
     skip_permissions: bool  # Optional: Default False
     use_worktree: bool  # Optional: Create isolated worktree (default True)
 
+    # Session resume/fork/continue options (mutually exclusive)
+    resume_session_id: str  # Optional: Resume specific session by ID
+    continue_session: bool  # Optional: Continue most recent session (Claude: -c, Codex: resume --last)
+    fork_session: bool  # Optional: Fork instead of resume (creates new session ID from history)
+
 
 def register_tools(mcp: FastMCP, ensure_connection) -> None:
     """Register spawn_workers tool on the MCP server."""
@@ -121,6 +126,31 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             skip_permissions: Whether to start Claude with --dangerously-skip-permissions.
                 Default False. Without this, workers can only read local files and will
                 struggle with most commands (writes, shell, etc.).
+            resume_session_id: Resume a specific session by ID. The session ID must match
+                the agent_type (Claude sessions can't be resumed with Codex and vice versa).
+                - Claude: Uses `claude --resume <id>`
+                - Codex: Uses `codex resume <id>`
+            continue_session: Continue the most recent session. Mutually exclusive with
+                resume_session_id.
+                - Claude: Uses `claude --continue`
+                - Codex: Uses `codex resume --last`
+            fork_session: Fork the session instead of resuming in place. Creates a new
+                session ID with the existing conversation history. Use with resume_session_id
+                or continue_session.
+                - Claude: Adds `--fork-session` flag
+                - Codex: Uses `codex fork` subcommand instead of `codex resume`
+
+        **Session Resume/Fork Behavior:**
+
+        When resuming or forking a session, the worker starts with existing context from
+        the previous conversation. This is useful for:
+        - Continuing interrupted work across coordinator restarts
+        - Forking to try different approaches from the same starting point
+        - Recovering workers that completed but need follow-up
+
+        **Important**: Session options must match the agent type. A Claude session ID cannot
+        be resumed with Codex and vice versa - each agent stores sessions in different
+        locations with different formats.
 
         **Worker Assignment (how workers know what to do):**
 
@@ -179,6 +209,24 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             )
             # Then immediately:
             message_workers(session_ids=["Groucho"], message="Your task is...")
+
+        Example (resume a specific Claude session):
+            spawn_workers(
+                workers=[{
+                    "project_path": "/path/to/repo",
+                    "resume_session_id": "abc123-def456-...",
+                    "agent_type": "claude",  # Must match session type
+                }],
+            )
+
+        Example (continue most recent session and fork it):
+            spawn_workers(
+                workers=[{
+                    "project_path": "/path/to/repo",
+                    "continue_session": True,
+                    "fork_session": True,  # Creates new session from history
+                }],
+            )
         """
         from iterm2.profile import LocalWriteOnlyProfile
 
@@ -196,10 +244,21 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 hint="Call spawn_workers multiple times for more workers",
             )
 
-        # Ensure all workers have required fields
+        # Ensure all workers have required fields and validate session options
         for i, w in enumerate(workers):
             if "project_path" not in w:
                 return error_response(f"Worker {i} missing required 'project_path'")
+
+            # Validate mutually exclusive session options
+            resume_session_id = w.get("resume_session_id")
+            continue_session = w.get("continue_session", False)
+
+            if resume_session_id and continue_session:
+                return error_response(
+                    f"Worker {i}: resume_session_id and continue_session are mutually exclusive",
+                    hint="Use resume_session_id to resume a specific session, "
+                         "or continue_session to continue the most recent one.",
+                )
 
         # Ensure we have a fresh connection
         connection, app = await ensure_connection(app_ctx)
@@ -541,6 +600,11 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 marker_id = session_ids[index]
                 agent_type = agent_types[index]
 
+                # Extract session resume/fork/continue options
+                resume_session_id = worker_config.get("resume_session_id")
+                continue_session = worker_config.get("continue_session", False)
+                fork_session = worker_config.get("fork_session", False)
+
                 # Check for worktree and set tracker env var if needed.
                 tracker_info = get_worktree_tracker_dir(project_path)
                 if tracker_info:
@@ -558,6 +622,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                         project_path=project_path,
                         dangerously_skip_permissions=worker_config.get("skip_permissions", False),
                         env=env,
+                        resume_session_id=resume_session_id,
+                        continue_session=continue_session,
+                        fork_session=fork_session,
                     )
                 else:
                     # For Claude: use start_claude_in_session (convenience wrapper)
@@ -567,6 +634,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                         dangerously_skip_permissions=worker_config.get("skip_permissions", False),
                         env=env,
                         stop_hook_marker_id=marker_id,
+                        resume_session_id=resume_session_id,
+                        continue_session=continue_session,
+                        fork_session=fork_session,
                     )
 
             await asyncio.gather(*[start_agent_for_worker(i) for i in range(worker_count)])

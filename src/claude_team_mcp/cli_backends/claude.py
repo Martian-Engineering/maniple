@@ -41,6 +41,9 @@ class ClaudeCLI(AgentCLI):
         *,
         dangerously_skip_permissions: bool = False,
         settings_file: str | None = None,
+        resume_session_id: str | None = None,
+        continue_session: bool = False,
+        fork_session: bool = False,
     ) -> list[str]:
         """
         Build Claude CLI arguments.
@@ -48,14 +51,34 @@ class ClaudeCLI(AgentCLI):
         Args:
             dangerously_skip_permissions: Add --dangerously-skip-permissions
             settings_file: Path to settings JSON for Stop hook injection
+            resume_session_id: Resume specific session by ID (--resume <id>)
+            continue_session: Continue most recent session (--continue)
+            fork_session: Fork instead of resume (--fork-session, use with --resume or --continue)
 
         Returns:
             List of CLI arguments
+
+        Note:
+            Claude Code CLI flags:
+            - -c, --continue: Continue the most recent conversation
+            - -r, --resume [value]: Resume by session ID or open picker
+            - --fork-session: Create new session ID when resuming (use with --resume or --continue)
         """
         args: list[str] = []
 
         if dangerously_skip_permissions:
             args.append("--dangerously-skip-permissions")
+
+        # Session resume/continue options (mutually exclusive modes)
+        if resume_session_id:
+            args.append("--resume")
+            args.append(resume_session_id)
+        elif continue_session:
+            args.append("--continue")
+
+        # Fork flag can be combined with resume or continue
+        if fork_session and (resume_session_id or continue_session):
+            args.append("--fork-session")
 
         # Only add --settings for the default 'claude' command.
         # Custom commands like 'happy' have their own session tracking mechanisms.

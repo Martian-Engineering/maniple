@@ -129,6 +129,58 @@ class TestClaudeCLI:
             assert "BAZ=qux" in cmd
             assert cmd.endswith("claude")
 
+    # Session resume/fork/continue tests
+    def test_build_args_resume_session(self):
+        """Should add --resume flag with session ID."""
+        cli = ClaudeCLI()
+        args = cli.build_args(resume_session_id="abc123-def456")
+        assert "--resume" in args
+        assert "abc123-def456" in args
+
+    def test_build_args_continue_session(self):
+        """Should add --continue flag."""
+        cli = ClaudeCLI()
+        args = cli.build_args(continue_session=True)
+        assert "--continue" in args
+
+    def test_build_args_fork_session_with_resume(self):
+        """Should add --fork-session when combined with resume."""
+        cli = ClaudeCLI()
+        args = cli.build_args(resume_session_id="abc123", fork_session=True)
+        assert "--resume" in args
+        assert "abc123" in args
+        assert "--fork-session" in args
+
+    def test_build_args_fork_session_with_continue(self):
+        """Should add --fork-session when combined with continue."""
+        cli = ClaudeCLI()
+        args = cli.build_args(continue_session=True, fork_session=True)
+        assert "--continue" in args
+        assert "--fork-session" in args
+
+    def test_build_args_fork_session_alone_ignored(self):
+        """Fork flag alone (without resume/continue) should be ignored."""
+        cli = ClaudeCLI()
+        args = cli.build_args(fork_session=True)
+        assert "--fork-session" not in args
+
+    def test_build_full_command_with_resume(self):
+        """build_full_command should handle resume correctly."""
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("CLAUDE_TEAM_COMMAND", None)
+            cli = ClaudeCLI()
+            cmd = cli.build_full_command(resume_session_id="abc123")
+            assert "claude --resume abc123" == cmd
+
+    def test_build_full_command_with_continue_and_fork(self):
+        """build_full_command should handle continue + fork correctly."""
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("CLAUDE_TEAM_COMMAND", None)
+            cli = ClaudeCLI()
+            cmd = cli.build_full_command(continue_session=True, fork_session=True)
+            assert "--continue" in cmd
+            assert "--fork-session" in cmd
+
 
 class TestCodexCLI:
     """Tests for Codex CLI backend."""
@@ -209,6 +261,64 @@ class TestCodexCLI:
             cli = CodexCLI()
             cmd = cli.build_full_command(dangerously_skip_permissions=True)
             assert cmd == "happy codex --dangerously-bypass-approvals-and-sandbox"
+
+    # Session resume/fork tests for Codex (uses subcommands)
+    def test_build_args_resume_session(self):
+        """Should use 'resume' subcommand with session ID."""
+        cli = CodexCLI()
+        args = cli.build_args(resume_session_id="abc123-def456")
+        assert args[0] == "resume"
+        assert "abc123-def456" in args
+
+    def test_build_args_continue_session(self):
+        """Should use 'resume --last' for continue_session."""
+        cli = CodexCLI()
+        args = cli.build_args(continue_session=True)
+        assert "resume" in args
+        assert "--last" in args
+
+    def test_build_args_fork_session_with_id(self):
+        """Should use 'fork' subcommand with session ID."""
+        cli = CodexCLI()
+        args = cli.build_args(resume_session_id="abc123", fork_session=True)
+        assert args[0] == "fork"
+        assert "abc123" in args
+
+    def test_build_args_fork_session_with_continue(self):
+        """Should use 'fork --last' when fork + continue."""
+        cli = CodexCLI()
+        args = cli.build_args(continue_session=True, fork_session=True)
+        assert "fork" in args
+        assert "--last" in args
+
+    def test_build_args_fork_session_alone(self):
+        """Fork alone should use 'fork --last'."""
+        cli = CodexCLI()
+        args = cli.build_args(fork_session=True)
+        assert "fork" in args
+        assert "--last" in args
+
+    def test_build_full_command_with_resume(self):
+        """build_full_command should handle resume correctly."""
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("CLAUDE_TEAM_CODEX_COMMAND", None)
+            cli = CodexCLI()
+            cmd = cli.build_full_command(resume_session_id="abc123")
+            assert cmd == "codex resume abc123"
+
+    def test_build_full_command_with_fork_and_permissions(self):
+        """build_full_command should combine fork with skip_permissions."""
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("CLAUDE_TEAM_CODEX_COMMAND", None)
+            cli = CodexCLI()
+            cmd = cli.build_full_command(
+                resume_session_id="abc123",
+                fork_session=True,
+                dangerously_skip_permissions=True,
+            )
+            assert "fork" in cmd
+            assert "abc123" in cmd
+            assert "--dangerously-bypass-approvals-and-sandbox" in cmd
 
 
 class TestGetCliBackend:
