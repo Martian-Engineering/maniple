@@ -12,18 +12,22 @@ and Codex sessions, and fork from a selected session to inherit relevant context
 - Session logs are stored in `~/.claude/projects/<project-slug>/<session-id>.jsonl`.
   - `session_state.get_project_dir(project_path)` computes the project slug.
 - Codex session logs live under `~/.codex/sessions/` (codex CLI).
+  - Codex JSONL includes a `session_meta` entry with `payload.id`, `payload.cwd`,
+    and `payload.timestamp`.
 
 ## qmd Reality Check
-I verified qmd behavior against the `claude-sessions` collection (Jan 23, 2026):
+I verified qmd behavior against the `claude-sessions` and `codex-sessions`
+collections (Jan 23, 2026):
 - `qmd collection list` shows `claude-sessions` exists (there is no `collection show` subcommand).
 - `qmd search "smart forking" -c claude-sessions --json` works and returns Markdown session exports.
 - `qmd vsearch "smart forking" -c claude-sessions --json` works and returns vector-ranked results.
 - `qmd query "smart forking" -c claude-sessions --json` works, including reranking output.
+- `qmd query "codex session" -c codex-sessions --json` works and returns Codex session exports.
 
 The Markdown session exports include metadata like:
-- `Session ID: <uuid>`
-- `Working Directory: <path>`
-- `Date: <timestamp>`
+- Claude sessions: `Session ID`, `Working Directory`, `Date`
+- Codex sessions: `Session` (session id string) and `Date` today; we should
+  include `Working Directory` when we own the exporter.
 
 Implication: prefer `qmd query` for semantic + rerank, with fallbacks to
 `qmd vsearch` and `qmd search` if qmd errors or is unavailable.
@@ -34,9 +38,10 @@ Implication: prefer `qmd query` for semantic + rerank, with fallbacks to
 ```
 smart_fork(
   intent: str,
+  agent_type: "claude" | "codex" = "claude",
   limit: int = 5,
   project_path: str | None = None,
-  collection: str = "claude-sessions",
+  collection: str | None = None,
   min_score: float | None = None,
   include_snippets: bool = True,
   auto_fork: bool = False,
@@ -46,6 +51,10 @@ smart_fork(
 
 ### Behavior
 1. **Embed + search**
+   - Pick collection by agent type unless explicitly provided:
+     - `claude` → `claude-sessions`
+     - `codex` → `codex-sessions`
+   - Cross-agent forking is not supported; `agent_type` determines collection and CLI.
    - Prefer: `qmd query <intent> -c <collection> --json -n <limit>`
    - If that errors, fall back to:
      - `qmd vsearch <intent> -c <collection> --json -n <limit>`
@@ -53,7 +62,8 @@ smart_fork(
    - If qmd is not installed or collection is missing, skip qmd and return a guidance payload (see below).
 
 2. **Parse results**
-   - Each result is a Markdown file that includes `Session ID`, `Working Directory`, and `Date`.
+   - Each result is a Markdown file that includes `Session ID`, `Working Directory`,
+     `Date`, and `Agent`.
    - Extract:
      - `session_id`
      - `working_directory`
@@ -64,7 +74,10 @@ smart_fork(
      - `source_path` (qmd doc path)
    - Optionally map to JSONL path:
      - `~/.claude/projects/<slug>/<session-id>.jsonl` via `session_state.get_project_dir()`.
-      - `~/.codex/sessions/<session-id>.jsonl` for codex sessions.
+     - `~/.codex/sessions/**/<session-id>.jsonl` for codex sessions (path includes date folders).
+   - Enforce current-repo access control:
+     - If `project_path` is not provided, default to the HTTP server’s project root.
+     - Any session whose `working_directory` is not within `project_path` is excluded.
 
 3. **Return ranked list**
    - Return top results with scores and a short snippet.
@@ -129,7 +142,7 @@ Then in `spawn_workers`, pass these through to the CLI backend to build args:
 - `--resume <id>` when `resume_session_id` is present
 - `--fork-session` when `fork_session` is true
 - `--continue` when `continue_session` is true and no resume id is given
- - For codex: call `codex fork <id>` or `codex resume <id>` depending on the flags
+- For codex: call `codex fork <id>` or `codex resume <id>` depending on the flags
 
 ### Option B: New Tool `smart_fork`
 `smart_fork`:
@@ -144,29 +157,33 @@ Option A provides a more general capability for any caller to resume/fork.
 - qmd output should be parsed using `--json` to avoid brittle text parsing.
 - Extract `Session ID` from markdown body as a fallback if filename doesn’t match.
 - Include an explicit `Agent: claude|codex` header in markdown exports to make agent detection reliable.
+- Normalize headers for both agents: `Session ID`, `Working Directory`, `Date`, `Agent`.
+- Include `Working Directory` for codex exports using `session_meta.payload.cwd`.
+- Consider adding `Repo Root` in exports to make current-repo filtering unambiguous.
 - If a session’s JSONL file doesn’t exist, include `can_fork=false` and a warning.
 - Include a `qmd_error` field if query/vsearch fails so users understand fallback behavior.
 - Add minimal CLI checks to ensure `claude` is on PATH and supports `--fork-session`.
 
 ## qmd Not Installed / Missing Collection Handling
-If `qmd` is not available (`shutil.which("qmd")` is None) or the `claude-sessions`
-collection isn’t configured, the tool should:
-- Return a structured error response with a short, actionable setup guide.
-- Provide a manual fallback option: list the most recent N Claude sessions
-  (from `~/.claude/projects/**.jsonl`) so the user can still choose a session ID.
+If `qmd` is not available (`shutil.which("qmd")` is None) or the relevant
+collection (`claude-sessions` or `codex-sessions`) isn’t configured, the tool should:
+- Log the error and continue running (HTTP server stays up).
+- Return a structured response with a short, actionable setup guide.
+- Provide a manual fallback option: list the most recent N sessions for the
+  current repo and agent type (from JSONL) so the user can still choose a session ID.
 
 Suggested guidance payload:
 ```
 {
   "error": "qmd_not_available",
-  "message": "qmd is not installed or the claude-sessions collection is missing.",
+  "message": "qmd is not installed or the required collection is missing.",
   "next_steps": [
     "Install qmd and ensure it is on PATH",
     "Start claude-team in HTTP mode with CLAUDE_TEAM_QMD_INDEXING=true",
     "Re-run smart_fork once indexing completes"
   ],
   "fallback_sessions": [
-    {"session_id": "...", "project_path": "...", "last_modified": "..."}
+    {"session_id": "...", "project_path": "...", "last_modified": "...", "agent_type": "..."}
   ]
 }
 ```
@@ -174,34 +191,42 @@ Suggested guidance payload:
 ## Ongoing Indexing Setup (claude-team managed)
 Conversation forking is only available when claude-team runs as a persistent
 HTTP server. Indexing is opt-in and controlled by an environment flag.
+Indexing runs in a background worker so HTTP requests remain responsive.
+
+### Storage location
+- Markdown exports live under `~/.claude-team/index/`
+  - `~/.claude-team/index/claude/` for Claude sessions
+  - `~/.claude-team/index/codex/` for Codex sessions
+- qmd collections point at these directories (`claude-sessions`, `codex-sessions`).
 
 ### Opt-in and prerequisites
 - Enable with `CLAUDE_TEAM_QMD_INDEXING=true` (HTTP mode only).
 - On startup, claude-team verifies prerequisites:
   - `qmd` is on PATH
-  - `~/.claude/projects` exists
-  - It can create/read the markdown export directory and qmd collection
-- If any check fails, claude-team exits with a clear, actionable error.
+  - `~/.claude/projects` and `~/.codex/sessions` exist
+  - It can create/read the markdown export directory and qmd collections
+- If any check fails, claude-team logs an actionable error and disables indexing
+  (server remains running).
 
 ### Indexing lifecycle (self-contained)
 When enabled, claude-team owns the full lifecycle:
 1. **Bootstrap:** First run converts existing Claude + Codex JSONL logs to Markdown
-   (include an `Agent:` field in the header) and initializes the `claude-sessions`
-   collection.
-2. **Sync:** Runs `qmd update` and `qmd embed claude-sessions` after conversion.
+   (include an `Agent:` field in the header) and initializes two collections:
+   `claude-sessions` and `codex-sessions`.
+2. **Sync:** Runs `qmd update` and `qmd embed` for both collections after conversion.
 3. **Ongoing:** Schedules periodic refreshes to keep the index current.
 
 ### Schedule configuration
 - Default: hourly.
-- Override with `CLAUDE_TEAM_INDEX_CRON`, which can be a cron expression or
-  a simple interval string (implementation detail TBD, but user-facing stays env-driven).
+- Override with `CLAUDE_TEAM_INDEX_CRON` using a simple interval string
+  (e.g., `15m`, `1h`, `6h`). Cron expressions can be supported later if needed.
 
 ### launchd utility
 Provide a small utility/example for running claude-team as a persistent
-launchd service in HTTP mode. This is the recommended way to keep indexing
-fresh and enable conversation forking.
+launchd service in HTTP mode. Recommended deliverable is an installer script
+that generates and loads a plist for the user. This is the suggested way to
+keep indexing fresh and enable conversation forking.
 
 ## Open Questions
-- Do we want to support smart forking from Codex sessions (different log format)?
-- Should we add a small cache of qmd results per query (I assume no, per project guidelines)?
+- How should result ranking controls be exposed (snippet length, min score)?
 - Should the user-facing tool return short snippets or full context?
