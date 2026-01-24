@@ -56,6 +56,45 @@ def test_build_candidates_filters_agent(tmp_path):
     assert candidates == []
 
 
+def test_build_candidates_filters_project_path(tmp_path):
+    markdown = tmp_path / "session.md"
+    markdown.write_text(
+        "Session ID: session-3\n"
+        "Working Directory: /tmp/project/subdir\n"
+    )
+    raw_results = [{"path": str(markdown)}]
+
+    candidates = smart_fork._build_candidates(
+        raw_results,
+        limit=5,
+        agent_type="claude",
+        project_path="/tmp/project",
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0]["working_directory"] == "/tmp/project/subdir"
+
+
+def test_build_candidates_filters_repo_root(tmp_path):
+    markdown = tmp_path / "session.md"
+    markdown.write_text(
+        "Session ID: session-4\n"
+        "Working Directory: /tmp/project\n"
+        "Repo Root: /tmp/project\n"
+    )
+    raw_results = [{"path": str(markdown)}]
+
+    candidates = smart_fork._build_candidates(
+        raw_results,
+        limit=5,
+        agent_type="claude",
+        repo_root="/tmp/project",
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0]["session_id"] == "session-4"
+
+
 def test_run_qmd_search_fallback(monkeypatch):
     def fake_run(args):
         command = args[1]
@@ -74,3 +113,23 @@ def test_run_qmd_search_fallback(monkeypatch):
     assert result.command == "vsearch"
     assert result.fallback_used is True
     assert "boom" in (result.qmd_error or "")
+
+
+def test_run_qmd_search_fallback_chain(monkeypatch):
+    def fake_run(args):
+        command = args[1]
+        if command in ("query", "vsearch"):
+            return SimpleNamespace(returncode=1, stdout="", stderr="boom")
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"results": [{"path": "/tmp/session.md"}]}',
+            stderr="",
+        )
+
+    monkeypatch.setattr(smart_fork, "_run_qmd_command", fake_run)
+
+    result = smart_fork._run_qmd_search("intent", "collection")
+
+    assert result.command == "search"
+    assert result.fallback_used is True
+    assert result.results == [{"path": "/tmp/session.md"}]

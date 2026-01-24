@@ -95,3 +95,9 @@
 {"type":"comment","timestamp":"2026-01-23T22:09:42.675593Z","issue_id":"cic-a3d","payload":{"body":"Completed via cherry-pick commit 91f8fc5 (from worker branch). Added WorkerConfig resume/fork/continue, AgentCLI updates, Claude/Codex CLI integration, validation, and tests (16 new)."}}
 {"type":"close","timestamp":"2026-01-23T22:09:51.124417Z","issue_id":"cic-a3d","payload":{}}
 {"type":"status_update","timestamp":"2026-01-23T22:15:27.837697Z","issue_id":"cic-8b0","payload":{"status":"in_progress"}}
+{"type":"close","timestamp":"2026-01-24T01:07:36.021417Z","issue_id":"cic-37d","payload":{}}
+{"type":"close","timestamp":"2026-01-24T01:30:31.449028Z","issue_id":"cic-641","payload":{}}
+{"type":"close","timestamp":"2026-01-24T01:30:54.832995Z","issue_id":"cic-8b0","payload":{}}
+{"type":"close","timestamp":"2026-01-24T01:45:26.376769Z","issue_id":"cic-7d9","payload":{}}
+{"type":"close","timestamp":"2026-01-24T01:55:54.435888Z","issue_id":"cic-aad","payload":{}}
+{"type":"close","timestamp":"2026-01-24T02:30:45.856936Z","issue_id":"cic-232","payload":{}}

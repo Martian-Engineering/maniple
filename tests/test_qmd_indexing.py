@@ -6,9 +6,8 @@ import asyncio
 import logging
 from datetime import timedelta
 
-import pytest
-
 from claude_team_mcp.qmd_indexing import (
+    DEFAULT_INDEX_INTERVAL,
     parse_index_interval,
     start_indexing_scheduler,
     stop_indexing_scheduler,
@@ -30,10 +29,9 @@ class TestParseIndexInterval:
         """Normalizes interval input before parsing."""
         assert parse_index_interval(" 6H ") == timedelta(hours=6)
 
-    def test_parse_rejects_invalid(self):
-        """Rejects unsupported interval formats."""
-        with pytest.raises(ValueError):
-            parse_index_interval("1d")
+    def test_parse_invalid_defaults(self):
+        """Falls back to the default interval for invalid input."""
+        assert parse_index_interval("1d") == parse_index_interval(DEFAULT_INDEX_INTERVAL)
 
 
 class TestIndexingScheduler:
