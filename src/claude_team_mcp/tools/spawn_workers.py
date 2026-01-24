@@ -62,6 +62,9 @@ class WorkerConfig(TypedDict, total=False):
     continue_session: bool  # Optional: Continue most recent session (Claude: -c, Codex: resume --last)
     fork_session: bool  # Optional: Fork instead of resume (creates new session ID from history)
 
+    # Convenience param for forking (sugar for resume_session_id + fork_session=True)
+    fork_from: str  # Optional: Session ID to fork from (mutually exclusive with resume_session_id/continue_session)
+
 
 def register_tools(mcp: FastMCP, ensure_connection) -> None:
     """Register spawn_workers tool on the MCP server."""
@@ -144,6 +147,12 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 or continue_session.
                 - Claude: Adds `--fork-session` flag
                 - Codex: Uses `codex fork` subcommand instead of `codex resume`
+            fork_from: Convenience parameter for forking a specific session. Syntactic sugar
+                for `resume_session_id=<id>` + `fork_session=True`. Mutually exclusive with
+                resume_session_id and continue_session. Accepts session IDs from smart_fork
+                search results.
+                - Claude: Uses `claude --resume <id> --fork-session`
+                - Codex: Uses `codex fork <id>`
 
         **Session Resume/Fork Behavior:**
 
@@ -232,6 +241,15 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     "fork_session": True,  # Creates new session from history
                 }],
             )
+
+        Example (fork from a specific session using fork_from):
+            # fork_from is syntactic sugar for resume_session_id + fork_session=True
+            spawn_workers(
+                workers=[{
+                    "project_path": "/path/to/repo",
+                    "fork_from": "abc123-def456-...",  # Session ID from smart_fork search
+                }],
+            )
         """
         from iterm2.profile import LocalWriteOnlyProfile
 
@@ -257,6 +275,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             # Validate mutually exclusive session options
             resume_session_id = w.get("resume_session_id")
             continue_session = w.get("continue_session", False)
+            fork_from = w.get("fork_from")
 
             if resume_session_id and continue_session:
                 return error_response(
@@ -264,6 +283,21 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     hint="Use resume_session_id to resume a specific session, "
                          "or continue_session to continue the most recent one.",
                 )
+
+            # fork_from is syntactic sugar for resume_session_id + fork_session=True
+            if fork_from:
+                if resume_session_id:
+                    return error_response(
+                        f"Worker {i}: fork_from and resume_session_id are mutually exclusive",
+                        hint="Use fork_from to fork a session (sets resume_session_id + fork_session automatically), "
+                             "or use resume_session_id with fork_session=True manually.",
+                    )
+                if continue_session:
+                    return error_response(
+                        f"Worker {i}: fork_from and continue_session are mutually exclusive",
+                        hint="Use fork_from to fork a specific session by ID, "
+                             "or use continue_session with fork_session=True to fork the most recent session.",
+                    )
 
         # Ensure we have a fresh connection
         connection, app = await ensure_connection(app_ctx)
@@ -606,9 +640,15 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 agent_type = agent_types[index]
 
                 # Extract session resume/fork/continue options
-                resume_session_id = worker_config.get("resume_session_id")
+                # fork_from is sugar for resume_session_id + fork_session=True
+                fork_from = worker_config.get("fork_from")
+                if fork_from:
+                    resume_session_id = fork_from
+                    fork_session = True
+                else:
+                    resume_session_id = worker_config.get("resume_session_id")
+                    fork_session = worker_config.get("fork_session", False)
                 continue_session = worker_config.get("continue_session", False)
-                fork_session = worker_config.get("fork_session", False)
 
                 # Check for worktree and set tracker env var if needed.
                 tracker_info = get_worktree_tracker_dir(project_path)
