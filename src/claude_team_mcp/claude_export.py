@@ -51,10 +51,21 @@ def _resolve_working_directory(state: SessionState, project_dir: Optional[Path])
     return slug_path or ""
 
 
+# Normalize a datetime to naive UTC for consistent comparison.
+def _normalize_to_naive_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is not None:
+        # Convert to UTC, then strip tzinfo
+        from datetime import timezone
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
 # Pick a stable session date from message timestamps or file mtime.
 def _resolve_session_date(state: SessionState, jsonl_path: Path) -> datetime:
     if state.messages:
-        return min(message.timestamp for message in state.messages)
+        # Normalize all timestamps to naive UTC to avoid comparison errors
+        normalized = [_normalize_to_naive_utc(m.timestamp) for m in state.messages]
+        return min(normalized)
     return datetime.fromtimestamp(jsonl_path.stat().st_mtime)
 
 

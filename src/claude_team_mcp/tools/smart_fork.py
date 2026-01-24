@@ -174,7 +174,7 @@ def _build_candidates(
         headers: dict[str, str] = {}
         # Prefer file-backed metadata, then fill missing values from snippet.
         if path_value:
-            headers.update(_load_headers_from_path(Path(path_value)))
+            headers.update(_load_headers_from_path(path_value))
         if snippet:
             snippet_headers = _parse_markdown_headers(str(snippet))
             for key, value in snippet_headers.items():
@@ -244,17 +244,37 @@ def _parse_markdown_headers(text: str) -> dict[str, str]:
         match = re.match(r"^\s*[-*]?\s*([^:]+?)\s*:\s*(.+?)\s*$", line)
         if not match:
             continue
-        label = match.group(1).strip().lower()
-        value = match.group(2).strip()
+        # Strip markdown bold/italic markers (**bold**, *italic*) from label
+        label = match.group(1).strip().lower().strip("*_")
+        value = match.group(2).strip().strip("*_")
         key = _HEADER_MAP.get(label)
         if key and value:
             headers[key] = value
     return headers
 
 
-# Read header metadata from a markdown file path.
-def _load_headers_from_path(path: Path) -> dict[str, str]:
+# Read header metadata from a path or qmd:// URL.
+def _load_headers_from_path(path_or_url: Path | str) -> dict[str, str]:
+    path_str = str(path_or_url)
+    
+    # Handle qmd:// URLs by fetching content with qmd get
+    if path_str.startswith("qmd://"):
+        try:
+            result = subprocess.run(
+                ["qmd", "get", path_str],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0 and result.stdout:
+                return _parse_markdown_headers(result.stdout)
+        except FileNotFoundError:
+            pass
+        return {}
+    
+    # Handle local file paths
     try:
+        path = Path(path_str) if isinstance(path_or_url, str) else path_or_url
         content = path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return {}

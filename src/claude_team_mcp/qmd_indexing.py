@@ -180,21 +180,32 @@ def _run_qmd_command(qmd_command: str, args: list[str]) -> bool:
     return True
 
 
+# Try to add a collection, treating "already exists" as success.
+def _ensure_collection(qmd_command: str, name: str, path: Path) -> bool:
+    command = [qmd_command, "collection", "add", name, "--path", str(path)]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            return True
+        # Treat "already exists" as success (idempotent operation)
+        if "already exists" in result.stderr.lower():
+            return True
+        _logger.error(
+            "QMD collection add failed (exit %s): %s",
+            result.returncode,
+            " ".join(command),
+        )
+        return False
+    except Exception as exc:
+        _logger.exception("QMD collection add error", exc_info=exc)
+        return False
+
+
 # Ensure collections exist and are indexed before scheduling.
 def _bootstrap_collections(config: QmdIndexingConfig) -> None:
-    # Create collections only when their paths are missing.
+    # Create collections (idempotent - "already exists" is not an error).
     for collection in config.collections:
-        if not collection.path.exists():
-            _run_qmd_command(
-                config.qmd_command,
-                [
-                    "collection",
-                    "add",
-                    collection.name,
-                    "--path",
-                    str(collection.path),
-                ],
-            )
+        _ensure_collection(config.qmd_command, collection.name, collection.path)
 
     # Always refresh indexes after bootstrap.
     for collection in config.collections:
