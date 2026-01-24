@@ -1,7 +1,7 @@
 """
 Smart fork tool.
 
-Provides smart_fork for searching indexed sessions and optionally forking one.
+Provides smart_fork for searching indexed sessions.
 """
 
 import json
@@ -9,20 +9,16 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
-from mcp.server.fastmcp import Context, FastMCP
-from mcp.server.session import ServerSession
+from mcp.server.fastmcp import FastMCP
 
-if TYPE_CHECKING:
-    from ..server import AppContext
-
-from . import spawn_workers as spawn_workers_tool
 from ..utils import error_response
 
 _AGENT_COLLECTIONS = {
-    "claude": "ct-claude-sessions",
-    "codex": "ct-codex-sessions",
+    "claude": ["ct-claude-sessions"],
+    "codex": ["ct-codex-sessions"],
+    "both": ["ct-claude-sessions", "ct-codex-sessions"],
 }
 
 _QMD_COMMANDS = ("query", "vsearch", "search")
@@ -58,78 +54,77 @@ def register_tools(mcp: FastMCP) -> None:
     """Register smart_fork tool on the MCP server."""
 
     @mcp.tool()
-    async def smart_fork(
-        ctx: Context[ServerSession, "AppContext"],
+    def smart_fork(
         intent: str,
-        agent_type: Literal["claude", "codex"] = "claude",
+        agent_type: Literal["claude", "codex", "both"] = "both",
         limit: int = 5,
-        auto_fork: bool = False,
-        fork_index: int | None = None,
     ) -> dict:
         """
-        Search indexed sessions and optionally fork a matching session.
+        Search indexed sessions for relevant context.
 
         Args:
             intent: Natural-language description of the desired work context.
-            agent_type: Which agent to search ("claude" or "codex").
+            agent_type: Which agent sessions to search ("claude", "codex", or "both").
             limit: Maximum number of sessions to return.
-            auto_fork: When true, immediately fork the top-ranked session.
-            fork_index: Fork the session at this index (0-based).
 
         Returns:
-            Dict with ranked sessions and optional fork result.
+            Dict with ranked sessions matching the intent.
         """
         # Validate inputs early for clearer errors.
         if not intent.strip():
             return error_response("intent is required")
         if agent_type not in _AGENT_COLLECTIONS:
-            return error_response("agent_type must be 'claude' or 'codex'")
+            return error_response("agent_type must be 'claude', 'codex', or 'both'")
         if limit < 1:
             return error_response("limit must be at least 1")
-        if fork_index is not None and fork_index < 0:
-            return error_response("fork_index must be non-negative")
 
-        collection = _AGENT_COLLECTIONS[agent_type]
+        collections = _AGENT_COLLECTIONS[agent_type]
 
         # QMD must be installed to run search commands.
         if shutil.which("qmd") is None:
-            return _qmd_unavailable_response(intent, agent_type, collection)
+            return _qmd_unavailable_response(intent, agent_type, collections)
 
-        # Execute the qmd search pipeline with fallbacks.
-        search_result = _run_qmd_search(intent, collection)
-        candidates = _build_candidates(search_result.results, limit, agent_type)
+        # Execute the qmd search pipeline with fallbacks across all collections.
+        # When searching multiple collections, merge and sort by score.
+        all_results: list[dict] = []
+        fallback_used = False
+        last_command: str | None = None
+        last_error: str | None = None
+
+        for collection in collections:
+            search_result = _run_qmd_search(intent, collection)
+            all_results.extend(search_result.results)
+            if search_result.fallback_used:
+                fallback_used = True
+            if search_result.command:
+                last_command = search_result.command
+            if search_result.qmd_error:
+                last_error = search_result.qmd_error
+
+        # Build candidates with optional agent_type filter (None for "both").
+        filter_agent = None if agent_type == "both" else agent_type
+        candidates = _build_candidates(all_results, limit, filter_agent)
 
         response: dict = {
             "intent": intent,
             "agent_type": agent_type,
-            "collection": collection,
+            "collections": collections,
             "results": candidates,
             "count": len(candidates),
-            "fallback_used": search_result.fallback_used,
-            "qmd_command": search_result.command,
+            "fallback_used": fallback_used,
+            "qmd_command": last_command,
         }
 
-        if search_result.qmd_error:
-            response["qmd_error"] = search_result.qmd_error
-
-        # Optionally fork a chosen session.
-        selected_index = _resolve_fork_index(auto_fork, fork_index)
-        if selected_index is not None:
-            fork_response = await _fork_session(
-                ctx,
-                candidates,
-                selected_index,
-                agent_type,
-            )
-            if "error" in fork_response:
-                return fork_response
-            response.update(fork_response)
+        if last_error:
+            response["qmd_error"] = last_error
 
         return response
 
 
 # Check for qmd and provide guidance when unavailable.
-def _qmd_unavailable_response(intent: str, agent_type: str, collection: str) -> dict:
+def _qmd_unavailable_response(
+    intent: str, agent_type: str, collections: list[str]
+) -> dict:
     return error_response(
         "QMD search is unavailable (qmd not found on PATH)",
         hint=(
@@ -139,7 +134,7 @@ def _qmd_unavailable_response(intent: str, agent_type: str, collection: str) -> 
         guidance={
             "intent": intent,
             "agent_type": agent_type,
-            "collection": collection,
+            "collections": collections,
             "next_steps": [
                 "Install qmd and ensure it is on PATH.",
                 "Run claude-team in HTTP mode with indexing enabled.",
@@ -148,26 +143,30 @@ def _qmd_unavailable_response(intent: str, agent_type: str, collection: str) -> 
     )
 
 
-# Determine which session index should be auto-forked.
-def _resolve_fork_index(auto_fork: bool, fork_index: int | None) -> int | None:
-    if fork_index is not None:
-        return fork_index
-    if auto_fork:
-        return 0
-    return None
-
-
 # Build candidates from qmd results by parsing session metadata headers.
 def _build_candidates(
     raw_results: list[dict],
     limit: int,
-    agent_type: str,
+    agent_type: str | None,
 ) -> list[dict]:
+    """
+    Build ranked candidate list from raw qmd results.
+
+    Args:
+        raw_results: Raw results from qmd search (may be from multiple collections).
+        limit: Maximum number of candidates to return.
+        agent_type: Filter to specific agent type, or None to include all.
+
+    Returns:
+        List of candidate dicts sorted by score (descending).
+    """
     candidates: list[dict] = []
 
     for result in raw_results:
         # Pull common fields from qmd output (allowing for nested payloads).
-        path_value = _extract_result_field(result, ("path", "file", "source", "document_path"))
+        path_value = _extract_result_field(
+            result, ("path", "file", "source", "document_path")
+        )
         snippet = _extract_result_field(result, ("snippet", "text", "content"))
         score = _extract_score(result)
 
@@ -180,9 +179,9 @@ def _build_candidates(
             for key, value in snippet_headers.items():
                 headers.setdefault(key, value)
 
-        # Enforce agent-type consistency when metadata is available.
+        # Enforce agent-type consistency when filter is specified.
         header_agent = headers.get("agent_type")
-        if header_agent and header_agent != agent_type:
+        if agent_type is not None and header_agent and header_agent != agent_type:
             continue
 
         session_id = headers.get("session_id")
@@ -190,11 +189,12 @@ def _build_candidates(
         if not session_id or not working_directory:
             continue
 
-        # Emit only forkable sessions (session_id + working_directory).
+        # Emit valid sessions with required metadata.
         candidates.append(
             {
                 "session_id": session_id,
                 "working_directory": working_directory,
+                "agent_type": header_agent,
                 "date": headers.get("date"),
                 "score": score,
                 "snippet": snippet,
@@ -202,10 +202,10 @@ def _build_candidates(
             }
         )
 
-        if len(candidates) >= limit:
-            break
+    # Sort by score descending (None scores sort last).
+    candidates.sort(key=lambda c: (c.get("score") is not None, c.get("score") or 0), reverse=True)
 
-    return candidates
+    return candidates[:limit]
 
 
 # Extract a field from a qmd result, including nested document/metadata sections.
@@ -354,42 +354,3 @@ def _parse_qmd_json(raw: str) -> list[dict]:
         return [data]
 
     return []
-
-
-# Spawn a forked worker session using spawn_workers tool.
-async def _fork_session(
-    ctx: Context[ServerSession, "AppContext"],
-    candidates: list[dict],
-    index: int,
-    agent_type: str,
-) -> dict:
-    # Validate selection before attempting to fork.
-    if not candidates:
-        return error_response("No forkable sessions found")
-    if index >= len(candidates):
-        return error_response("fork_index is out of range")
-
-    candidate = candidates[index]
-    session_id = candidate.get("session_id")
-    working_directory = candidate.get("working_directory")
-    if not session_id or not working_directory:
-        return error_response("Selected session is missing required metadata")
-
-    spawn_tool = spawn_workers_tool.SPAWN_WORKERS_TOOL
-    if spawn_tool is None:
-        return error_response("spawn_workers tool is not available")
-
-    # Use spawn_workers resume+fork semantics for the chosen agent type.
-    worker_config = {
-        "project_path": working_directory,
-        "agent_type": agent_type,
-        "resume_session_id": session_id,
-        "fork_session": True,
-    }
-
-    fork_result = await spawn_tool(ctx, workers=[worker_config])
-
-    return {
-        "forked_index": index,
-        "forked_session": fork_result,
-    }

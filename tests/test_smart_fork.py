@@ -34,7 +34,8 @@ def test_build_candidates_reads_markdown(tmp_path):
         }
     ]
 
-    candidates = smart_fork._build_candidates(raw_results, limit=5, agent_type="claude")
+    # agent_type=None means no filtering (for "both" mode)
+    candidates = smart_fork._build_candidates(raw_results, limit=5, agent_type=None)
 
     assert len(candidates) == 1
     assert candidates[0]["session_id"] == "session-1"
@@ -51,9 +52,18 @@ def test_build_candidates_filters_agent(tmp_path):
     )
     raw_results = [{"path": str(markdown)}]
 
+    # Filter for claude should exclude codex sessions
     candidates = smart_fork._build_candidates(raw_results, limit=5, agent_type="claude")
-
     assert candidates == []
+
+    # Filter for codex should include it
+    candidates = smart_fork._build_candidates(raw_results, limit=5, agent_type="codex")
+    assert len(candidates) == 1
+    assert candidates[0]["agent_type"] == "codex"
+
+    # No filter (both) should include all
+    candidates = smart_fork._build_candidates(raw_results, limit=5, agent_type=None)
+    assert len(candidates) == 1
 
 
 def test_build_candidates_filters_project_path(tmp_path):
@@ -67,7 +77,7 @@ def test_build_candidates_filters_project_path(tmp_path):
     candidates = smart_fork._build_candidates(
         raw_results,
         limit=5,
-        agent_type="claude",
+        agent_type=None,
     )
 
     assert len(candidates) == 1
@@ -86,11 +96,65 @@ def test_build_candidates_filters_repo_root(tmp_path):
     candidates = smart_fork._build_candidates(
         raw_results,
         limit=5,
-        agent_type="claude",
+        agent_type=None,
     )
 
     assert len(candidates) == 1
     assert candidates[0]["session_id"] == "session-4"
+
+
+def test_build_candidates_sorts_by_score(tmp_path):
+    """Results from multiple collections should be sorted by score descending."""
+    md1 = tmp_path / "session1.md"
+    md1.write_text(
+        "Session ID: session-low\n"
+        "Working Directory: /tmp/project\n"
+        "Agent: claude\n"
+    )
+    md2 = tmp_path / "session2.md"
+    md2.write_text(
+        "Session ID: session-high\n"
+        "Working Directory: /tmp/project\n"
+        "Agent: codex\n"
+    )
+    md3 = tmp_path / "session3.md"
+    md3.write_text(
+        "Session ID: session-mid\n"
+        "Working Directory: /tmp/project\n"
+        "Agent: claude\n"
+    )
+    raw_results = [
+        {"path": str(md1), "score": 0.3},
+        {"path": str(md2), "score": 0.9},
+        {"path": str(md3), "score": 0.6},
+    ]
+
+    # No filter (both) should sort by score
+    candidates = smart_fork._build_candidates(raw_results, limit=5, agent_type=None)
+
+    assert len(candidates) == 3
+    assert candidates[0]["session_id"] == "session-high"
+    assert candidates[0]["score"] == 0.9
+    assert candidates[1]["session_id"] == "session-mid"
+    assert candidates[1]["score"] == 0.6
+    assert candidates[2]["session_id"] == "session-low"
+    assert candidates[2]["score"] == 0.3
+
+
+def test_build_candidates_includes_agent_type(tmp_path):
+    """Candidates should include agent_type metadata when available."""
+    markdown = tmp_path / "session.md"
+    markdown.write_text(
+        "Session ID: session-5\n"
+        "Working Directory: /tmp/project\n"
+        "Agent: codex\n"
+    )
+    raw_results = [{"path": str(markdown)}]
+
+    candidates = smart_fork._build_candidates(raw_results, limit=5, agent_type=None)
+
+    assert len(candidates) == 1
+    assert candidates[0]["agent_type"] == "codex"
 
 
 def test_run_qmd_search_fallback(monkeypatch):
