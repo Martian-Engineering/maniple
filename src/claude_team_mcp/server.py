@@ -20,7 +20,12 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 
 from .iterm_utils import read_screen_text
-from .qmd_indexing import configure_qmd_indexing
+from .qmd_indexing import (
+    configure_qmd_indexing,
+    run_indexing_pipeline,
+    start_indexing_scheduler,
+    stop_indexing_scheduler,
+)
 from .registry import SessionRegistry
 from .tools import register_all_tools
 from .utils import error_response, HINTS
@@ -193,11 +198,26 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
         registry=get_global_registry(),
     )
 
+    indexing_task = None
+    indexing_config = configure_qmd_indexing()
+    if indexing_config:
+        logger.info(
+            "Starting QMD indexing scheduler with interval %s",
+            indexing_config.interval_label,
+        )
+        indexing_task = start_indexing_scheduler(
+            run_indexing_pipeline,
+            indexing_config.interval,
+            logger=logger,
+        )
+
     try:
         yield ctx
     finally:
         # Cleanup: close any remaining sessions gracefully
         logger.info("Claude Team MCP Server shutting down...")
+        if indexing_task is not None:
+            await stop_indexing_scheduler(indexing_task, logger=logger)
         if ctx.registry.count() > 0:
             logger.info(f"Cleaning up {ctx.registry.count()} managed session(s)...")
         logger.info("Shutdown complete")
@@ -208,11 +228,7 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
 # =============================================================================
 
 
-def create_mcp_server(
-    host: str = "127.0.0.1",
-    port: int = 8766,
-    transport: str = "stdio",
-) -> FastMCP:
+def create_mcp_server(host: str = "127.0.0.1", port: int = 8766) -> FastMCP:
     """Create and configure the FastMCP server instance."""
     server = FastMCP(
         "Claude Team Manager",
@@ -222,12 +238,11 @@ def create_mcp_server(
     )
     # Register all tools from the tools package
     register_all_tools(server, ensure_connection)
-    configure_qmd_indexing(server, transport=transport)
     return server
 
 
 # Default server instance for stdio mode (backwards compatibility)
-mcp = create_mcp_server(transport="stdio")
+mcp = create_mcp_server()
 
 
 # =============================================================================
@@ -360,11 +375,7 @@ def run_server(transport: str = "stdio", port: int = 8766):
     if transport == "streamable-http":
         logger.info(f"Starting Claude Team MCP Server (HTTP on port {port})...")
         # Create server with configured port for HTTP mode
-        server = create_mcp_server(
-            host="127.0.0.1",
-            port=port,
-            transport="streamable-http",
-        )
+        server = create_mcp_server(host="127.0.0.1", port=port)
         server.run(transport="streamable-http")
     else:
         logger.info("Starting Claude Team MCP Server (stdio)...")
