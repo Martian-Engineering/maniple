@@ -44,8 +44,11 @@ logger = logging.getLogger("claude-team-mcp")
 
 
 def _sanitize_project_path(path: str | Path) -> str:
-    """Sanitize a path to match Claude Code's project folder naming convention."""
-    return str(path).replace("/", "-")
+    """Sanitize a path to match Claude Code's project folder naming convention.
+
+    Claude Code replaces both '/' and '.' with '-' when creating project folder names.
+    """
+    return str(path).replace("/", "-").replace(".", "-")
 
 
 def _copy_session_for_worktree(
