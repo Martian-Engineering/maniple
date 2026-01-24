@@ -18,6 +18,7 @@ from . import list_worktrees
 from . import message_workers
 from . import read_worker_logs
 from . import spawn_workers
+from . import smart_fork
 from . import wait_idle_workers
 
 
@@ -45,6 +46,7 @@ def register_all_tools(mcp: FastMCP, ensure_connection) -> None:
     adopt_worker.register_tools(mcp, ensure_connection)
     discover_workers.register_tools(mcp, ensure_connection)
     spawn_workers.register_tools(mcp, ensure_connection)
+    smart_fork.register_tools(mcp)
 
 
 __all__ = [

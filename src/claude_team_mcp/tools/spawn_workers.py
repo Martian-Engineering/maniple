@@ -8,6 +8,7 @@ import logging
 import os
 import uuid
 from pathlib import Path
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Literal, Required, TypedDict
 
 from mcp.server.fastmcp import Context, FastMCP
@@ -37,7 +38,11 @@ from ..utils import HINTS, error_response, get_worktree_tracker_dir
 from ..worker_prompt import generate_worker_prompt, get_coordinator_guidance
 from ..worktree import WorktreeError, create_local_worktree
 
+
 logger = logging.getLogger("claude-team-mcp")
+
+# Exposed for internal tool reuse (set during register_tools)
+SPAWN_WORKERS_TOOL: Callable[..., Awaitable[dict]] | None = None
 
 
 class WorkerConfig(TypedDict, total=False):
@@ -777,3 +782,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 str(e),
                 hint=HINTS["iterm_connection"],
             )
+
+    # Allow other tools to call spawn_workers directly.
+    global SPAWN_WORKERS_TOOL
+    SPAWN_WORKERS_TOOL = spawn_workers
