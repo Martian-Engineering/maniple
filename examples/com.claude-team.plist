@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- LaunchAgent label must match filename -->
+    <key>Label</key>
+    <string>com.claude-team</string>
+
+    <!-- Run claude-team in HTTP mode on port 5111 -->
+    <key>ProgramArguments</key>
+    <array>
+      <string>/usr/bin/env</string>
+      <string>uv</string>
+      <string>run</string>
+      <string>python</string>
+      <string>-m</string>
+      <string>claude_team_mcp</string>
+      <string>--http</string>
+      <string>--port</string>
+      <string>5111</string>
+    </array>
+
+    <!-- Repo root with pyproject.toml for uv run -->
+    <key>WorkingDirectory</key>
+    <string>/path/to/claude-team</string>
+
+    <!-- Environment options for indexing behavior and PATH for uv -->
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>CLAUDE_TEAM_QMD_INDEXING</key>
+      <string>true</string>
+      <key>CLAUDE_TEAM_INDEX_CRON</key>
+      <string>1h</string>
+      <key>PATH</key>
+      <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <!-- Log files (make sure the directory exists) -->
+    <key>StandardOutPath</key>
+    <string>/Users/you/.claude-team/logs/claude-team.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/you/.claude-team/logs/claude-team.err.log</string>
+
+    <!-- Run on load and restart on failure -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+  </dict>
+</plist>
