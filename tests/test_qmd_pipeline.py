@@ -62,8 +62,8 @@ def test_configure_qmd_indexing_bootstrap(monkeypatch, tmp_path):
 
     assert config is not None
     assert calls == [
-        ["qmd", "collection", "add", "ct-claude-sessions", "--path", str(claude_path)],
-        ["qmd", "collection", "add", "ct-codex-sessions", "--path", str(codex_path)],
+        ["qmd", "collection", "add", str(claude_path), "--name", "ct-claude-sessions"],
+        ["qmd", "collection", "add", str(codex_path), "--name", "ct-codex-sessions"],
         ["qmd", "update", "ct-claude-sessions"],
         ["qmd", "embed", "ct-claude-sessions"],
         ["qmd", "update", "ct-codex-sessions"],

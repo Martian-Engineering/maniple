@@ -182,7 +182,7 @@ def _run_qmd_command(qmd_command: str, args: list[str]) -> bool:
 
 # Try to add a collection, treating "already exists" as success.
 def _ensure_collection(qmd_command: str, name: str, path: Path) -> bool:
-    command = [qmd_command, "collection", "add", name, "--path", str(path)]
+    command = [qmd_command, "collection", "add", str(path), "--name", name]
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=30)
         if result.returncode == 0:

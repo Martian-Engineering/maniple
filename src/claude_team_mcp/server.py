@@ -23,7 +23,7 @@ from .iterm_utils import read_screen_text
 from .qmd_indexing import (
     configure_index_schedule,
     configure_qmd_indexing,
-    run_indexing_pipeline,
+    run_indexing_pipeline_async,
     start_indexing_scheduler,
     stop_indexing_scheduler,
 )
@@ -208,7 +208,7 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
             schedule_config.interval_label,
         )
         indexing_task = start_indexing_scheduler(
-            run_indexing_pipeline,
+            run_indexing_pipeline_async,
             schedule_config.interval,
             logger=logger,
         )
