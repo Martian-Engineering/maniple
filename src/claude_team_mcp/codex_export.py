@@ -138,5 +138,46 @@ def export_codex_session_markdown(
 
     return output_path
 
-# Alias for qmd_indexing compatibility
-export_codex_sessions = export_codex_session_markdown
+# Codex sessions directory (matches idle_detection.py)
+CODEX_SESSIONS_DIR = Path.home() / ".codex" / "sessions"
+
+
+def export_codex_sessions(output_dir: Path) -> list[Path]:
+    """
+    Export all Codex sessions to Markdown.
+
+    Scans ~/.codex/sessions/ for all session JSONL files and exports
+    them to the specified output directory.
+
+    Args:
+        output_dir: Directory to write Markdown exports to.
+
+    Returns:
+        List of paths to exported Markdown files.
+    """
+    exported: list[Path] = []
+
+    # Codex sessions are organized as ~/.codex/sessions/{YYYY}/{MM-DD}/*.jsonl
+    if not CODEX_SESSIONS_DIR.exists():
+        return exported
+
+    # Scan year directories.
+    for year_dir in CODEX_SESSIONS_DIR.iterdir():
+        if not year_dir.is_dir():
+            continue
+
+        # Scan date directories within each year.
+        for date_dir in year_dir.iterdir():
+            if not date_dir.is_dir():
+                continue
+
+            # Export each JSONL session file.
+            for jsonl_path in sorted(date_dir.glob("*.jsonl")):
+                exported_path = export_codex_session_markdown(
+                    jsonl_path,
+                    output_dir=output_dir,
+                )
+                if exported_path:
+                    exported.append(exported_path)
+
+    return exported

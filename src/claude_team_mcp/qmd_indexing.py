@@ -288,30 +288,53 @@ def run_indexing_pipeline(config: QmdIndexingConfig | None = None) -> None:
     )
 
 
-async def _run_indexing_once(
-    run_pipeline: Callable[[], Awaitable[None]],
-    logger: logging.Logger,
+async def run_indexing_pipeline_async(
+    config: QmdIndexingConfig | None = None,
 ) -> None:
-    """Run a single indexing cycle and log the outcome."""
-    logger.info(
+    """
+    Async wrapper for run_indexing_pipeline.
+
+    Runs the synchronous pipeline in a thread pool to avoid blocking
+    the event loop during file I/O and subprocess calls.
+    """
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, run_indexing_pipeline, config)
+
+
+async def _run_indexing_once(
+    run_pipeline: Callable[[], Awaitable[None]] | None = None,
+    logger: logging.Logger | None = None,
+) -> None:
+    """
+    Run a single indexing cycle and log the outcome.
+
+    Args:
+        run_pipeline: Async callable to execute. Defaults to run_indexing_pipeline_async.
+        logger: Logger for status output. Defaults to module logger.
+    """
+    # Use defaults when not provided (enables standalone testing).
+    effective_pipeline = run_pipeline or run_indexing_pipeline_async
+    effective_logger = logger or _logger
+
+    effective_logger.info(
         "QMD indexing run started",
         extra={"event": "qmd_indexing_run_start"},
     )
     try:
-        await run_pipeline()
+        await effective_pipeline()
     except asyncio.CancelledError:
-        logger.info(
+        effective_logger.info(
             "QMD indexing run cancelled",
             extra={"event": "qmd_indexing_run_cancel"},
         )
         raise
     except Exception:
-        logger.exception(
+        effective_logger.exception(
             "QMD indexing run failed",
             extra={"event": "qmd_indexing_run_failed"},
         )
     else:
-        logger.info(
+        effective_logger.info(
             "QMD indexing run completed",
             extra={"event": "qmd_indexing_run_complete"},
         )
@@ -393,6 +416,7 @@ __all__ = [
     "configure_qmd_indexing",
     "parse_index_interval",
     "run_indexing_pipeline",
+    "run_indexing_pipeline_async",
     "start_indexing_scheduler",
     "stop_indexing_scheduler",
 ]

@@ -175,5 +175,43 @@ def export_project_sessions(
 
     return exported
 
-# Alias for qmd_indexing compatibility
-export_claude_sessions = export_project_sessions
+def export_claude_sessions(output_dir: Path) -> list[Path]:
+    """
+    Export all Claude sessions from all projects to Markdown.
+
+    Scans ~/.claude/projects/ for all project directories and exports
+    their session JSONL files to the specified output directory.
+
+    Args:
+        output_dir: Directory to write Markdown exports to.
+
+    Returns:
+        List of paths to exported Markdown files.
+    """
+    from .session_state import CLAUDE_PROJECTS_DIR
+
+    if not CLAUDE_PROJECTS_DIR.exists():
+        return []
+
+    exported: list[Path] = []
+
+    # Scan all project directories in the Claude projects root.
+    for project_dir in CLAUDE_PROJECTS_DIR.iterdir():
+        if not project_dir.is_dir():
+            continue
+
+        # Export each JSONL session file in deterministic order.
+        for jsonl_path in sorted(project_dir.glob("*.jsonl")):
+            # Skip agent sub-session files.
+            if jsonl_path.name.startswith("agent-"):
+                continue
+
+            exported_path = export_jsonl_session(
+                jsonl_path,
+                output_root=output_dir,
+                project_dir=project_dir,
+            )
+            if exported_path:
+                exported.append(exported_path)
+
+    return exported
