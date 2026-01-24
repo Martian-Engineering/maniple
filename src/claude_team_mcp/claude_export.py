@@ -174,3 +174,6 @@ def export_project_sessions(
             exported.append(exported_path)
 
     return exported
+
+# Alias for qmd_indexing compatibility
+export_claude_sessions = export_project_sessions

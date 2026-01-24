@@ -137,3 +137,6 @@ def export_codex_session_markdown(
         return None
 
     return output_path
+
+# Alias for qmd_indexing compatibility
+export_codex_sessions = export_codex_session_markdown

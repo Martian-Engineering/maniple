@@ -49,6 +49,8 @@ class QmdIndexingConfig:
     qmd_command: str
     claude: QmdCollection
     codex: QmdCollection
+    interval: timedelta
+    interval_label: str
 
     @property
     def collections(self) -> tuple[QmdCollection, QmdCollection]:
@@ -187,7 +189,7 @@ def _bootstrap_collections(config: QmdIndexingConfig) -> None:
                 config.qmd_command,
                 [
                     "collection",
-                    "create",
+                    "add",
                     collection.name,
                     "--path",
                     str(collection.path),
@@ -221,11 +223,16 @@ def configure_qmd_indexing() -> QmdIndexingConfig | None:
         )
         return None
 
+    # Get the indexing interval configuration.
+    schedule = configure_index_schedule()
+
     # Build the configuration with deterministic collection ordering.
     config = QmdIndexingConfig(
         qmd_command=qmd_command,
         claude=QmdCollection(CLAUDE_COLLECTION_NAME, CLAUDE_COLLECTION_PATH),
         codex=QmdCollection(CODEX_COLLECTION_NAME, CODEX_COLLECTION_PATH),
+        interval=schedule.interval,
+        interval_label=schedule.interval_label,
     )
 
     # Perform bootstrap indexing without aborting on failures.
