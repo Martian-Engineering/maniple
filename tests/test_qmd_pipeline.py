@@ -62,22 +62,25 @@ def test_configure_qmd_indexing_bootstrap(monkeypatch, tmp_path):
 
     assert config is not None
     assert calls == [
-        ["qmd", "collection", "create", "claude-sessions", "--path", str(claude_path)],
-        ["qmd", "collection", "create", "codex-sessions", "--path", str(codex_path)],
-        ["qmd", "update", "claude-sessions"],
-        ["qmd", "embed", "claude-sessions"],
-        ["qmd", "update", "codex-sessions"],
-        ["qmd", "embed", "codex-sessions"],
+        ["qmd", "collection", "add", "ct-claude-sessions", "--path", str(claude_path)],
+        ["qmd", "collection", "add", "ct-codex-sessions", "--path", str(codex_path)],
+        ["qmd", "update", "ct-claude-sessions"],
+        ["qmd", "embed", "ct-claude-sessions"],
+        ["qmd", "update", "ct-codex-sessions"],
+        ["qmd", "embed", "ct-codex-sessions"],
     ]
 
 
 def test_run_indexing_pipeline_order(monkeypatch, tmp_path):
     """run_indexing_pipeline should export then update/embed per collection."""
+    from datetime import timedelta
     # Provide a fully-specified config to avoid env lookups.
     config = qmd_indexing.QmdIndexingConfig(
         qmd_command="qmd",
-        claude=qmd_indexing.QmdCollection("claude-sessions", tmp_path / "claude"),
-        codex=qmd_indexing.QmdCollection("codex-sessions", tmp_path / "codex"),
+        claude=qmd_indexing.QmdCollection("ct-claude-sessions", tmp_path / "claude"),
+        codex=qmd_indexing.QmdCollection("ct-codex-sessions", tmp_path / "codex"),
+        interval=timedelta(hours=1),
+        interval_label="1h",
     )
 
     events: list[tuple[str, object]] = []
@@ -104,21 +107,24 @@ def test_run_indexing_pipeline_order(monkeypatch, tmp_path):
 
     assert events == [
         ("export-claude", str(config.claude.path)),
-        ("qmd", ["qmd", "update", "claude-sessions"]),
-        ("qmd", ["qmd", "embed", "claude-sessions"]),
+        ("qmd", ["qmd", "update", "ct-claude-sessions"]),
+        ("qmd", ["qmd", "embed", "ct-claude-sessions"]),
         ("export-codex", str(config.codex.path)),
-        ("qmd", ["qmd", "update", "codex-sessions"]),
-        ("qmd", ["qmd", "embed", "codex-sessions"]),
+        ("qmd", ["qmd", "update", "ct-codex-sessions"]),
+        ("qmd", ["qmd", "embed", "ct-codex-sessions"]),
     ]
 
 
 def test_run_indexing_pipeline_logs_qmd_errors(monkeypatch, tmp_path):
     """run_indexing_pipeline should swallow qmd failures."""
+    from datetime import timedelta
     # Use a config that avoids environment-based configuration.
     config = qmd_indexing.QmdIndexingConfig(
         qmd_command="qmd",
-        claude=qmd_indexing.QmdCollection("claude-sessions", tmp_path / "claude"),
-        codex=qmd_indexing.QmdCollection("codex-sessions", tmp_path / "codex"),
+        claude=qmd_indexing.QmdCollection("ct-claude-sessions", tmp_path / "claude"),
+        codex=qmd_indexing.QmdCollection("ct-codex-sessions", tmp_path / "codex"),
+        interval=timedelta(hours=1),
+        interval_label="1h",
     )
 
     # Skip export work and force qmd failures.

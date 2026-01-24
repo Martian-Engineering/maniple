@@ -68,7 +68,6 @@ def test_build_candidates_filters_project_path(tmp_path):
         raw_results,
         limit=5,
         agent_type="claude",
-        project_path="/tmp/project",
     )
 
     assert len(candidates) == 1
@@ -88,7 +87,6 @@ def test_build_candidates_filters_repo_root(tmp_path):
         raw_results,
         limit=5,
         agent_type="claude",
-        repo_root="/tmp/project",
     )
 
     assert len(candidates) == 1

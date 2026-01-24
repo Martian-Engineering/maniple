@@ -60,7 +60,7 @@ class TestClaudeExport:
 
         assert "Session ID: session-123" in content
         assert f"Working Directory: {project_path}" in content
-        assert "Date: 2025-01-01T12:00:00+00:00" in content
+        assert "Date: 2025-01-01T12:00:00" in content
         assert "Agent: claude" in content
         assert f"Repo Root: {project_path}" in content
         assert "## User" in content

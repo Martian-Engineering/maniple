@@ -24,8 +24,8 @@ ENV_QMD_COMMAND = "CLAUDE_TEAM_QMD_COMMAND"
 INDEX_CRON_ENV = "CLAUDE_TEAM_INDEX_CRON"
 DEFAULT_INDEX_INTERVAL = "1h"
 
-CLAUDE_COLLECTION_NAME = "claude-sessions"
-CODEX_COLLECTION_NAME = "codex-sessions"
+CLAUDE_COLLECTION_NAME = "ct-claude-sessions"
+CODEX_COLLECTION_NAME = "ct-codex-sessions"
 CLAUDE_COLLECTION_PATH = Path.home() / ".claude-team" / "index" / "claude"
 CODEX_COLLECTION_PATH = Path.home() / ".claude-team" / "index" / "codex"
 

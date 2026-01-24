@@ -60,3 +60,4 @@ htmlcov/
 .beads/.sync.lock
 .beads/sync-state.json
 .beads/sync_base.jsonl
+.beads/

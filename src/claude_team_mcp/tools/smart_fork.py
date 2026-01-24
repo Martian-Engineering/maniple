@@ -21,8 +21,8 @@ from . import spawn_workers as spawn_workers_tool
 from ..utils import error_response
 
 _AGENT_COLLECTIONS = {
-    "claude": "claude-sessions",
-    "codex": "codex-sessions",
+    "claude": "ct-claude-sessions",
+    "codex": "ct-codex-sessions",
 }
 
 _QMD_COMMANDS = ("query", "vsearch", "search")
