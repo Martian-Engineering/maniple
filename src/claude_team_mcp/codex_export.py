@@ -68,30 +68,23 @@ def parse_codex_session_meta(jsonl_path: Path) -> CodexSessionMeta | None:
 
 def format_codex_markdown(meta: CodexSessionMeta, messages: Iterable[Message]) -> str:
     """Format Codex session metadata and messages into Markdown."""
-    # Start with normalized metadata headers for indexing.
+    # Use the same YAML-frontmatter format as Claude export for consistent parsing.
     lines: list[str] = [
-        "## Session ID",
-        meta.session_id,
-        "",
-        "## Working Directory",
-        meta.cwd,
-        "",
-        "## Date",
-        meta.timestamp,
-        "",
-        "## Agent",
-        "Codex",
-        "",
-        "## Conversation",
+        "---",
+        f"Session ID: {meta.session_id}",
+        f"Working Directory: {meta.cwd}",
+        f"Date: {meta.timestamp}",
+        "Agent: codex",
+        "---",
         "",
     ]
 
     # Append each message with role headings and optional thinking blocks.
     for message in messages:
         role = "User" if message.role == "user" else "Assistant"
-        lines.extend([f"### {role}", message.content, ""])
+        lines.extend([f"## {role}", "", message.content, ""])
         if message.thinking:
-            lines.extend(["#### Thinking", message.thinking, ""])
+            lines.extend(["### Thinking", "", message.thinking, ""])
 
     # Ensure trailing newline for consistent diffing and tooling.
     return "\n".join(lines).rstrip() + "\n"
@@ -157,27 +150,17 @@ def export_codex_sessions(output_dir: Path) -> list[Path]:
     """
     exported: list[Path] = []
 
-    # Codex sessions are organized as ~/.codex/sessions/{YYYY}/{MM-DD}/*.jsonl
+    # Codex sessions are organized as ~/.codex/sessions/{YYYY}/{MM}/{DD}/*.jsonl
     if not CODEX_SESSIONS_DIR.exists():
         return exported
 
-    # Scan year directories.
-    for year_dir in CODEX_SESSIONS_DIR.iterdir():
-        if not year_dir.is_dir():
-            continue
-
-        # Scan date directories within each year.
-        for date_dir in year_dir.iterdir():
-            if not date_dir.is_dir():
-                continue
-
-            # Export each JSONL session file.
-            for jsonl_path in sorted(date_dir.glob("*.jsonl")):
-                exported_path = export_codex_session_markdown(
-                    jsonl_path,
-                    output_dir=output_dir,
-                )
-                if exported_path:
-                    exported.append(exported_path)
+    # Use recursive glob to handle the 3-level date directory structure.
+    for jsonl_path in sorted(CODEX_SESSIONS_DIR.glob("**/*.jsonl")):
+        exported_path = export_codex_session_markdown(
+            jsonl_path,
+            output_dir=output_dir,
+        )
+        if exported_path:
+            exported.append(exported_path)
 
     return exported

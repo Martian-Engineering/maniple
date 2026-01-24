@@ -49,15 +49,11 @@ def test_format_codex_markdown_contains_headers() -> None:
     )
     markdown = format_codex_markdown(meta, [])
 
-    # Assert normalized header labels and values are present.
-    assert "## Session ID" in markdown
-    assert "session_123" in markdown
-    assert "## Working Directory" in markdown
-    assert "/tmp/project" in markdown
-    assert "## Date" in markdown
-    assert "2026-01-23T12:00:00Z" in markdown
-    assert "## Agent" in markdown
-    assert "Codex" in markdown
+    # Assert YAML-frontmatter format with key: value pairs.
+    assert "Session ID: session_123" in markdown
+    assert "Working Directory: /tmp/project" in markdown
+    assert "Date: 2026-01-23T12:00:00Z" in markdown
+    assert "Agent: codex" in markdown
 
 
 def test_export_codex_session_markdown_writes_file(tmp_path: Path) -> None:
@@ -74,9 +70,9 @@ def test_export_codex_session_markdown_writes_file(tmp_path: Path) -> None:
     assert output_path == output_dir / "session_123.md"
     assert output_path is not None
     content = output_path.read_text(encoding="utf-8")
-    assert "### User" in content
+    assert "## User" in content
     assert "Hello" in content
-    assert "### Assistant" in content
+    assert "## Assistant" in content
     assert "Hi there" in content
 
 
