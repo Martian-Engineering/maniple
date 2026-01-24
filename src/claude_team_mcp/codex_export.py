@@ -12,8 +12,45 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+import re
+
 from .session_state import Message, parse_codex_session
 from .utils.constants import CODEX_INDEX_DIR
+
+
+def _strip_boilerplate(text: str) -> str:
+    """Remove repetitive boilerplate that appears in every Codex session."""
+    # Remove <environment_context>...</environment_context>
+    text = re.sub(
+        r"<environment_context>.*?</environment_context>",
+        "",
+        text,
+        flags=re.DOTALL,
+    )
+    # Remove <permissions instructions>...</permissions instructions>
+    text = re.sub(
+        r"<permissions instructions>.*?</permissions instructions>",
+        "",
+        text,
+        flags=re.DOTALL,
+    )
+    # Remove AGENTS.md instruction blocks
+    text = re.sub(
+        r"# AGENTS\.md instructions for [^\n]*\n\n<INSTRUCTIONS>.*?</INSTRUCTIONS>",
+        "",
+        text,
+        flags=re.DOTALL,
+    )
+    # Remove <user_instructions>...</user_instructions>
+    text = re.sub(
+        r"<user_instructions>.*?</user_instructions>",
+        "",
+        text,
+        flags=re.DOTALL,
+    )
+    # Clean up excessive whitespace from removals
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 logger = logging.getLogger("claude-team-mcp")
 
@@ -82,7 +119,10 @@ def format_codex_markdown(meta: CodexSessionMeta, messages: Iterable[Message]) -
     # Append each message with role headings and optional thinking blocks.
     for message in messages:
         role = "User" if message.role == "user" else "Assistant"
-        lines.extend([f"## {role}", "", message.content, ""])
+        content = _strip_boilerplate(message.content)
+        if not content:
+            continue
+        lines.extend([f"## {role}", "", content, ""])
         if message.thinking:
             lines.extend(["### Thinking", "", message.thinking, ""])
 

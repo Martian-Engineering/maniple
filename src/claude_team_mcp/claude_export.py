@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Optional
 
+import re
+
 from .session_state import (
     Message,
     SessionState,
@@ -18,6 +20,29 @@ from .session_state import (
     parse_session,
     unslugify_path,
 )
+
+
+def _strip_boilerplate(text: str) -> str:
+    """Remove repetitive boilerplate from Claude session messages."""
+    # Remove claude-team session/iTerm markers
+    text = re.sub(r"<!claude-team-[^>]+!>", "", text)
+    # Remove claude-team worker assignment prompts (the entire greeting block)
+    text = re.sub(
+        r"Hey \w+! Welcome to the team\.\s*\n.*?=== THE DEAL ===.*?(?=\n## |\Z)",
+        "",
+        text,
+        flags=re.DOTALL,
+    )
+    # Remove <environment_context>...</environment_context>
+    text = re.sub(
+        r"<environment_context>.*?</environment_context>",
+        "",
+        text,
+        flags=re.DOTALL,
+    )
+    # Clean up excessive whitespace
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 CLAUDE_EXPORT_ROOT = Path.home() / ".claude-team" / "index" / "claude"
@@ -116,10 +141,14 @@ def render_session_markdown(
         if not message.content:
             continue
 
+        content = _strip_boilerplate(message.content)
+        if not content:
+            continue
+
         heading = "User" if message.role == "user" else "Assistant"
         lines.append(f"## {heading}")
         lines.append("")
-        lines.append(message.content)
+        lines.append(content)
         lines.append("")
 
     markdown = "\n".join(lines)
