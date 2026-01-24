@@ -6,6 +6,7 @@ Provides spawn_workers for creating new Claude Code worker sessions.
 
 import logging
 import os
+import shutil
 import uuid
 from pathlib import Path
 from collections.abc import Awaitable, Callable
@@ -40,6 +41,41 @@ from ..worktree import WorktreeError, create_local_worktree
 
 
 logger = logging.getLogger("claude-team-mcp")
+
+
+def _sanitize_project_path(path: str | Path) -> str:
+    """Sanitize a path to match Claude Code's project folder naming convention."""
+    return str(path).replace("/", "-")
+
+
+def _copy_session_for_worktree(
+    session_id: str,
+    source_project_path: Path,
+    target_project_path: Path,
+) -> bool:
+    """
+    Copy a Claude Code session file from source project folder to target project folder.
+
+    This is needed when forking sessions in worktrees because Claude Code looks for
+    sessions based on the current working directory's project folder.
+
+    Returns True if copy succeeded, False if source session doesn't exist.
+    """
+    claude_projects = Path.home() / ".claude" / "projects"
+    source_folder = claude_projects / _sanitize_project_path(source_project_path)
+    target_folder = claude_projects / _sanitize_project_path(target_project_path)
+
+    source_session = source_folder / f"{session_id}.jsonl"
+    if not source_session.exists():
+        logger.warning(f"Session file not found: {source_session}")
+        return False
+
+    target_folder.mkdir(parents=True, exist_ok=True)
+    target_session = target_folder / f"{session_id}.jsonl"
+    shutil.copy(source_session, target_session)
+    logger.info(f"Copied session {session_id} from {source_folder.name} to {target_folder.name}")
+    return True
+
 
 # Exposed for internal tool reuse (set during register_tools)
 SPAWN_WORKERS_TOOL: Callable[..., Awaitable[dict]] | None = None
@@ -653,6 +689,15 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     resume_session_id = worker_config.get("resume_session_id")
                     fork_session = worker_config.get("fork_session", False)
                 continue_session = worker_config.get("continue_session", False)
+
+                # If forking/resuming a session in a worktree, copy session file to worktree's project folder
+                # (Claude Code looks for sessions based on cwd, not the original project path)
+                if resume_session_id and index in main_repo_paths:
+                    _copy_session_for_worktree(
+                        session_id=resume_session_id,
+                        source_project_path=main_repo_paths[index],
+                        target_project_path=Path(project_path),
+                    )
 
                 # Check for worktree and set tracker env var if needed.
                 tracker_info = get_worktree_tracker_dir(project_path)
