@@ -16,6 +16,7 @@ from . import examine_worker
 from . import list_workers
 from . import list_worktrees
 from . import message_workers
+from . import poll_worker_changes
 from . import read_worker_logs
 from . import spawn_workers
 from . import wait_idle_workers
@@ -38,6 +39,7 @@ def register_all_tools(mcp: FastMCP, ensure_connection) -> None:
     list_workers.register_tools(mcp)
     list_worktrees.register_tools(mcp)
     message_workers.register_tools(mcp)
+    poll_worker_changes.register_tools(mcp)
     read_worker_logs.register_tools(mcp)
     wait_idle_workers.register_tools(mcp)
 
