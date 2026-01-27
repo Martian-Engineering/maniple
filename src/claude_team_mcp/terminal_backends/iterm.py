@@ -50,6 +50,29 @@ class ItermBackend(TerminalBackend):
         """Extract the iTerm2 session handle from a TerminalSession."""
         return session.handle
 
+    async def create_session(
+        self,
+        name: str | None = None,
+        *,
+        profile: str | None = None,
+        profile_customizations: "ItermLocalWriteOnlyProfile" | None = None,
+    ) -> TerminalSession:
+        """Create a new iTerm2 window/session and return its initial pane."""
+        window = await iterm_utils.create_window(
+            self._connection,
+            profile=profile,
+            profile_customizations=profile_customizations,
+        )
+        tab = window.current_tab
+        if tab is None or tab.current_session is None:
+            raise RuntimeError("Failed to get initial iTerm2 session from window")
+        if name:
+            try:
+                await tab.async_set_title(name)
+            except Exception:
+                pass
+        return self.wrap_session(tab.current_session)
+
     async def send_text(self, session: TerminalSession, text: str) -> None:
         """Send raw text to an iTerm2 session."""
         await iterm_utils.send_text(self.unwrap_session(session), text)
