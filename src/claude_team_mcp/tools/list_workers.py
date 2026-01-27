@@ -4,6 +4,7 @@ List workers tool.
 Provides list_workers for viewing all managed Claude Code sessions.
 """
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from mcp.server.fastmcp import Context, FastMCP
@@ -23,6 +24,7 @@ def register_tools(mcp: FastMCP) -> None:
     async def list_workers(
         ctx: Context[ServerSession, "AppContext"],
         status_filter: str | None = None,
+        project_filter: str | None = None,
     ) -> dict:
         """
         List all managed Claude Code sessions.
@@ -32,6 +34,7 @@ def register_tools(mcp: FastMCP) -> None:
 
         Args:
             status_filter: Optional filter by status - "ready", "busy", "spawning", "closed"
+            project_filter: Optional filter by project path (full path, basename, or partial match)
 
         Returns:
             Dict with:
@@ -54,6 +57,32 @@ def register_tools(mcp: FastMCP) -> None:
                 )
         else:
             sessions = registry.list_all()
+
+        # Filter by project path or main repo path
+        if project_filter:
+            normalized_filter = project_filter.strip()
+            if normalized_filter:
+                filtered_sessions = []
+                for session in sessions:
+                    candidates = [session.project_path]
+                    if session.main_repo_path is not None:
+                        candidates.append(str(session.main_repo_path))
+                    matches = False
+                    for candidate in candidates:
+                        if not candidate:
+                            continue
+                        if candidate == normalized_filter:
+                            matches = True
+                            break
+                        if Path(candidate).name == normalized_filter:
+                            matches = True
+                            break
+                        if normalized_filter in candidate:
+                            matches = True
+                            break
+                    if matches:
+                        filtered_sessions.append(session)
+                sessions = filtered_sessions
 
         # Sort by created_at
         sessions = sorted(sessions, key=lambda s: s.created_at)
