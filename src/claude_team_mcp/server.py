@@ -47,6 +47,7 @@ logger.info("=== Claude Team MCP Server Starting ===")
 # =============================================================================
 
 _global_registry: SessionRegistry | None = None
+_global_poller: WorkerPoller | None = None
 
 
 def get_global_registry() -> SessionRegistry:
@@ -56,6 +57,15 @@ def get_global_registry() -> SessionRegistry:
         _global_registry = SessionRegistry()
         logger.info("Created global singleton registry")
     return _global_registry
+
+
+def get_global_poller(registry: SessionRegistry) -> WorkerPoller:
+    """Get or create the global singleton poller."""
+    global _global_poller
+    if _global_poller is None:
+        _global_poller = WorkerPoller(registry)
+        logger.info("Created global singleton poller")
+    return _global_poller
 
 
 # =============================================================================
@@ -199,14 +209,13 @@ async def app_lifespan(
     )
     poller: WorkerPoller | None = None
     if enable_poller:
-        poller = WorkerPoller(ctx.registry)
+        poller = get_global_poller(ctx.registry)
         poller.start()
 
     try:
         yield ctx
     finally:
-        if poller is not None:
-            await poller.stop()
+        # Keep the global poller running across per-session lifespans.
         # Cleanup: close any remaining sessions gracefully
         logger.info("Claude Team MCP Server shutting down...")
         if ctx.registry.count() > 0:

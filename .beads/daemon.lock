@@ -1,7 +1,7 @@
 {
-  "pid": 18414,
-  "parent_pid": 18403,
+  "pid": 34733,
+  "parent_pid": 34721,
   "database": "/Users/phaedrus/Projects/claude-team/.beads/beads.db",
   "version": "0.47.1",
-  "started_at": "2026-01-24T18:00:07.488677Z"
+  "started_at": "2026-01-27T23:02:04.409536Z"
 }
