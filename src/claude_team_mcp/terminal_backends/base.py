@@ -50,6 +50,16 @@ class TerminalBackend(Protocol):
         """Extract the backend-native handle from a TerminalSession."""
         ...
 
+    async def create_session(
+        self,
+        name: str | None = None,
+        *,
+        profile: str | None = None,
+        profile_customizations: Any | None = None,
+    ) -> TerminalSession:
+        """Create a new terminal session/pane and return it."""
+        ...
+
     async def send_text(self, session: TerminalSession, text: str) -> None:
         """Send raw text to the terminal session."""
         ...
