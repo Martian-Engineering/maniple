@@ -9,9 +9,12 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import uuid
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .base import TerminalBackend, TerminalSession
+
+if TYPE_CHECKING:
+    from ..cli_backends import AgentCLI
 
 
 KEY_MAP: dict[str, str] = {
@@ -34,6 +37,9 @@ KEY_MAP: dict[str, str] = {
     "ctrl-l": "C-l",
     "ctrl-z": "C-z",
 }
+
+SHELL_READY_MARKER = "CLAUDE_TEAM_READY_7f3a9c"
+CODEX_PRE_ENTER_DELAY = 0.5
 
 LAYOUT_PANE_NAMES = {
     "single": ["main"],
@@ -114,6 +120,36 @@ class TmuxBackend(TerminalBackend):
         if tmux_key is None:
             raise ValueError(f"Unknown key: {key}. Available: {list(KEY_MAP.keys())}")
         await self._run_tmux(["send-keys", "-t", pane_id, tmux_key])
+
+    async def send_prompt(
+        self, session: TerminalSession, text: str, submit: bool = True
+    ) -> None:
+        """Send a prompt to a tmux pane, optionally submitting it."""
+        await self.send_text(session, text)
+        if not submit:
+            return
+        # Delay to allow tmux to finish pasting before sending Enter.
+        delay = self._compute_paste_delay(text)
+        await asyncio.sleep(delay)
+        await self.send_key(session, "enter")
+
+    async def send_prompt_for_agent(
+        self,
+        session: TerminalSession,
+        text: str,
+        agent_type: str = "claude",
+        submit: bool = True,
+    ) -> None:
+        """Send a prompt with agent-specific handling (Claude vs Codex)."""
+        await self.send_text(session, text)
+        if not submit:
+            return
+        # Codex needs a longer pre-Enter delay; use the max of paste vs minimum.
+        delay = self._compute_paste_delay(text)
+        if agent_type == "codex":
+            delay = max(CODEX_PRE_ENTER_DELAY, delay)
+        await asyncio.sleep(delay)
+        await self.send_key(session, "enter")
 
     async def read_screen_text(self, session: TerminalSession) -> str:
         """Read visible screen content from a tmux pane."""
@@ -235,6 +271,88 @@ class TmuxBackend(TerminalBackend):
 
         return sessions
 
+    async def start_agent_in_session(
+        self,
+        handle: TerminalSession,
+        cli: "AgentCLI",
+        project_path: str,
+        dangerously_skip_permissions: bool = False,
+        env: dict[str, str] | None = None,
+        shell_ready_timeout: float = 10.0,
+        agent_ready_timeout: float = 30.0,
+        stop_hook_marker_id: str | None = None,
+        output_capture_path: str | None = None,
+    ) -> None:
+        """Start a CLI agent in an existing tmux pane."""
+        # Ensure the shell is responsive before we send the launch command.
+        shell_ready = await self._wait_for_shell_ready(
+            handle, timeout_seconds=shell_ready_timeout
+        )
+        if not shell_ready:
+            raise RuntimeError(
+                f"Shell not ready after {shell_ready_timeout}s in {project_path}. "
+                "Terminal may still be initializing."
+            )
+
+        # Optionally inject a Stop hook using a settings file (Claude only).
+        settings_file = None
+        if stop_hook_marker_id and cli.supports_settings_file():
+            from ..iterm_utils import build_stop_hook_settings_file
+
+            settings_file = build_stop_hook_settings_file(stop_hook_marker_id)
+
+        # Build the CLI command (with env vars and settings) for this agent.
+        agent_cmd = cli.build_full_command(
+            dangerously_skip_permissions=dangerously_skip_permissions,
+            settings_file=settings_file,
+            env_vars=env,
+        )
+
+        # Capture stdout/stderr if requested (useful for JSONL idle detection).
+        if output_capture_path:
+            agent_cmd = f"{agent_cmd} 2>&1 | tee {output_capture_path}"
+
+        # Launch in one atomic command to avoid races between cd and exec.
+        cmd = f"cd {project_path} && {agent_cmd}"
+        await self.send_prompt(handle, cmd, submit=True)
+
+        # Wait for the agent to become ready before returning.
+        agent_ready = await self._wait_for_agent_ready(
+            handle,
+            cli,
+            timeout_seconds=agent_ready_timeout,
+        )
+        if not agent_ready:
+            raise RuntimeError(
+                f"{cli.engine_id} failed to start in {project_path} within "
+                f"{agent_ready_timeout}s. Check that '{cli.command()}' is "
+                "available and authentication is configured."
+            )
+
+    async def start_claude_in_session(
+        self,
+        handle: TerminalSession,
+        project_path: str,
+        dangerously_skip_permissions: bool = False,
+        env: dict[str, str] | None = None,
+        shell_ready_timeout: float = 10.0,
+        claude_ready_timeout: float = 30.0,
+        stop_hook_marker_id: str | None = None,
+    ) -> None:
+        """Start Claude Code in an existing tmux pane."""
+        from ..cli_backends import claude_cli
+
+        await self.start_agent_in_session(
+            handle=handle,
+            cli=claude_cli,
+            project_path=project_path,
+            dangerously_skip_permissions=dangerously_skip_permissions,
+            env=env,
+            shell_ready_timeout=shell_ready_timeout,
+            agent_ready_timeout=claude_ready_timeout,
+            stop_hook_marker_id=stop_hook_marker_id,
+        )
+
     async def _run_tmux(self, args: list[str]) -> str:
         """Run a tmux command and return stdout."""
         cmd = ["tmux"]
@@ -252,6 +370,76 @@ class TmuxBackend(TerminalBackend):
 
         result = await asyncio.to_thread(_run)
         return result.stdout.strip()
+
+    def _compute_paste_delay(self, text: str) -> float:
+        """Compute a delay to let tmux process pasted text before Enter."""
+        # Match the iTerm delay heuristics for consistent cross-backend timing.
+        line_count = text.count("\n")
+        char_count = len(text)
+        if line_count > 0:
+            return min(2.0, 0.1 + (line_count * 0.01) + (char_count / 1000 * 0.05))
+        return 0.05
+
+    async def _wait_for_shell_ready(
+        self,
+        session: TerminalSession,
+        *,
+        timeout_seconds: float = 10.0,
+        poll_interval: float = 0.1,
+    ) -> bool:
+        """Wait for the shell to accept input by echoing a marker."""
+        import time
+
+        # Kick off the marker echo and then look for the echoed line.
+        await self.send_prompt(session, f'echo "{SHELL_READY_MARKER}"', submit=True)
+
+        start_time = time.monotonic()
+        while (time.monotonic() - start_time) < timeout_seconds:
+            # Scan visible pane content for the marker on its own line.
+            content = await self.read_screen_text(session)
+            for line in content.splitlines():
+                if line.strip() == SHELL_READY_MARKER:
+                    return True
+            await asyncio.sleep(poll_interval)
+
+        return False
+
+    async def _wait_for_agent_ready(
+        self,
+        session: TerminalSession,
+        cli: "AgentCLI",
+        *,
+        timeout_seconds: float = 15.0,
+        poll_interval: float = 0.2,
+        stable_count: int = 2,
+    ) -> bool:
+        """Wait for an agent CLI to show its ready patterns."""
+        import time
+
+        patterns = cli.ready_patterns()
+        start_time = time.monotonic()
+        last_content = None
+        stable_reads = 0
+
+        while (time.monotonic() - start_time) < timeout_seconds:
+            # Read the pane content and only check once output stabilizes.
+            content = await self.read_screen_text(session)
+            if content == last_content:
+                stable_reads += 1
+            else:
+                stable_reads = 0
+                last_content = content
+
+            if stable_reads >= stable_count:
+                for line in content.splitlines():
+                    stripped = line.strip()
+                    for pattern in patterns:
+                        if pattern in stripped:
+                            return True
+
+            await asyncio.sleep(poll_interval)
+
+        return False
 
     def _generate_session_name(self) -> str:
         """Generate a stable tmux session name for claude-team."""
