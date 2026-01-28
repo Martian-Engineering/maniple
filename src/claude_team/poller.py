@@ -54,11 +54,24 @@ def _isoformat_zulu(value: datetime) -> str:
     return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _sanitize_for_json(obj: object) -> object:
+    # Recursively sanitize an object for JSON serialization.
+    # Removes non-serializable types like asyncio Futures.
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items() if isinstance(k, str)}
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize_for_json(item) for item in obj]
+    # Skip non-serializable objects
+    return None
+
+
 def _build_snapshot(registry: _RegistryLike) -> dict[str, _WorkerSnapshot]:
     # Capture current worker states from the registry.
     snapshots: dict[str, _WorkerSnapshot] = {}
     for session in registry.list_all():
-        info = session.to_dict()
+        info = _sanitize_for_json(session.to_dict())
         is_idle, _ = detect_worker_idle(session, idle_threshold_seconds=300)
         info["is_idle"] = is_idle
         state: WorkerState = "idle" if is_idle else "active"
