@@ -63,8 +63,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         """
         Spawn Claude Code worker sessions.
 
-        Creates worker sessions in the active terminal backend, each with its own pane,
-        Claude instance, and optional worktree. Workers can be spawned into existing
+        Creates worker sessions in the active terminal backend, each with its own pane
+        (iTerm) or window (tmux), Claude instance, and optional worktree. Workers can be
+        spawned into existing
         windows (layout="auto") or a fresh window (layout="new").
 
         **Layout Modes:**
@@ -80,6 +81,10 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
            - 2 workers: vertical split (left/right)
            - 3 workers: triple vertical (left/middle/right)
            - 4 workers: quad layout (2x2 grid)
+
+        **tmux note:**
+           - Workers always get their own tmux window in the shared "claude-team" session.
+           - layout is ignored for tmux.
 
         **WorkerConfig fields:**
             project_path: Required. Path to the repository.
@@ -345,7 +350,12 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             # Create panes based on layout mode
             pane_sessions: list = []  # list of terminal handles
 
-            if layout == "auto":
+            if backend.backend_id == "tmux":
+                for i in range(worker_count):
+                    pane_sessions.append(
+                        await backend.create_session(name=resolved_names[i])
+                    )
+            elif layout == "auto":
                 # Try to find an existing window where the ENTIRE batch fits.
                 # This keeps spawn batches together rather than spreading across windows.
                 reuse_window = False

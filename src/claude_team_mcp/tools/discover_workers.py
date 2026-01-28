@@ -43,6 +43,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         by claude-team write their terminal IDs into the JSONL
         (e.g., <!claude-team-iterm:UUID!> or <!claude-team-tmux:%1!>), enabling
         reliable detection and recovery after MCP server restarts.
+        For tmux, only panes in the shared "claude-team" session are scanned.
 
         Only JSONL files modified within max_age seconds are checked. If a session
         was started more than max_age seconds ago and hasn't had recent activity,

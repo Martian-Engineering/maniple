@@ -40,6 +40,7 @@ KEY_MAP: dict[str, str] = {
 
 SHELL_READY_MARKER = "CLAUDE_TEAM_READY_7f3a9c"
 CODEX_PRE_ENTER_DELAY = 0.5
+TMUX_SESSION_NAME = "claude-team"
 
 LAYOUT_PANE_NAMES = {
     "single": ["main"],
@@ -86,28 +87,56 @@ class TmuxBackend(TerminalBackend):
         profile: str | None = None,
         profile_customizations: Any | None = None,
     ) -> TerminalSession:
-        """Create a new detached tmux session and return its initial pane."""
+        """Create a worker window in the claude-team tmux session."""
         if profile or profile_customizations:
             raise ValueError("tmux backend does not support profiles")
 
-        session_name = name or self._generate_session_name()
+        window_name = name or self._generate_window_name()
 
-        # Create a detached session.
-        await self._run_tmux(["new-session", "-d", "-s", session_name])
+        # Ensure the dedicated session exists, then create a new window for this worker.
+        try:
+            await self._run_tmux(["has-session", "-t", TMUX_SESSION_NAME])
+            output = await self._run_tmux(
+                [
+                    "new-window",
+                    "-t",
+                    TMUX_SESSION_NAME,
+                    "-n",
+                    window_name,
+                    "-P",
+                    "-F",
+                    "#{pane_id}\t#{window_id}\t#{window_index}",
+                ]
+            )
+        except subprocess.CalledProcessError:
+            output = await self._run_tmux(
+                [
+                    "new-session",
+                    "-d",
+                    "-s",
+                    TMUX_SESSION_NAME,
+                    "-n",
+                    window_name,
+                    "-P",
+                    "-F",
+                    "#{pane_id}\t#{window_id}\t#{window_index}",
+                ]
+            )
 
-        # Fetch the initial pane id for the newly created session.
-        output = await self._run_tmux(
-            ["list-panes", "-t", session_name, "-F", "#{pane_id}"]
-        )
-        pane_id = self._first_non_empty_line(output)
+        pane_id, window_id, window_index = self._parse_window_output(output)
         if not pane_id:
-            raise RuntimeError("Failed to determine tmux pane id for new session")
+            raise RuntimeError("Failed to determine tmux pane id for new window")
 
         return TerminalSession(
             backend_id=self.backend_id,
             native_id=pane_id,
             handle=pane_id,
-            metadata={"session_name": session_name},
+            metadata={
+                "session_name": TMUX_SESSION_NAME,
+                "window_id": window_id,
+                "window_index": window_index,
+                "window_name": window_name,
+            },
         )
 
     async def send_text(self, session: TerminalSession, text: str) -> None:
@@ -193,10 +222,16 @@ class TmuxBackend(TerminalBackend):
         )
 
     async def close_session(self, session: TerminalSession, force: bool = False) -> None:
-        """Close a tmux pane."""
+        """Close a tmux window (or its pane) for this worker."""
         pane_id = self.unwrap_session(session)
         _ = force
-        await self._run_tmux(["kill-pane", "-t", pane_id])
+        window_id = session.metadata.get("window_id")
+        if not window_id:
+            window_id = await self._window_id_for_pane(pane_id)
+        if window_id:
+            await self._run_tmux(["kill-window", "-t", window_id])
+        else:
+            await self._run_tmux(["kill-pane", "-t", pane_id])
 
     async def create_multi_pane_layout(
         self,
@@ -205,15 +240,16 @@ class TmuxBackend(TerminalBackend):
         profile: str | None = None,
         profile_customizations: dict[str, Any] | None = None,
     ) -> dict[str, TerminalSession]:
-        """Create a multi-pane layout in a new tmux session."""
+        """Create a multi-pane layout in a new tmux window."""
         if profile or profile_customizations:
             raise ValueError("tmux backend does not support profiles")
         if layout not in LAYOUT_PANE_NAMES:
             raise ValueError(f"Unknown layout: {layout}. Valid: {list(LAYOUT_PANE_NAMES.keys())}")
 
-        # Start a new session for this layout.
+        # Start a new window for this layout within the dedicated session.
         initial = await self.create_session()
         session_name = initial.metadata.get("session_name")
+        window_id = initial.metadata.get("window_id")
 
         panes: dict[str, TerminalSession] = {}
 
@@ -235,21 +271,27 @@ class TmuxBackend(TerminalBackend):
             panes["bottom_left"] = await self.split_pane(initial, vertical=False)
             panes["bottom_right"] = await self.split_pane(panes["top_right"], vertical=False)
 
-        if session_name and layout in LAYOUT_SELECT:
-            await self._run_tmux(["select-layout", "-t", session_name, LAYOUT_SELECT[layout]])
+        if layout in LAYOUT_SELECT:
+            target = window_id or session_name
+            if target:
+                await self._run_tmux(["select-layout", "-t", target, LAYOUT_SELECT[layout]])
 
         return panes
 
     async def list_sessions(self) -> list[TerminalSession]:
-        """List all tmux panes across sessions."""
-        output = await self._run_tmux(
-            [
-                "list-panes",
-                "-a",
-                "-F",
-                "#{session_name} #{window_index} #{pane_index} #{pane_id}",
-            ]
-        )
+        """List all tmux panes in the claude-team session."""
+        try:
+            output = await self._run_tmux(
+                [
+                    "list-panes",
+                    "-t",
+                    TMUX_SESSION_NAME,
+                    "-F",
+                    "#{session_name}\t#{window_id}\t#{window_name}\t#{window_index}\t#{pane_index}\t#{pane_id}",
+                ]
+            )
+        except subprocess.CalledProcessError:
+            return []
 
         sessions: list[TerminalSession] = []
 
@@ -258,10 +300,10 @@ class TmuxBackend(TerminalBackend):
             line = line.strip()
             if not line:
                 continue
-            parts = line.split()
-            if len(parts) != 4:
+            parts = line.split("\t")
+            if len(parts) != 6:
                 continue
-            session_name, window_index, pane_index, pane_id = parts
+            session_name, window_id, window_name, window_index, pane_index, pane_id = parts
             sessions.append(
                 TerminalSession(
                     backend_id=self.backend_id,
@@ -269,6 +311,8 @@ class TmuxBackend(TerminalBackend):
                     handle=pane_id,
                     metadata={
                         "session_name": session_name,
+                        "window_id": window_id,
+                        "window_name": window_name,
                         "window_index": window_index,
                         "pane_index": pane_index,
                     },
@@ -282,29 +326,33 @@ class TmuxBackend(TerminalBackend):
         max_panes: int = 4,
         managed_session_ids: set[str] | None = None,
     ) -> tuple[str, str, TerminalSession] | None:
-        """Find a tmux session/window with space for additional panes."""
+        """Find a tmux window with space for additional panes."""
         # Query panes across all tmux sessions/windows with enough metadata
         # to group panes and select a reasonable split target.
-        output = await self._run_tmux(
-            [
-                "list-panes",
-                "-a",
-                "-F",
-                "#{session_name} #{window_index} #{pane_index} #{pane_active} #{pane_id}",
-            ]
-        )
+        try:
+            output = await self._run_tmux(
+                [
+                    "list-panes",
+                    "-t",
+                    TMUX_SESSION_NAME,
+                    "-F",
+                    "#{session_name}\t#{window_id}\t#{window_index}\t#{pane_index}\t#{pane_active}\t#{pane_id}",
+                ]
+            )
+        except subprocess.CalledProcessError:
+            return None
 
-        panes_by_window: dict[tuple[str, str], list[dict[str, str]]] = {}
+        panes_by_window: dict[tuple[str, str, str], list[dict[str, str]]] = {}
 
         for line in output.splitlines():
             line = line.strip()
             if not line:
                 continue
-            parts = line.split()
-            if len(parts) != 5:
+            parts = line.split("\t")
+            if len(parts) != 6:
                 continue
-            session_name, window_index, pane_index, pane_active, pane_id = parts
-            panes_by_window.setdefault((session_name, window_index), []).append(
+            session_name, window_id, window_index, pane_index, pane_active, pane_id = parts
+            panes_by_window.setdefault((session_name, window_id, window_index), []).append(
                 {
                     "pane_id": pane_id,
                     "pane_index": pane_index,
@@ -312,7 +360,7 @@ class TmuxBackend(TerminalBackend):
                 }
             )
 
-        for (session_name, window_index), panes in panes_by_window.items():
+        for (session_name, window_id, window_index), panes in panes_by_window.items():
             # Respect the managed-session filter when provided (including empty set).
             if managed_session_ids is not None:
                 if not any(p["pane_id"] in managed_session_ids for p in panes):
@@ -333,6 +381,7 @@ class TmuxBackend(TerminalBackend):
                     handle=target["pane_id"],
                     metadata={
                         "session_name": session_name,
+                        "window_id": window_id,
                         "window_index": window_index,
                         "pane_index": target["pane_index"],
                     },
@@ -511,9 +560,26 @@ class TmuxBackend(TerminalBackend):
 
         return False
 
-    def _generate_session_name(self) -> str:
-        """Generate a stable tmux session name for claude-team."""
-        return f"claude-team-{uuid.uuid4().hex[:8]}"
+    # Generate a default tmux window name.
+    def _generate_window_name(self) -> str:
+        return f"worker-{uuid.uuid4().hex[:8]}"
+
+    # Parse tmux output that includes pane and window ids.
+    @staticmethod
+    def _parse_window_output(text: str) -> tuple[str | None, str | None, str | None]:
+        line = next((line for line in text.splitlines() if line.strip()), "")
+        parts = [part.strip() for part in line.split("\t")]
+        if len(parts) < 3:
+            return None, None, None
+        pane_id, window_id, window_index = parts[0], parts[1], parts[2]
+        return pane_id, window_id, window_index
+
+    # Resolve the window id that owns a given pane id.
+    async def _window_id_for_pane(self, pane_id: str) -> str | None:
+        output = await self._run_tmux(
+            ["display-message", "-p", "-t", pane_id, "#{window_id}"]
+        )
+        return output.strip() or None
 
     @staticmethod
     def _first_non_empty_line(text: str) -> str | None:
