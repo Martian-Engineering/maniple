@@ -224,6 +224,35 @@ def create_worktree(
     return worktree_path
 
 
+def _resolve_worktree_base(repo_path: Path, base: str) -> str:
+    # Resolve base ref to a commit hash to avoid worktree-locked branch refs.
+    def _rev_parse(ref: str) -> Optional[str]:
+        result = subprocess.run(
+            ["git", "-C", str(repo_path), "rev-parse", "--verify", ref],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+        return None
+
+    commit = _rev_parse(f"{base}^{{commit}}")
+    if commit:
+        return commit
+
+    normalized_base = base.removeprefix("refs/heads/")
+    try:
+        for worktree in list_git_worktrees(repo_path):
+            if worktree.get("branch") == normalized_base and worktree.get("commit"):
+                return worktree["commit"]
+    except WorktreeError:
+        pass
+
+    raise WorktreeError(
+        f"Base ref not found: {base}. Ensure it exists locally or fetch it."
+    )
+
+
 def create_local_worktree(
     repo_path: Path,
     worker_name: str,
@@ -341,11 +370,15 @@ def create_local_worktree(
             worktree_path = worktrees_dir / dir_name
         branch_name = dir_name
 
+    resolved_base = None
+    if base:
+        resolved_base = _resolve_worktree_base(repo_path, base)
+
     # Build the git worktree add command.
     # Branch is guaranteed not to exist (collision loop checked for it).
     cmd = ["git", "-C", str(repo_path), "worktree", "add", "-b", branch_name, str(worktree_path)]
-    if base:
-        cmd.append(base)
+    if resolved_base:
+        cmd.append(resolved_base)
 
     result = subprocess.run(cmd, capture_output=True, text=True)
 
