@@ -24,7 +24,6 @@ from ..iterm_utils import (
     create_multi_pane_layout,
     find_available_window,
     get_window_for_session,
-    send_prompt,
     send_prompt_for_agent,
     split_pane,
     start_agent_in_session,
@@ -590,15 +589,21 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     managed.main_repo_path = main_repo_paths[i]
                 managed_sessions.append(managed)
 
-            # Send marker messages for JSONL correlation (Claude only)
-            # Codex doesn't use JSONL markers for session tracking
+            # Send marker messages for JSONL correlation (Claude + Codex)
             for i, managed in enumerate(managed_sessions):
-                if managed.agent_type == "claude":
-                    marker_message = generate_marker_message(
-                        managed.session_id,
-                        iterm_session_id=managed.iterm_session.session_id,
-                    )
-                    await send_prompt(pane_sessions[i], marker_message, submit=True)
+                marker_message = generate_marker_message(
+                    managed.session_id,
+                    iterm_session_id=managed.iterm_session.session_id,
+                    project_path=(
+                        managed.project_path if managed.agent_type == "codex" else None
+                    ),
+                )
+                await send_prompt_for_agent(
+                    pane_sessions[i],
+                    marker_message,
+                    agent_type=managed.agent_type,
+                    submit=True,
+                )
 
             # Wait for markers to appear in JSONL (Claude only)
             for i, managed in enumerate(managed_sessions):

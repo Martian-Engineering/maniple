@@ -15,7 +15,11 @@ from typing import TYPE_CHECKING, Literal, Optional
 if TYPE_CHECKING:
     from iterm2.session import Session as ItermSession
 
-from .session_state import get_project_dir, parse_session
+from .session_state import (
+    find_codex_session_by_internal_id,
+    get_project_dir,
+    parse_session,
+)
 
 # Type alias for supported agent types
 AgentType = Literal["claude", "codex"]
@@ -148,15 +152,21 @@ class ManagedSession:
         Get the path to this session's JSONL file.
 
         For Claude workers: uses marker-based discovery in ~/.claude/projects/.
-        For Codex workers: searches ~/.codex/sessions/ for matching session files.
+        For Codex workers: uses marker-based discovery in ~/.codex/sessions/.
 
         Returns:
             Path object, or None if session cannot be discovered
         """
         if self.agent_type == "codex":
-            # For Codex, search the sessions directory
             from .idle_detection import find_codex_session_file
 
+            # Prefer marker-based match, fall back to most recent for legacy sessions.
+            match = find_codex_session_by_internal_id(
+                self.session_id,
+                max_age_seconds=600,
+            )
+            if match:
+                return match.jsonl_path
             return find_codex_session_file(max_age_seconds=600)
         else:
             # For Claude, use marker-based discovery
@@ -205,8 +215,14 @@ class ManagedSession:
         if self.agent_type == "codex":
             from .idle_detection import find_codex_session_file, is_codex_idle
 
-            # Find the session file (will be discovered from ~/.codex/sessions/)
-            session_file = find_codex_session_file(max_age_seconds=600)
+            # Prefer marker-based match, fall back to most recent for legacy sessions.
+            match = find_codex_session_by_internal_id(
+                self.session_id,
+                max_age_seconds=600,
+            )
+            session_file = match.jsonl_path if match else None
+            if not session_file:
+                session_file = find_codex_session_file(max_age_seconds=600)
             if not session_file:
                 return False
             return is_codex_idle(session_file)

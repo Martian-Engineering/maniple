@@ -1,7 +1,7 @@
 """
 Adopt worker tool.
 
-Provides adopt_worker for importing existing iTerm2 Claude Code sessions.
+Provides adopt_worker for importing existing iTerm2 Claude Code and Codex sessions.
 """
 
 import logging
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ..server import AppContext
 
 from ..registry import SessionStatus
-from ..session_state import find_jsonl_by_iterm_id
+from ..session_state import find_codex_session_by_iterm_id, find_jsonl_by_iterm_id
 from ..utils import error_response, HINTS
 
 logger = logging.getLogger("claude-team-mcp")
@@ -32,7 +32,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         max_age: int = 3600,
     ) -> dict:
         """
-        Adopt an existing iTerm2 Claude Code session into the MCP registry.
+        Adopt an existing iTerm2 Claude Code or Codex session into the MCP registry.
 
         Takes an iTerm2 session ID (from discover_workers) and registers it
         for management. Only works for sessions originally spawned by claude-team
@@ -77,23 +77,33 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         if not target_session:
             return error_response(
                 f"iTerm2 session not found: {iterm_session_id}",
-                hint="Run discover_workers to scan for active Claude sessions in iTerm2",
+                hint="Run discover_workers to scan for active Claude or Codex sessions in iTerm2",
             )
 
-        # Use marker-based discovery to recover original session identity
-        # This only works for sessions we originally spawned (which have our markers)
+        # Use marker-based discovery to recover original session identity.
+        # This only works for sessions we originally spawned (which have our markers).
         match = find_jsonl_by_iterm_id(iterm_session_id, max_age_seconds=max_age)
+        agent_type = "claude"
+
         if not match:
-            return error_response(
-                "Session not found or not spawned by claude-team",
-                hint="adopt_worker only works for sessions originally spawned by claude-team. "
-                "External sessions cannot be reliably correlated to their JSONL files.",
-                iterm_session_id=iterm_session_id,
+            codex_match = find_codex_session_by_iterm_id(
+                iterm_session_id,
+                max_age_seconds=max_age,
             )
+            if not codex_match:
+                return error_response(
+                    "Session not found or not spawned by claude-team",
+                    hint="adopt_worker only works for sessions originally spawned by claude-team. "
+                    "External sessions cannot be reliably correlated to their JSONL files.",
+                    iterm_session_id=iterm_session_id,
+                )
+            match = codex_match
+            agent_type = "codex"
 
         logger.info(
-            f"Recovered session via iTerm marker: "
-            f"project={match.project_path}, internal_id={match.internal_session_id}"
+            "Recovered session via iTerm marker: "
+            f"project={match.project_path}, internal_id={match.internal_session_id}, "
+            f"agent_type={agent_type}"
         )
 
         # Validate project path still exists
@@ -110,7 +120,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             name=session_name,
             session_id=match.internal_session_id,  # Recover original ID
         )
-        managed.claude_session_id = match.jsonl_path.stem
+        managed.agent_type = agent_type
+        if agent_type == "claude":
+            managed.claude_session_id = match.jsonl_path.stem
 
         # Mark ready immediately (no discovery needed, we already have it)
         registry.update_status(managed.session_id, SessionStatus.READY)

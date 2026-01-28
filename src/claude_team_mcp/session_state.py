@@ -15,6 +15,8 @@ from typing import Any, Optional
 
 # Claude projects directory
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
+# Codex sessions directory
+CODEX_SESSIONS_DIR = Path.home() / ".codex" / "sessions"
 
 
 def parse_timestamp(entry: dict) -> datetime:
@@ -207,10 +209,15 @@ MARKER_SUFFIX = "!>"
 ITERM_MARKER_PREFIX = "<!claude-team-iterm:"
 ITERM_MARKER_SUFFIX = "!>"
 
+# Project path marker for Codex session recovery
+PROJECT_MARKER_PREFIX = "<!claude-team-project:"
+PROJECT_MARKER_SUFFIX = "!>"
+
 
 def generate_marker_message(
     session_id: str,
     iterm_session_id: Optional[str] = None,
+    project_path: Optional[str] = None,
 ) -> str:
     """
     Generate a marker message to send to a session for JSONL correlation.
@@ -222,6 +229,8 @@ def generate_marker_message(
         session_id: The managed session ID (e.g., "worker-1")
         iterm_session_id: Optional iTerm2 session ID for discovery/recovery.
             When provided, an additional iTerm-specific marker is emitted.
+        project_path: Optional project path for Codex session recovery.
+            When provided, a project marker is emitted.
 
     Returns:
         A message string to send to the session
@@ -231,6 +240,10 @@ def generate_marker_message(
     # Add iTerm-specific marker if provided (for session recovery after MCP restart)
     if iterm_session_id:
         marker += f"\n{ITERM_MARKER_PREFIX}{iterm_session_id}{ITERM_MARKER_SUFFIX}"
+
+    # Add project path marker if provided (used for Codex recovery)
+    if project_path:
+        marker += f"\n{PROJECT_MARKER_PREFIX}{project_path}{PROJECT_MARKER_SUFFIX}"
 
     return (
         f"{marker}\n\n"
@@ -275,6 +288,26 @@ def extract_iterm_session_id(text: str) -> Optional[str]:
         return None
     start += len(ITERM_MARKER_PREFIX)
     end = text.find(ITERM_MARKER_SUFFIX, start)
+    if end == -1:
+        return None
+    return text[start:end]
+
+
+def extract_project_path(text: str) -> Optional[str]:
+    """
+    Extract a project path from marker text if present.
+
+    Args:
+        text: Text that may contain a project path marker
+
+    Returns:
+        The project path from the marker, or None if no marker found
+    """
+    start = text.find(PROJECT_MARKER_PREFIX)
+    if start == -1:
+        return None
+    start += len(PROJECT_MARKER_PREFIX)
+    end = text.find(PROJECT_MARKER_SUFFIX, start)
     if end == -1:
         return None
     return text[start:end]
@@ -342,6 +375,157 @@ class ItermSessionMatch:
     internal_session_id: str  # Our claude-team session ID
     jsonl_path: Path
     project_path: str  # Recovered from directory slug
+
+
+@dataclass
+class CodexSessionMatch:
+    """Result of matching a Codex session marker to a JSONL file."""
+
+    iterm_session_id: Optional[str]
+    internal_session_id: str
+    jsonl_path: Path
+    project_path: str
+
+
+# Helper to iterate recent Codex session files for marker scans.
+def _iter_recent_codex_session_files(max_age_seconds: int) -> list[Path]:
+    now = time.time()
+    cutoff = now - max_age_seconds
+    recent_dirs: list[Path] = []
+
+    # Walk newest date directories first (limit to a few days to avoid scanning too much).
+    if not CODEX_SESSIONS_DIR.exists():
+        return []
+
+    # Build a short list of recent day directories (YYYY/MM/DD) to scan.
+    for year_dir in sorted(CODEX_SESSIONS_DIR.iterdir(), reverse=True):
+        if not year_dir.is_dir():
+            continue
+        for month_dir in sorted(year_dir.iterdir(), reverse=True):
+            if not month_dir.is_dir():
+                continue
+            for day_dir in sorted(month_dir.iterdir(), reverse=True):
+                if not day_dir.is_dir():
+                    continue
+                recent_dirs.append(day_dir)
+                if len(recent_dirs) >= 3:
+                    break
+            if len(recent_dirs) >= 3:
+                break
+        if len(recent_dirs) >= 3:
+            break
+
+    candidates: list[Path] = []
+
+    # Collect JSONL files in the recent directories, filtering by age.
+    for day_dir in recent_dirs:
+        for jsonl_file in day_dir.glob("rollout-*.jsonl"):
+            try:
+                mtime = jsonl_file.stat().st_mtime
+            except OSError:
+                continue
+            if mtime < cutoff:
+                continue
+            candidates.append(jsonl_file)
+
+    return candidates
+
+
+# Helper to scan a Codex JSONL file for our markers.
+def _scan_codex_markers(
+    jsonl_path: Path,
+    *,
+    iterm_session_id: Optional[str] = None,
+    internal_session_id: Optional[str] = None,
+) -> Optional[CodexSessionMatch]:
+    try:
+        with open(jsonl_path, "r") as fp:
+            # Scan line-by-line so we can short-circuit as soon as markers are found.
+            for line in fp:
+                if (
+                    MARKER_PREFIX not in line
+                    and ITERM_MARKER_PREFIX not in line
+                    and PROJECT_MARKER_PREFIX not in line
+                ):
+                    continue
+
+                # Extract markers directly from the JSON line string (no full JSON parse).
+                found_internal = extract_marker_session_id(line)
+                found_iterm = extract_iterm_session_id(line)
+                found_project = extract_project_path(line)
+
+                # Enforce target filters if provided.
+                if internal_session_id and found_internal != internal_session_id:
+                    continue
+                if iterm_session_id and found_iterm != iterm_session_id:
+                    continue
+
+                # Require both internal ID and project path for a valid match.
+                if found_internal and found_project:
+                    return CodexSessionMatch(
+                        iterm_session_id=found_iterm,
+                        internal_session_id=found_internal,
+                        jsonl_path=jsonl_path,
+                        project_path=found_project,
+                    )
+    except OSError:
+        return None
+
+    return None
+
+
+def find_codex_session_by_iterm_id(
+    iterm_session_id: str,
+    max_age_seconds: int = 3600,
+) -> Optional[CodexSessionMatch]:
+    """
+    Find a Codex session file containing a specific iTerm session marker.
+
+    Scans recent Codex session files for our markers and returns the
+    first match that includes the iTerm session ID.
+
+    Args:
+        iterm_session_id: The iTerm2 session ID to search for
+        max_age_seconds: Only check files modified within this many seconds
+
+    Returns:
+        CodexSessionMatch with recovery info, or None if not found
+    """
+    for jsonl_path in _iter_recent_codex_session_files(max_age_seconds):
+        match = _scan_codex_markers(
+            jsonl_path,
+            iterm_session_id=iterm_session_id,
+        )
+        if match:
+            return match
+    return None
+
+
+def find_codex_session_by_internal_id(
+    session_id: str,
+    max_age_seconds: int = 3600,
+) -> Optional[CodexSessionMatch]:
+    """
+    Find a Codex session file containing a specific internal session marker.
+
+    Scans recent Codex session files for our internal session marker and
+    returns the first matching file.
+
+    Args:
+        session_id: The internal session ID to search for
+        max_age_seconds: Only check files modified within this many seconds
+
+    Returns:
+        CodexSessionMatch with recovery info, or None if not found
+    """
+    for jsonl_path in _iter_recent_codex_session_files(max_age_seconds):
+        match = _scan_codex_markers(
+            jsonl_path,
+            internal_session_id=session_id,
+        )
+        if match:
+            return match
+    return None
 
 
 def find_jsonl_by_iterm_id(
