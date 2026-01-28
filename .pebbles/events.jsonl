@@ -171,3 +171,5 @@
 {"type":"dep_add","timestamp":"2026-01-28T16:24:21.047459Z","issue_id":"cic-5xot","payload":{"dep_type":"blocks","depends_on":"cic-8dd"}}
 {"type":"status_update","timestamp":"2026-01-28T17:08:49.128765Z","issue_id":"cic-109","payload":{"status":"in_progress"}}
 {"type":"close","timestamp":"2026-01-28T17:10:15.462962Z","issue_id":"cic-109","payload":{}}
+{"type":"status_update","timestamp":"2026-01-28T17:17:38.673165Z","issue_id":"cic-8dd","payload":{"status":"in_progress"}}
+{"type":"close","timestamp":"2026-01-28T17:21:32.939781Z","issue_id":"cic-8dd","payload":{}}
