@@ -237,6 +237,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             resolved_paths: list[str] = []
             worktree_paths: dict[int, Path] = {}  # index -> worktree path
             main_repo_paths: dict[int, Path] = {}  # index -> main repo
+            worktree_warnings: list[str] = []
 
             # Get CLAUDE_TEAM_PROJECT_DIR for "auto" paths
             env_project_dir = os.environ.get("CLAUDE_TEAM_PROJECT_DIR")
@@ -245,6 +246,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 project_path = w["project_path"]
                 use_worktree = w.get("use_worktree", True)  # Default True
                 worktree_config = w.get("worktree")
+                worktree_explicitly_requested = worktree_config is not None
                 worktree_branch = None
                 worktree_base = None
                 bead = w.get("bead")
@@ -300,10 +302,20 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                         resolved_paths.append(str(worktree_path))
                         logger.info(f"Created local worktree for {name} at {worktree_path}")
                     except WorktreeError as e:
-                        logger.warning(
+                        warning_message = (
                             f"Failed to create worktree for {name}: {e}. "
                             "Using repo directly."
                         )
+                        if worktree_explicitly_requested:
+                            return error_response(
+                                warning_message,
+                                hint=(
+                                    "Verify the worktree branch/base settings and "
+                                    "that the repository is in a clean state."
+                                ),
+                            )
+                        logger.warning(warning_message)
+                        worktree_warnings.append(warning_message)
                         resolved_paths.append(str(repo_path))
                 else:
                     # No worktree - use repo directly
@@ -760,6 +772,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             # Add structured warning for programmatic access
             if workers_awaiting_task:
                 result["workers_awaiting_task"] = workers_awaiting_task
+            if worktree_warnings:
+                result["warnings"] = worktree_warnings
 
             return result
 
