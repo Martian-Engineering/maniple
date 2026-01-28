@@ -271,6 +271,70 @@ class TmuxBackend(TerminalBackend):
 
         return sessions
 
+    async def find_available_window(
+        self,
+        max_panes: int = 4,
+        managed_session_ids: set[str] | None = None,
+    ) -> tuple[str, str, TerminalSession] | None:
+        """Find a tmux session/window with space for additional panes."""
+        # Query panes across all tmux sessions/windows with enough metadata
+        # to group panes and select a reasonable split target.
+        output = await self._run_tmux(
+            [
+                "list-panes",
+                "-a",
+                "-F",
+                "#{session_name} #{window_index} #{pane_index} #{pane_active} #{pane_id}",
+            ]
+        )
+
+        panes_by_window: dict[tuple[str, str], list[dict[str, str]]] = {}
+
+        for line in output.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) != 5:
+                continue
+            session_name, window_index, pane_index, pane_active, pane_id = parts
+            panes_by_window.setdefault((session_name, window_index), []).append(
+                {
+                    "pane_id": pane_id,
+                    "pane_index": pane_index,
+                    "pane_active": pane_active,
+                }
+            )
+
+        for (session_name, window_index), panes in panes_by_window.items():
+            # Respect the managed-session filter when provided (including empty set).
+            if managed_session_ids is not None:
+                if not any(p["pane_id"] in managed_session_ids for p in panes):
+                    continue
+
+            # Only consider windows that have room for more panes.
+            if len(panes) >= max_panes:
+                continue
+
+            # Prefer the active pane as the split target when available.
+            target = next((p for p in panes if p["pane_active"] == "1"), panes[0])
+            return (
+                session_name,
+                window_index,
+                TerminalSession(
+                    backend_id=self.backend_id,
+                    native_id=target["pane_id"],
+                    handle=target["pane_id"],
+                    metadata={
+                        "session_name": session_name,
+                        "window_index": window_index,
+                        "pane_index": target["pane_index"],
+                    },
+                ),
+            )
+
+        return None
+
     async def start_agent_in_session(
         self,
         handle: TerminalSession,
