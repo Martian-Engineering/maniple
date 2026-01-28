@@ -162,3 +162,10 @@
 {"type":"close","timestamp":"2026-01-28T05:55:55.408423Z","issue_id":"cic-5f3","payload":{}}
 {"type":"status_update","timestamp":"2026-01-28T14:52:12.005339Z","issue_id":"cic-bt3a","payload":{"status":"in_progress"}}
 {"type":"close","timestamp":"2026-01-28T15:13:28.613252Z","issue_id":"cic-bt3a","payload":{}}
+{"type":"create","timestamp":"2026-01-28T16:24:14.913543Z","issue_id":"cic-109","payload":{"description":"","priority":"1","title":"tmux: implement send_prompt and send_prompt_for_agent","type":"task"}}
+{"type":"create","timestamp":"2026-01-28T16:24:15.055802Z","issue_id":"cic-455","payload":{"description":"","priority":"1","title":"tmux: implement start_agent_in_session","type":"task"}}
+{"type":"create","timestamp":"2026-01-28T16:24:15.132964Z","issue_id":"cic-8dd","payload":{"description":"","priority":"2","title":"tmux: implement find_available_window","type":"task"}}
+{"type":"create","timestamp":"2026-01-28T16:24:15.212107Z","issue_id":"cic-6e5","payload":{"description":"","priority":"3","title":"Remove legacy start_claude_in_session (use start_agent_in_session)","type":"chore"}}
+{"type":"dep_add","timestamp":"2026-01-28T16:24:20.897885Z","issue_id":"cic-5xot","payload":{"dep_type":"blocks","depends_on":"cic-109"}}
+{"type":"dep_add","timestamp":"2026-01-28T16:24:20.972278Z","issue_id":"cic-5xot","payload":{"dep_type":"blocks","depends_on":"cic-455"}}
+{"type":"dep_add","timestamp":"2026-01-28T16:24:21.047459Z","issue_id":"cic-5xot","payload":{"dep_type":"blocks","depends_on":"cic-8dd"}}
