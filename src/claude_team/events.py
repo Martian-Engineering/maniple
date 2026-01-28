@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -27,6 +27,21 @@ EventType = Literal[
     "worker_active",
     "worker_closed",
 ]
+
+
+def _int_env(name: str, default: int) -> int:
+    # Parse integer environment overrides with a safe fallback.
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+DEFAULT_ROTATION_MAX_SIZE_MB = _int_env("CLAUDE_TEAM_EVENTS_MAX_SIZE_MB", 10)
+DEFAULT_ROTATION_RECENT_HOURS = _int_env("CLAUDE_TEAM_EVENTS_RECENT_HOURS", 24)
 
 
 @dataclass
@@ -67,15 +82,26 @@ def append_events(events: list[WorkerEvent]) -> None:
         return
 
     path = get_events_path()
+    if not path.exists():
+        path.touch()
     # Serialize upfront so the file write is a single, ordered block.
     # Use _event_to_dict instead of asdict to avoid deepcopy pickle issues.
     payloads = [json.dumps(_event_to_dict(event), ensure_ascii=False) for event in events]
     block = "\n".join(payloads) + "\n"
+    event_ts = _latest_event_timestamp(events)
 
-    with path.open("a", encoding="utf-8") as handle:
+    with path.open("r+", encoding="utf-8") as handle:
         _lock_file(handle)
         try:
+            _rotate_events_log_locked(
+                handle,
+                path,
+                current_ts=event_ts,
+                max_size_mb=DEFAULT_ROTATION_MAX_SIZE_MB,
+                recent_hours=DEFAULT_ROTATION_RECENT_HOURS,
+            )
             # Hold the lock across the entire write and flush cycle.
+            handle.seek(0, os.SEEK_END)
             handle.write(block)
             handle.flush()
             os.fsync(handle.fileno())
@@ -142,33 +168,262 @@ def get_latest_snapshot() -> dict | None:
     return latest_snapshot
 
 
-def rotate_events_log(max_size_mb: int = 10) -> None:
-    """Rotate log file if it exceeds max size."""
-    if max_size_mb <= 0:
-        return
-
+def rotate_events_log(
+    max_size_mb: int = DEFAULT_ROTATION_MAX_SIZE_MB,
+    recent_hours: int = DEFAULT_ROTATION_RECENT_HOURS,
+    now: datetime | None = None,
+) -> None:
+    """Rotate the log daily or by size, retaining active/recent workers."""
     path = get_events_path()
     if not path.exists():
         return
 
-    max_bytes = max_size_mb * 1024 * 1024
+    current_ts = now or datetime.now(timezone.utc)
 
-    with path.open("a", encoding="utf-8") as handle:
+    with path.open("r+", encoding="utf-8") as handle:
         _lock_file(handle)
         try:
-            # Re-check size while locked to avoid races with concurrent writers.
-            if path.stat().st_size <= max_bytes:
-                return
-
-            rotated_path = _rotated_path(path)
-            # Flush buffered writes before rotating the file on disk.
-            handle.flush()
-            os.fsync(handle.fileno())
-            path.replace(rotated_path)
-            # Ensure a fresh log file exists after rotation.
-            path.touch()
+            _rotate_events_log_locked(
+                handle,
+                path,
+                current_ts=current_ts,
+                max_size_mb=max_size_mb,
+                recent_hours=recent_hours,
+            )
         finally:
             _unlock_file(handle)
+
+
+def _rotate_events_log_locked(
+    handle,
+    path: Path,
+    current_ts: datetime,
+    max_size_mb: int,
+    recent_hours: int,
+) -> None:
+    # Rotate the log while holding the caller's lock.
+    if not _should_rotate(path, current_ts, max_size_mb):
+        return
+
+    rotation_day = _rotation_day(path, current_ts)
+    backup_path = _backup_path(path, rotation_day)
+
+    last_seen, last_state = _copy_and_collect_activity(handle, backup_path)
+    keep_ids = _select_workers_to_keep(last_seen, last_state, current_ts, recent_hours)
+    retained_lines = _filter_retained_events(handle, keep_ids)
+
+    # Reset the log to only retained events.
+    handle.seek(0)
+    handle.truncate(0)
+    if retained_lines:
+        handle.write("\n".join(retained_lines) + "\n")
+    handle.flush()
+    os.fsync(handle.fileno())
+
+
+def _should_rotate(path: Path, current_ts: datetime, max_size_mb: int) -> bool:
+    # Decide whether a daily or size-based rotation is needed.
+    if not path.exists():
+        return False
+
+    current_day = current_ts.astimezone(timezone.utc).date()
+    last_write = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    last_day = last_write.date()
+    if last_day != current_day:
+        return True
+
+    if max_size_mb <= 0:
+        return False
+    max_bytes = max_size_mb * 1024 * 1024
+    return path.stat().st_size > max_bytes
+
+
+def _rotation_day(path: Path, current_ts: datetime) -> datetime.date:
+    # Use the last write date for backups to align with daily rotations.
+    if not path.exists():
+        return current_ts.astimezone(timezone.utc).date()
+    last_write = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    return last_write.date()
+
+
+def _backup_path(path: Path, rotation_day: datetime.date) -> Path:
+    # Build a date-stamped backup path that avoids clobbering older files.
+    date_suffix = rotation_day.strftime("%Y-%m-%d")
+    candidate = path.with_name(f"{path.stem}.{date_suffix}{path.suffix}")
+    if not candidate.exists():
+        return candidate
+    index = 1
+    while True:
+        indexed = path.with_name(f"{path.stem}.{date_suffix}.{index}{path.suffix}")
+        if not indexed.exists():
+            return indexed
+        index += 1
+
+
+def _copy_and_collect_activity(handle, backup_path: Path) -> tuple[dict[str, datetime], dict[str, str]]:
+    # Copy the current log to a backup while recording worker activity.
+    last_seen: dict[str, datetime] = {}
+    last_state: dict[str, str] = {}
+    handle.seek(0)
+    with backup_path.open("w", encoding="utf-8") as backup:
+        for line in handle:
+            backup.write(line)
+            line = line.strip()
+            if not line:
+                continue
+            # Ignore malformed JSON while copying the raw line.
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            event = _parse_event(payload)
+            _track_event_activity(event, last_seen, last_state)
+    return last_seen, last_state
+
+
+def _track_event_activity(
+    event: WorkerEvent,
+    last_seen: dict[str, datetime],
+    last_state: dict[str, str],
+) -> None:
+    # Update last-seen and last-state maps from a worker event.
+    try:
+        event_ts = _parse_timestamp(event.ts)
+    except ValueError:
+        return
+
+    if event.type == "snapshot":
+        _track_snapshot_activity(event.data, event_ts, last_seen, last_state)
+        return
+
+    if not event.worker_id:
+        return
+
+    last_seen[event.worker_id] = event_ts
+    state = _state_from_event_type(event.type)
+    if state:
+        last_state[event.worker_id] = state
+
+
+def _track_snapshot_activity(
+    data: dict,
+    event_ts: datetime,
+    last_seen: dict[str, datetime],
+    last_state: dict[str, str],
+) -> None:
+    # Update state from snapshot payloads.
+    workers = data.get("workers")
+    if not isinstance(workers, list):
+        return
+    for worker in workers:
+        if not isinstance(worker, dict):
+            continue
+        worker_id = _snapshot_worker_id(worker)
+        if not worker_id:
+            continue
+        state = worker.get("state")
+        if isinstance(state, str) and state:
+            last_state[worker_id] = state
+            if state == "active":
+                last_seen[worker_id] = event_ts
+
+
+def _state_from_event_type(event_type: EventType) -> str | None:
+    # Map event types to "active"/"idle"/"closed" state labels.
+    if event_type in ("worker_started", "worker_active"):
+        return "active"
+    if event_type == "worker_idle":
+        return "idle"
+    if event_type == "worker_closed":
+        return "closed"
+    return None
+
+
+def _snapshot_worker_id(worker: dict) -> str | None:
+    # Identify a worker id inside snapshot payloads.
+    for key in ("session_id", "worker_id", "id"):
+        value = worker.get(key)
+        if value:
+            return str(value)
+    return None
+
+
+def _select_workers_to_keep(
+    last_seen: dict[str, datetime],
+    last_state: dict[str, str],
+    current_ts: datetime,
+    recent_hours: int,
+) -> set[str]:
+    # Build the retention set from active and recently active workers.
+    keep_ids = {worker_id for worker_id, state in last_state.items() if state == "active"}
+    if recent_hours <= 0:
+        return keep_ids
+    threshold = current_ts.astimezone(timezone.utc) - timedelta(hours=recent_hours)
+    for worker_id, seen in last_seen.items():
+        if seen >= threshold:
+            keep_ids.add(worker_id)
+    return keep_ids
+
+
+def _filter_retained_events(handle, keep_ids: set[str]) -> list[str]:
+    # Filter events to only those associated with retained workers.
+    retained: list[str] = []
+    handle.seek(0)
+    for line in handle:
+        line = line.strip()
+        if not line:
+            continue
+        # Skip malformed JSON entries without failing rotation.
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        event = _parse_event(payload)
+        if event.type == "snapshot":
+            # Retain only snapshot entries related to preserved workers.
+            filtered = _filter_snapshot_event(event, keep_ids)
+            if filtered is None:
+                continue
+            retained.append(json.dumps(_event_to_dict(filtered), ensure_ascii=False))
+            continue
+        if event.worker_id and event.worker_id in keep_ids:
+            retained.append(json.dumps(_event_to_dict(event), ensure_ascii=False))
+    return retained
+
+
+def _filter_snapshot_event(event: WorkerEvent, keep_ids: set[str]) -> WorkerEvent | None:
+    # Drop snapshot entries that don't include retained workers.
+    data = dict(event.data or {})
+    workers = data.get("workers")
+    if not isinstance(workers, list):
+        return None
+    filtered_workers = []
+    for worker in workers:
+        if not isinstance(worker, dict):
+            continue
+        worker_id = _snapshot_worker_id(worker)
+        if worker_id and worker_id in keep_ids:
+            filtered_workers.append(worker)
+    if not filtered_workers:
+        return None
+    data["workers"] = filtered_workers
+    data["count"] = len(filtered_workers)
+    return WorkerEvent(ts=event.ts, type=event.type, worker_id=None, data=data)
+
+
+def _latest_event_timestamp(events: list[WorkerEvent]) -> datetime:
+    # Use the newest timestamp in a batch to evaluate rotation boundaries.
+    latest = datetime.min.replace(tzinfo=timezone.utc)
+    for event in events:
+        try:
+            event_ts = _parse_timestamp(event.ts)
+        except ValueError:
+            continue
+        if event_ts > latest:
+            latest = event_ts
+    if latest == datetime.min.replace(tzinfo=timezone.utc):
+        return datetime.now(timezone.utc)
+    return latest
 
 
 def _lock_file(handle) -> None:
@@ -220,9 +475,3 @@ def _parse_event(payload: dict) -> WorkerEvent:
         worker_id=payload.get("worker_id"),
         data=payload.get("data") or {},
     )
-
-
-def _rotated_path(path: Path) -> Path:
-    # Build a timestamped path to avoid clobbering older rotations.
-    suffix = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    return path.with_name(f"{path.name}.{suffix}")

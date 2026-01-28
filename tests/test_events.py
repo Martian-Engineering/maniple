@@ -1,7 +1,10 @@
 """Tests for event log persistence."""
 
 from datetime import datetime, timezone
+import importlib
+import json
 import multiprocessing
+import os
 from pathlib import Path
 import threading
 import time
@@ -132,8 +135,141 @@ class TestEventLogPersistence:
         path.write_bytes(b"x" * (1024 * 1024 + 1))
         events.rotate_events_log(max_size_mb=1)
 
-        rotated = list(path.parent.glob("events.jsonl.*"))
+        rotated = list(path.parent.glob("events.*.jsonl"))
         assert len(rotated) == 1
         assert rotated[0].stat().st_size > 0
         assert path.exists()
         assert path.stat().st_size == 0
+
+    def test_rotate_events_log_daily(self, tmp_path, monkeypatch):
+        """rotate_events_log should rotate when the date changes."""
+        path = tmp_path / "events.jsonl"
+        monkeypatch.setattr(events, "get_events_path", lambda: path)
+
+        old_ts = datetime(2026, 1, 27, 23, 55, tzinfo=timezone.utc)
+        old_line = json.dumps({
+            "ts": _isoformat_zulu(old_ts),
+            "type": "worker_idle",
+            "worker_id": "old-worker",
+            "data": {"state": "idle"},
+        })
+        path.write_text(old_line + "\n", encoding="utf-8")
+        old_epoch = old_ts.timestamp()
+        os.utime(path, (old_epoch, old_epoch))
+
+        new_ts = datetime(2026, 1, 28, 0, 1, tzinfo=timezone.utc)
+        events.append_event(WorkerEvent(
+            ts=_isoformat_zulu(new_ts),
+            type="worker_started",
+            worker_id="new-worker",
+            data={"state": "active"},
+        ))
+
+        backup = path.with_name("events.2026-01-27.jsonl")
+        assert backup.exists()
+        assert "old-worker" in backup.read_text(encoding="utf-8")
+        assert "new-worker" in path.read_text(encoding="utf-8")
+
+    def test_rotate_events_log_retains_active_and_recent(self, tmp_path, monkeypatch):
+        """Rotation should retain active and recently active workers."""
+        path = tmp_path / "events.jsonl"
+        monkeypatch.setattr(events, "get_events_path", lambda: path)
+
+        now = datetime(2026, 1, 28, 12, 0, tzinfo=timezone.utc)
+        active_old = datetime(2026, 1, 26, 9, 0, tzinfo=timezone.utc)
+        recent_idle = datetime(2026, 1, 28, 11, 0, tzinfo=timezone.utc)
+        stale_idle = datetime(2026, 1, 26, 8, 0, tzinfo=timezone.utc)
+
+        lines = [
+            json.dumps({
+                "ts": _isoformat_zulu(active_old),
+                "type": "worker_active",
+                "worker_id": "active-old",
+                "data": {"state": "active"},
+            }),
+            json.dumps({
+                "ts": _isoformat_zulu(recent_idle),
+                "type": "worker_idle",
+                "worker_id": "recent-idle",
+                "data": {"state": "idle"},
+            }),
+            json.dumps({
+                "ts": _isoformat_zulu(stale_idle),
+                "type": "worker_idle",
+                "worker_id": "stale-idle",
+                "data": {"state": "idle"},
+            }),
+            json.dumps({
+                "ts": _isoformat_zulu(recent_idle),
+                "type": "snapshot",
+                "worker_id": None,
+                "data": {
+                    "count": 3,
+                    "workers": [
+                        {"session_id": "active-old", "state": "active"},
+                        {"session_id": "recent-idle", "state": "idle"},
+                        {"session_id": "stale-idle", "state": "idle"},
+                    ],
+                },
+            }),
+        ]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        last_write = datetime(2026, 1, 27, 23, 59, tzinfo=timezone.utc)
+        last_epoch = last_write.timestamp()
+        os.utime(path, (last_epoch, last_epoch))
+
+        events.rotate_events_log(recent_hours=24, now=now)
+
+        backup = path.with_name("events.2026-01-27.jsonl")
+        assert backup.exists()
+
+        retained = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+        worker_ids = {
+            payload.get("worker_id")
+            for payload in retained
+            if payload.get("type") != "snapshot"
+        }
+        assert worker_ids == {"active-old", "recent-idle"}
+
+        snapshot = next(payload for payload in retained if payload.get("type") == "snapshot")
+        worker_ids = {worker["session_id"] for worker in snapshot["data"]["workers"]}
+        assert worker_ids == {"active-old", "recent-idle"}
+        assert snapshot["data"]["count"] == 2
+
+    def test_rotate_events_log_env_defaults(self, tmp_path, monkeypatch):
+        """Env vars should configure rotation defaults."""
+        monkeypatch.setenv("CLAUDE_TEAM_EVENTS_MAX_SIZE_MB", "1")
+        monkeypatch.setenv("CLAUDE_TEAM_EVENTS_RECENT_HOURS", "0")
+
+        events_module = importlib.reload(events)
+        path = tmp_path / "events.jsonl"
+        monkeypatch.setattr(events_module, "get_events_path", lambda: path)
+
+        base = datetime(2026, 1, 28, 10, 0, tzinfo=timezone.utc)
+        line = json.dumps({
+            "ts": _isoformat_zulu(base),
+            "type": "worker_idle",
+            "worker_id": "idle-worker",
+            "data": {"state": "idle"},
+        })
+        filler = "x" * (1024 * 1024)
+        path.write_text(line + "\n" + filler + "\n", encoding="utf-8")
+        os.utime(path, (base.timestamp(), base.timestamp()))
+
+        events_module.append_event(events_module.WorkerEvent(
+            ts=_isoformat_zulu(base.replace(minute=5)),
+            type="worker_started",
+            worker_id="active-worker",
+            data={"state": "active"},
+        ))
+
+        backup = path.with_name("events.2026-01-28.jsonl")
+        assert backup.exists()
+        retained = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+        assert [payload["worker_id"] for payload in retained] == ["active-worker"]
+        assert events_module.DEFAULT_ROTATION_MAX_SIZE_MB == 1
+        assert events_module.DEFAULT_ROTATION_RECENT_HOURS == 0
+        monkeypatch.delenv("CLAUDE_TEAM_EVENTS_MAX_SIZE_MB", raising=False)
+        monkeypatch.delenv("CLAUDE_TEAM_EVENTS_RECENT_HOURS", raising=False)
+        importlib.reload(events_module)
