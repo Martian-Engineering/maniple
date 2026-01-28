@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 from ..registry import SessionStatus
 from ..session_state import (
     find_codex_session_by_iterm_id,
+    find_codex_session_by_tmux_id,
     find_jsonl_by_iterm_id,
     find_jsonl_by_tmux_id,
 )
@@ -125,12 +126,19 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         elif backend_id == "tmux":
             match = find_jsonl_by_tmux_id(target_id, max_age_seconds=max_age)
             if not match:
-                return error_response(
-                    "Session not found or not spawned by claude-team",
-                    hint="adopt_worker only works for sessions originally spawned by claude-team. "
-                    "External sessions cannot be reliably correlated to their JSONL files.",
-                    tmux_pane_id=target_id,
+                codex_match = find_codex_session_by_tmux_id(
+                    target_id,
+                    max_age_seconds=max_age,
                 )
+                if not codex_match:
+                    return error_response(
+                        "Session not found or not spawned by claude-team",
+                        hint="adopt_worker only works for sessions originally spawned by claude-team. "
+                        "External sessions cannot be reliably correlated to their JSONL files.",
+                        tmux_pane_id=target_id,
+                    )
+                match = codex_match
+                agent_type = "codex"
         else:
             return error_response(
                 "adopt_worker is only supported with iTerm2 or tmux backend",
