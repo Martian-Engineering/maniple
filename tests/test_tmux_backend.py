@@ -1,9 +1,11 @@
 """Tests for the tmux terminal backend."""
 
+import subprocess
+
 import pytest
 
 from claude_team_mcp.terminal_backends.base import TerminalSession
-from claude_team_mcp.terminal_backends.tmux import TmuxBackend
+from claude_team_mcp.terminal_backends.tmux import TMUX_SESSION_NAME, TmuxBackend
 
 
 @pytest.mark.asyncio
@@ -45,8 +47,9 @@ async def test_list_sessions_parses_panes(monkeypatch):
     backend = TmuxBackend()
 
     async def fake_run(args):
-        assert args[:2] == ["list-panes", "-a"]
-        return "s1 0 0 %1\ns2 1 2 %9\n"
+        assert args[:2] == ["list-panes", "-t"]
+        assert args[2] == TMUX_SESSION_NAME
+        return "s1\t@1\tworker-1\t0\t0\t%1\ns2\t@2\tworker-2\t1\t2\t%9\n"
 
     monkeypatch.setattr(backend, "_run_tmux", fake_run)
 
@@ -54,6 +57,7 @@ async def test_list_sessions_parses_panes(monkeypatch):
     assert len(sessions) == 2
     assert sessions[0].native_id == "%1"
     assert sessions[0].metadata["session_name"] == "s1"
+    assert sessions[0].metadata["window_name"] == "worker-1"
     assert sessions[1].metadata["pane_index"] == "2"
 
 
@@ -64,18 +68,21 @@ async def test_create_session_uses_tmux_commands(monkeypatch):
 
     async def fake_run(args):
         calls.append(args)
-        if args[:2] == ["list-panes", "-t"]:
-            return "%7"
+        if args[:2] == ["has-session", "-t"]:
+            raise subprocess.CalledProcessError(1, ["tmux"])
+        if args[:2] == ["new-session", "-d"]:
+            return "%7\t@7\t0"
         return ""
 
     monkeypatch.setattr(backend, "_run_tmux", fake_run)
 
     session = await backend.create_session("test-session")
 
-    assert calls[0] == ["new-session", "-d", "-s", "test-session"]
-    assert calls[1][:3] == ["list-panes", "-t", "test-session"]
+    assert calls[0] == ["has-session", "-t", TMUX_SESSION_NAME]
+    assert calls[1][:4] == ["new-session", "-d", "-s", TMUX_SESSION_NAME]
     assert session.native_id == "%7"
-    assert session.metadata["session_name"] == "test-session"
+    assert session.metadata["session_name"] == TMUX_SESSION_NAME
+    assert session.metadata["window_name"] == "test-session"
 
 
 @pytest.mark.asyncio
@@ -83,8 +90,9 @@ async def test_find_available_window_prefers_active_pane(monkeypatch):
     backend = TmuxBackend()
 
     async def fake_run(args):
-        assert args[:2] == ["list-panes", "-a"]
-        return "s1 0 0 0 %1\ns1 0 1 1 %2\ns2 0 0 1 %3\n"
+        assert args[:2] == ["list-panes", "-t"]
+        assert args[2] == TMUX_SESSION_NAME
+        return "s1\t@1\t0\t0\t0\t%1\ns1\t@1\t0\t1\t1\t%2\ns2\t@2\t0\t0\t1\t%3\n"
 
     monkeypatch.setattr(backend, "_run_tmux", fake_run)
 
@@ -103,8 +111,9 @@ async def test_find_available_window_respects_managed_filter(monkeypatch):
     backend = TmuxBackend()
 
     async def fake_run(args):
-        assert args[:2] == ["list-panes", "-a"]
-        return "s1 0 0 1 %1\ns1 0 1 0 %2\ns2 1 0 1 %3\n"
+        assert args[:2] == ["list-panes", "-t"]
+        assert args[2] == TMUX_SESSION_NAME
+        return "s1\t@1\t0\t0\t1\t%1\ns1\t@1\t0\t1\t0\t%2\ns2\t@2\t1\t0\t1\t%3\n"
 
     monkeypatch.setattr(backend, "_run_tmux", fake_run)
 
@@ -125,8 +134,9 @@ async def test_find_available_window_returns_none_when_full(monkeypatch):
     backend = TmuxBackend()
 
     async def fake_run(args):
-        assert args[:2] == ["list-panes", "-a"]
-        return "s1 0 0 1 %1\ns1 0 1 0 %2\n"
+        assert args[:2] == ["list-panes", "-t"]
+        assert args[2] == TMUX_SESSION_NAME
+        return "s1\t@1\t0\t0\t1\t%1\ns1\t@1\t0\t1\t0\t%2\n"
 
     monkeypatch.setattr(backend, "_run_tmux", fake_run)
 

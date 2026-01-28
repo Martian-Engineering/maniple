@@ -139,7 +139,7 @@ def register_tools(mcp: FastMCP) -> None:
         Close one or more managed Claude Code sessions.
 
         Gracefully terminates the Claude sessions in parallel and closes
-        their terminal panes. All session_ids must exist in the registry.
+        their terminal panes/windows. All session_ids must exist in the registry.
 
         ⚠️ **NOTE: WORKTREE CLEANUP**
         Workers with worktrees commit to ephemeral branches. When closed:
