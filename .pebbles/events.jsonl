@@ -132,3 +132,33 @@
 {"type":"close","timestamp":"2026-01-28T03:02:06.65654Z","issue_id":"cic-e18","payload":{}}
 {"type":"status_update","timestamp":"2026-01-28T04:25:46.953814Z","issue_id":"cic-b16","payload":{"status":"in_progress"}}
 {"type":"close","timestamp":"2026-01-28T04:34:55.6503Z","issue_id":"cic-b16","payload":{}}
+||||||| Stash base
+{"type":"create","timestamp":"2026-01-28T03:36:07.918938Z","issue_id":"cic-745","payload":{"description":"Introduce ~/.claude-team/config.json to replace growing number of env vars. Provides centralized configuration with versioning, auto-creation of defaults, and backwards-compatible env var overrides.","priority":"2","title":"System-wide config file (~/.claude-team/config.json)","type":"epic"}}
+{"type":"create","timestamp":"2026-01-28T03:36:14.000096Z","issue_id":"cic-f41","payload":{"description":"Define dataclasses for config schema (ClaudeTeamConfig, CommandsConfig, DefaultsConfig, IssueTrackerConfig). Implement load_config() with JSON validation, handle missing file by creating defaults, implement version field for future migrations. Location: ~/.claude-team/config.json","priority":"2","title":"Create config module (src/claude_team_mcp/config.py)","type":"task"}}
+{"type":"create","timestamp":"2026-01-28T03:36:26.885274Z","issue_id":"cic-cc8","payload":{"description":"Update cli_backends/claude.py and cli_backends/codex.py to use config module. Add get_claude_command() and get_codex_command() helpers that check env var first (for override), then config file, then built-in default. Maintains backwards compatibility.","priority":"2","title":"Update CLI backends to use config","type":"task"}}
+{"type":"create","timestamp":"2026-01-28T03:36:28.068295Z","issue_id":"cic-1c1","payload":{"description":"Update tools/spawn_workers.py to read defaults from config: use_worktrees, agent_type, skip_permissions, layout. WorkerConfig values override config defaults. Explicit None in WorkerConfig means use config default.","priority":"2","title":"Update spawn_workers to use config defaults","type":"task"}}
+{"type":"create","timestamp":"2026-01-28T03:36:29.305099Z","issue_id":"cic-8df","payload":{"description":"Update issue_tracker/__init__.py detect_issue_tracker() to check: 1) CLAUDE_TEAM_ISSUE_TRACKER env var, 2) config.issue_tracker.override, 3) marker directory detection. Implements the previously-documented but never-implemented env var.","priority":"2","title":"Implement issue_tracker.override in config","type":"task"}}
+{"type":"create","timestamp":"2026-01-28T03:36:30.104901Z","issue_id":"cic-0a5","payload":{"description":"Add tests/test_config.py covering: config loading/saving, env var override precedence, auto-creation of default config when missing, JSON validation errors, version migration (future-proofing).","priority":"2","title":"Add tests for config module","type":"task"}}
+{"type":"create","timestamp":"2026-01-28T03:36:30.872849Z","issue_id":"cic-f0a","payload":{"description":"Update README.md to document ~/.claude-team/config.json. Add example config. Document precedence (env var \u003e config \u003e default). Update Environment Variables section to note config file alternative.","priority":"3","title":"Update documentation for config file","type":"task"}}
+{"type":"rename","timestamp":"2026-01-28T03:37:03.563993Z","issue_id":"cic-f41","payload":{"new_id":"cic-745.1"}}
+{"type":"dep_add","timestamp":"2026-01-28T03:37:03.563999Z","issue_id":"cic-745.1","payload":{"dep_type":"parent-child","depends_on":"cic-745"}}
+{"type":"rename","timestamp":"2026-01-28T03:37:03.614405Z","issue_id":"cic-cc8","payload":{"new_id":"cic-745.2"}}
+{"type":"dep_add","timestamp":"2026-01-28T03:37:03.614411Z","issue_id":"cic-745.2","payload":{"dep_type":"parent-child","depends_on":"cic-745"}}
+{"type":"rename","timestamp":"2026-01-28T03:37:03.671282Z","issue_id":"cic-1c1","payload":{"new_id":"cic-745.3"}}
+{"type":"dep_add","timestamp":"2026-01-28T03:37:03.671289Z","issue_id":"cic-745.3","payload":{"dep_type":"parent-child","depends_on":"cic-745"}}
+{"type":"rename","timestamp":"2026-01-28T03:37:03.728328Z","issue_id":"cic-8df","payload":{"new_id":"cic-745.4"}}
+{"type":"dep_add","timestamp":"2026-01-28T03:37:03.728334Z","issue_id":"cic-745.4","payload":{"dep_type":"parent-child","depends_on":"cic-745"}}
+{"type":"rename","timestamp":"2026-01-28T03:37:03.790408Z","issue_id":"cic-0a5","payload":{"new_id":"cic-745.5"}}
+{"type":"dep_add","timestamp":"2026-01-28T03:37:03.790422Z","issue_id":"cic-745.5","payload":{"dep_type":"parent-child","depends_on":"cic-745"}}
+{"type":"rename","timestamp":"2026-01-28T03:37:03.854379Z","issue_id":"cic-f0a","payload":{"new_id":"cic-745.6"}}
+{"type":"dep_add","timestamp":"2026-01-28T03:37:03.854384Z","issue_id":"cic-745.6","payload":{"dep_type":"parent-child","depends_on":"cic-745"}}
+{"type":"dep_add","timestamp":"2026-01-28T03:37:12.074548Z","issue_id":"cic-745.2","payload":{"dep_type":"blocks","depends_on":"cic-745.1"}}
+{"type":"dep_add","timestamp":"2026-01-28T03:37:12.132494Z","issue_id":"cic-745.3","payload":{"dep_type":"blocks","depends_on":"cic-745.1"}}
+{"type":"dep_add","timestamp":"2026-01-28T03:37:12.196907Z","issue_id":"cic-745.4","payload":{"dep_type":"blocks","depends_on":"cic-745.1"}}
+{"type":"dep_add","timestamp":"2026-01-28T03:37:12.257668Z","issue_id":"cic-745.5","payload":{"dep_type":"blocks","depends_on":"cic-745.1"}}
+{"type":"dep_add","timestamp":"2026-01-28T03:37:12.33493Z","issue_id":"cic-745.6","payload":{"dep_type":"blocks","depends_on":"cic-745.2"}}
+{"type":"dep_add","timestamp":"2026-01-28T03:37:12.402761Z","issue_id":"cic-745.6","payload":{"dep_type":"blocks","depends_on":"cic-745.3"}}
+{"type":"dep_add","timestamp":"2026-01-28T03:37:12.464015Z","issue_id":"cic-745.6","payload":{"dep_type":"blocks","depends_on":"cic-745.4"}}
+{"type":"dep_add","timestamp":"2026-01-28T03:37:12.524492Z","issue_id":"cic-745.6","payload":{"dep_type":"blocks","depends_on":"cic-745.5"}}
+{"type":"create","timestamp":"2026-01-28T05:13:26.217794Z","issue_id":"cic-e1b","payload":{"description":"Migrate CLAUDE_TEAM_EVENTS_MAX_SIZE_MB and CLAUDE_TEAM_EVENTS_RECENT_HOURS to config.json","priority":"2","title":"Add event rotation settings to config","type":"task"}}
+{"type":"dep_add","timestamp":"2026-01-28T05:13:29.196306Z","issue_id":"cic-745","payload":{"dep_type":"blocks","depends_on":"cic-e1b"}}
