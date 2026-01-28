@@ -7,8 +7,10 @@ Provides a TerminalBackend implementation backed by tmux CLI commands.
 from __future__ import annotations
 
 import asyncio
+import re
 import subprocess
 import uuid
+from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from .base import TerminalBackend, TerminalSession
@@ -37,6 +39,8 @@ KEY_MAP: dict[str, str] = {
     "ctrl-l": "C-l",
     "ctrl-z": "C-z",
 }
+
+ISSUE_ID_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z0-9]*-[A-Za-z0-9]*\d[A-Za-z0-9]*\b")
 
 SHELL_READY_MARKER = "CLAUDE_TEAM_READY_7f3a9c"
 CODEX_PRE_ENTER_DELAY = 0.5
@@ -84,6 +88,9 @@ class TmuxBackend(TerminalBackend):
         self,
         name: str | None = None,
         *,
+        project_path: str | None = None,
+        issue_id: str | None = None,
+        coordinator_annotation: str | None = None,
         profile: str | None = None,
         profile_customizations: Any | None = None,
     ) -> TerminalSession:
@@ -91,7 +98,10 @@ class TmuxBackend(TerminalBackend):
         if profile or profile_customizations:
             raise ValueError("tmux backend does not support profiles")
 
-        window_name = name or self._generate_window_name()
+        base_name = name or self._generate_window_name()
+        project_name = self._project_name_from_path(project_path)
+        resolved_issue_id = self._resolve_issue_id(issue_id, coordinator_annotation)
+        window_name = self._format_window_name(base_name, project_name, resolved_issue_id)
 
         # Ensure the dedicated session exists, then create a new window for this worker.
         try:
@@ -127,16 +137,22 @@ class TmuxBackend(TerminalBackend):
         if not pane_id:
             raise RuntimeError("Failed to determine tmux pane id for new window")
 
+        metadata = {
+            "session_name": TMUX_SESSION_NAME,
+            "window_id": window_id,
+            "window_index": window_index,
+            "window_name": window_name,
+        }
+        if project_name:
+            metadata["project_name"] = project_name
+        if resolved_issue_id:
+            metadata["issue_id"] = resolved_issue_id
+
         return TerminalSession(
             backend_id=self.backend_id,
             native_id=pane_id,
             handle=pane_id,
-            metadata={
-                "session_name": TMUX_SESSION_NAME,
-                "window_id": window_id,
-                "window_index": window_index,
-                "window_name": window_name,
-            },
+            metadata=metadata,
         )
 
     async def send_text(self, session: TerminalSession, text: str) -> None:
@@ -559,6 +575,45 @@ class TmuxBackend(TerminalBackend):
             await asyncio.sleep(poll_interval)
 
         return False
+
+    # Extract a display name for the project from a project path.
+    def _project_name_from_path(self, project_path: str | None) -> str | None:
+        if not project_path:
+            return None
+        path = Path(project_path)
+        parts = path.parts
+        if ".worktrees" in parts:
+            worktrees_index = parts.index(".worktrees")
+            if worktrees_index > 0:
+                return parts[worktrees_index - 1]
+        return path.name
+
+    # Resolve an issue id from explicit input or a coordinator annotation.
+    def _resolve_issue_id(
+        self,
+        issue_id: str | None,
+        coordinator_annotation: str | None,
+    ) -> str | None:
+        if issue_id:
+            return issue_id
+        if not coordinator_annotation:
+            return None
+        match = ISSUE_ID_PATTERN.search(coordinator_annotation)
+        if not match:
+            return None
+        return match.group(0)
+
+    # Build the final tmux window name for a worker.
+    def _format_window_name(
+        self,
+        name: str,
+        project_name: str | None,
+        issue_id: str | None,
+    ) -> str:
+        window_name = f"{name} | {project_name}" if project_name else name
+        if issue_id:
+            return f"{window_name} [{issue_id}]"
+        return window_name
 
     # Generate a default tmux window name.
     def _generate_window_name(self) -> str:

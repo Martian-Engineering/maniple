@@ -353,7 +353,12 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             if backend.backend_id == "tmux":
                 for i in range(worker_count):
                     pane_sessions.append(
-                        await backend.create_session(name=resolved_names[i])
+                        await backend.create_session(
+                            name=resolved_names[i],
+                            project_path=resolved_paths[i],
+                            issue_id=workers[i].get("bead"),
+                            coordinator_annotation=workers[i].get("annotation"),
+                        )
                     )
             elif layout == "auto":
                 # Try to find an existing window where the ENTIRE batch fits.

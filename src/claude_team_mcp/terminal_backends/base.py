@@ -54,6 +54,9 @@ class TerminalBackend(Protocol):
         self,
         name: str | None = None,
         *,
+        project_path: str | None = None,
+        issue_id: str | None = None,
+        coordinator_annotation: str | None = None,
         profile: str | None = None,
         profile_customizations: Any | None = None,
     ) -> TerminalSession:
