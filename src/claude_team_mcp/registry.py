@@ -48,11 +48,13 @@ class TerminalId:
     def from_string(cls, s: str) -> "TerminalId":
         """
         Parse 'iterm:DB29DB03-...' format.
+
+        Falls back to treating bare IDs as iTerm for backwards compatibility.
         """
-        if ":" not in s:
-            raise ValueError("Terminal id must include backend prefix (e.g., 'iterm:UUID')")
-        backend_id, native_id = s.split(":", 1)
-        return cls(backend_id, native_id)
+        if ":" in s:
+            backend_id, native_id = s.split(":", 1)
+            return cls(backend_id, native_id)
+        return cls("iterm", s)
 
 
 class SessionStatus(str, Enum):
@@ -345,7 +347,8 @@ class SessionRegistry:
 
         Lookup order (most specific first):
         1. Internal session_id (e.g., "d875b833")
-        2. Terminal ID with backend prefix (e.g., "iterm:DB29DB03-...")
+        2. Terminal ID with backend prefix (e.g., "iterm:DB29DB03-..."),
+           or a bare iTerm ID for backwards compatibility
         3. Session name
 
         After MCP restart, internal IDs are lost until import. This method
