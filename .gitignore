@@ -54,9 +54,5 @@ htmlcov/
 # Git worktrees (internal)
 .worktrees/
 
-# Beads local files (not synced)
-.beads/.local_version
-.beads/last-touched
-.beads/.sync.lock
-.beads/sync-state.json
-.beads/sync_base.jsonl
+# Beads local state (not synced)
+.beads/
