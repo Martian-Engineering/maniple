@@ -40,7 +40,7 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
-DEFAULT_ROTATION_MAX_SIZE_MB = _int_env("CLAUDE_TEAM_EVENTS_MAX_SIZE_MB", 10)
+DEFAULT_ROTATION_MAX_SIZE_MB = _int_env("CLAUDE_TEAM_EVENTS_MAX_SIZE_MB", 1)
 DEFAULT_ROTATION_RECENT_HOURS = _int_env("CLAUDE_TEAM_EVENTS_RECENT_HOURS", 24)
 
 
