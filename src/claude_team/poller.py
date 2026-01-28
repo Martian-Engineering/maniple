@@ -7,9 +7,11 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Literal, Protocol
 
 from . import events
+from .idle_detection import detect_worker_idle
 
 logger = logging.getLogger("claude-team-poller")
 
@@ -25,9 +27,15 @@ class _RegistryLike(Protocol):
 # Minimal session interface used by WorkerPoller.
 class _SessionLike(Protocol):
     session_id: str
-
-    def is_idle(self) -> bool:
-        ...
+    agent_type: Literal["claude", "codex"]
+    project_path: str
+    claude_session_id: str | None
+    output_path: Path | None
+    message_count: int | None
+    last_message_count: int | None
+    last_message_timestamp: float | None
+    pid: int | None
+    is_idle: bool
 
     def to_dict(self) -> dict:
         ...
@@ -51,7 +59,7 @@ def _build_snapshot(registry: _RegistryLike) -> dict[str, _WorkerSnapshot]:
     snapshots: dict[str, _WorkerSnapshot] = {}
     for session in registry.list_all():
         info = session.to_dict()
-        is_idle = session.is_idle()
+        is_idle, _ = detect_worker_idle(session, idle_threshold_seconds=300)
         info["is_idle"] = is_idle
         state: WorkerState = "idle" if is_idle else "active"
         snapshots[session.session_id] = _WorkerSnapshot(session.session_id, state, info)
