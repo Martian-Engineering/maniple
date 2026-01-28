@@ -419,8 +419,11 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                                 )
                             else:
                                 # Second split: horizontal from first worker (stack on right)
+                                split_target = (
+                                    created_sessions[0] if created_sessions else first_session
+                                )
                                 new_session = await split_pane(
-                                    created_sessions[0],
+                                    split_target,
                                     vertical=False,
                                     before=False,
                                     profile=None,
