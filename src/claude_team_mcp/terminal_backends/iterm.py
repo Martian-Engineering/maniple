@@ -208,27 +208,6 @@ class ItermBackend(TerminalBackend):
             output_capture_path=output_capture_path,
         )
 
-    async def start_claude_in_session(
-        self,
-        handle: TerminalSession,
-        project_path: str,
-        dangerously_skip_permissions: bool = False,
-        env: Optional[dict[str, str]] = None,
-        shell_ready_timeout: float = 10.0,
-        claude_ready_timeout: float = 30.0,
-        stop_hook_marker_id: Optional[str] = None,
-    ) -> None:
-        """Start Claude Code in an existing terminal session."""
-        await iterm_utils.start_claude_in_session(
-            session=self.unwrap_session(handle),
-            project_path=project_path,
-            dangerously_skip_permissions=dangerously_skip_permissions,
-            env=env,
-            shell_ready_timeout=shell_ready_timeout,
-            claude_ready_timeout=claude_ready_timeout,
-            stop_hook_marker_id=stop_hook_marker_id,
-        )
-
     async def find_available_window(
         self,
         max_panes: int = MAX_PANES_PER_TAB,

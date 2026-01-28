@@ -578,25 +578,16 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 else:
                     env = None
 
-                if agent_type == "codex":
-                    # Start Codex in interactive mode using start_agent_in_session
-                    cli = get_cli_backend("codex")
-                    await backend.start_agent_in_session(
-                        handle=session,
-                        cli=cli,
-                        project_path=project_path,
-                        dangerously_skip_permissions=worker_config.get("skip_permissions", False),
-                        env=env,
-                    )
-                else:
-                    # For Claude: use start_claude_in_session (convenience wrapper)
-                    await backend.start_claude_in_session(
-                        handle=session,
-                        project_path=project_path,
-                        dangerously_skip_permissions=worker_config.get("skip_permissions", False),
-                        env=env,
-                        stop_hook_marker_id=marker_id,
-                    )
+                cli = get_cli_backend(agent_type)
+                stop_hook_marker_id = marker_id if agent_type == "claude" else None
+                await backend.start_agent_in_session(
+                    handle=session,
+                    cli=cli,
+                    project_path=project_path,
+                    dangerously_skip_permissions=worker_config.get("skip_permissions", False),
+                    env=env,
+                    stop_hook_marker_id=stop_hook_marker_id,
+                )
 
             await asyncio.gather(*[start_agent_for_worker(i) for i in range(worker_count)])
 

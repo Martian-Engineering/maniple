@@ -705,75 +705,6 @@ async def start_agent_in_session(
         )
 
 
-async def start_claude_in_session(
-    session: "ItermSession",
-    project_path: str,
-    dangerously_skip_permissions: bool = False,
-    env: Optional[dict[str, str]] = None,
-    shell_ready_timeout: float = 10.0,
-    claude_ready_timeout: float = 30.0,
-    stop_hook_marker_id: Optional[str] = None,
-) -> None:
-    """
-    Start Claude Code in an existing iTerm2 session.
-
-    Convenience wrapper around start_agent_in_session() for Claude.
-    Changes to the project directory and launches Claude Code in a single
-    atomic command (cd && claude). Waits for shell readiness before sending
-    the command, then waits for Claude's startup banner to appear.
-
-    The command used to launch Claude Code can be overridden by setting
-    the CLAUDE_TEAM_COMMAND environment variable (defaults to "claude").
-    This is useful for running alternative Claude CLI implementations
-    like "happy" or for testing purposes.
-
-    Args:
-        session: iTerm2 session to use
-        project_path: Directory to run Claude in
-        dangerously_skip_permissions: If True, start with --dangerously-skip-permissions
-        env: Optional dict of environment variables to set before running claude
-        shell_ready_timeout: Max seconds to wait for shell prompt
-        claude_ready_timeout: Max seconds to wait for Claude to start and show banner
-        stop_hook_marker_id: If provided, inject a Stop hook that logs this marker
-            to the JSONL for completion detection
-
-    Raises:
-        RuntimeError: If shell not ready or Claude fails to start within timeout
-    """
-    from .cli_backends import claude_cli
-
-    await start_agent_in_session(
-        session=session,
-        cli=claude_cli,
-        project_path=project_path,
-        dangerously_skip_permissions=dangerously_skip_permissions,
-        env=env,
-        shell_ready_timeout=shell_ready_timeout,
-        agent_ready_timeout=claude_ready_timeout,
-        stop_hook_marker_id=stop_hook_marker_id,
-    )
-
-
-# Legacy alias for backward compatibility with Claude-specific code
-# that checks for banner patterns. Uses wait_for_agent_ready with claude_cli.
-async def _wait_for_claude_ready_via_agent(
-    session: "ItermSession",
-    timeout_seconds: float = 15.0,
-    poll_interval: float = 0.2,
-    stable_count: int = 2,
-) -> bool:
-    """Internal helper - uses wait_for_agent_ready with Claude CLI."""
-    from .cli_backends import claude_cli
-
-    return await wait_for_agent_ready(
-        session=session,
-        cli=claude_cli,
-        timeout_seconds=timeout_seconds,
-        poll_interval=poll_interval,
-        stable_count=stable_count,
-    )
-
-
 # =============================================================================
 # Multi-Pane Layouts
 # =============================================================================
@@ -983,15 +914,17 @@ async def create_multi_claude_layout(
         profile_customizations=profile_customizations,
     )
 
+    from .cli_backends import claude_cli
+
     # Start Claude in all panes in parallel.
-    # Each start_claude_in_session call uses wait_for_shell_ready() internally
-    # which provides proper readiness detection, so no sleeps between starts needed.
+    # start_agent_in_session uses wait_for_shell_ready() internally, so no sleeps needed.
     async def start_claude_for_pane(pane_name: str, project_path: str) -> None:
         session = panes[pane_name]
         pane_env = project_envs.get(pane_name) if project_envs else None
         marker_id = pane_marker_ids.get(pane_name) if pane_marker_ids else None
-        await start_claude_in_session(
+        await start_agent_in_session(
             session=session,
+            cli=claude_cli,
             project_path=project_path,
             dangerously_skip_permissions=skip_permissions,
             env=pane_env,
@@ -1115,5 +1048,4 @@ async def get_window_for_session(
                 if s.session_id == session.session_id:
                     return window
     return None
-
 
