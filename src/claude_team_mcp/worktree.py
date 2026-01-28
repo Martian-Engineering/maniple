@@ -229,6 +229,8 @@ def create_local_worktree(
     worker_name: str,
     bead_id: Optional[str] = None,
     annotation: Optional[str] = None,
+    branch: Optional[str] = None,
+    base: Optional[str] = None,
 ) -> Path:
     """
     Create a git worktree in the repo's .worktrees/ directory.
@@ -237,18 +239,23 @@ def create_local_worktree(
         {repo}/.worktrees/{bead_id}-{annotation}/  (if bead_id provided)
         {repo}/.worktrees/{worker_name}-{uuid}-{annotation}/  (otherwise)
 
-    The branch name matches the worktree directory name for consistency.
+    The branch name matches the worktree directory name for consistency unless
+    an explicit branch is provided.
     Automatically adds .worktrees to .gitignore if not present.
 
-    If a worktree path or branch already exists, appends an incrementing
-    suffix (-1, -2, etc.) until an available name is found. This allows
-    multiple workers to work on the same bead in parallel.
+    If a generated worktree path or branch already exists, appends an
+    incrementing suffix (-1, -2, etc.) until an available name is found.
+    This allows multiple workers to work on the same bead in parallel.
+    When an explicit branch is provided, pre-existing branches are treated
+    as an error.
 
     Args:
         repo_path: Path to the main repository
         worker_name: Name of the worker (used in fallback naming)
         bead_id: Optional bead issue ID (e.g., "cic-abc123")
         annotation: Optional annotation for the worktree
+        branch: Optional branch name to create for the worktree
+        base: Optional base ref/branch for the new branch
 
     Returns:
         Path to the created worktree
@@ -319,17 +326,26 @@ def create_local_worktree(
     worktree_path = worktrees_dir / dir_name
     suffix = 0
 
-    while worktree_path.exists() or branch_exists(dir_name):
-        suffix += 1
-        dir_name = f"{base_dir_name}-{suffix}"
-        worktree_path = worktrees_dir / dir_name
-
-    # Branch name matches directory name for clarity
-    branch_name = dir_name
+    if branch:
+        if branch_exists(branch):
+            raise WorktreeError(f"Branch already exists: {branch}")
+        while worktree_path.exists():
+            suffix += 1
+            dir_name = f"{base_dir_name}-{suffix}"
+            worktree_path = worktrees_dir / dir_name
+        branch_name = branch
+    else:
+        while worktree_path.exists() or branch_exists(dir_name):
+            suffix += 1
+            dir_name = f"{base_dir_name}-{suffix}"
+            worktree_path = worktrees_dir / dir_name
+        branch_name = dir_name
 
     # Build the git worktree add command.
     # Branch is guaranteed not to exist (collision loop checked for it).
     cmd = ["git", "-C", str(repo_path), "worktree", "add", "-b", branch_name, str(worktree_path)]
+    if base:
+        cmd.append(base)
 
     result = subprocess.run(cmd, capture_output=True, text=True)
 
@@ -537,5 +553,3 @@ def list_local_worktrees(repo_path: Path) -> list[dict]:
         })
 
     return worktrees
-
-
