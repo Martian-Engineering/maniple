@@ -28,7 +28,7 @@ def register_all_tools(mcp: FastMCP, ensure_connection) -> None:
 
     Args:
         mcp: The FastMCP server instance
-        ensure_connection: Function to ensure iTerm2 connection is alive
+        ensure_connection: Function to ensure terminal backend is alive
     """
     # Tools that don't need ensure_connection
     annotate_worker.register_tools(mcp)
@@ -43,7 +43,7 @@ def register_all_tools(mcp: FastMCP, ensure_connection) -> None:
     read_worker_logs.register_tools(mcp)
     wait_idle_workers.register_tools(mcp)
 
-    # Tools that need ensure_connection for iTerm2 operations
+    # Tools that need ensure_connection for terminal backend operations
     adopt_worker.register_tools(mcp, ensure_connection)
     discover_workers.register_tools(mcp, ensure_connection)
     spawn_workers.register_tools(mcp, ensure_connection)

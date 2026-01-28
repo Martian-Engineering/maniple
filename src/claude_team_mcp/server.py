@@ -1,7 +1,7 @@
 """
 Claude Team MCP Server
 
-FastMCP-based server for managing multiple Claude Code sessions via iTerm2.
+FastMCP-based server for managing multiple Claude Code sessions via terminal backends.
 Allows a "manager" Claude Code session to spawn and coordinate multiple
 "worker" Claude Code sessions.
 """
@@ -11,19 +11,13 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from iterm2.app import App as ItermApp
-    from iterm2.connection import Connection as ItermConnection
 
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 
 from claude_team.poller import WorkerPoller
-
-from .iterm_utils import read_screen_text
 from .registry import SessionRegistry
+from .terminal_backends import ItermBackend, TerminalBackend, TmuxBackend, select_backend_id
 from .tools import register_all_tools
 from .utils import error_response, HINTS
 
@@ -78,12 +72,11 @@ class AppContext:
     """
     Application context shared across all tool invocations.
 
-    Maintains the iTerm2 connection and registry of managed sessions.
+    Maintains the terminal backend and registry of managed sessions.
     This is the persistent state that makes the MCP server useful.
     """
 
-    iterm_connection: "ItermConnection"
-    iterm_app: "ItermApp"
+    terminal_backend: TerminalBackend
     registry: SessionRegistry
 
 
@@ -92,16 +85,16 @@ class AppContext:
 # =============================================================================
 
 
-async def refresh_iterm_connection() -> tuple["ItermConnection", "ItermApp"]:
+async def refresh_iterm_connection() -> ItermBackend:
     """
-    Create a fresh iTerm2 connection.
+    Create a fresh iTerm2 connection and backend.
 
     The iTerm2 Python API uses websockets with ping_interval=None, meaning
     connections can go stale without any keepalive mechanism. This function
     creates a new connection when needed.
 
     Returns:
-        Tuple of (connection, app)
+        ItermBackend with a fresh connection and app
 
     Raises:
         RuntimeError: If connection fails
@@ -116,47 +109,52 @@ async def refresh_iterm_connection() -> tuple["ItermConnection", "ItermApp"]:
         if app is None:
             raise RuntimeError("Could not get iTerm2 app")
         logger.debug("Fresh iTerm2 connection established")
-        return connection, app
+        return ItermBackend(connection, app)
     except Exception as e:
         logger.error(f"Failed to refresh iTerm2 connection: {e}")
         raise RuntimeError("Could not connect to iTerm2") from e
 
 
-async def ensure_connection(app_ctx: "AppContext") -> tuple["ItermConnection", "ItermApp"]:
+async def ensure_connection(app_ctx: "AppContext") -> TerminalBackend:
     """
-    Ensure we have a working iTerm2 connection, refreshing if stale.
+    Ensure we have a working terminal backend, refreshing if stale.
 
     The iTerm2 websocket connection can go stale due to lack of keepalive
     (ping_interval=None in the iterm2 library). This function tests the
     connection and refreshes it if needed.
 
     Args:
-        app_ctx: The application context containing connection and app
+        app_ctx: The application context containing the backend
 
     Returns:
-        Tuple of (connection, app) - either existing or refreshed
+        TerminalBackend - either existing or refreshed
     """
+    backend = app_ctx.terminal_backend
+    if not isinstance(backend, ItermBackend):
+        return backend
+
     from iterm2.app import async_get_app
 
-    connection = app_ctx.iterm_connection
-    app = app_ctx.iterm_app
+    connection = backend.connection
+    app = backend.app
 
     # Test if connection is still alive by trying a simple operation
     try:
         # async_get_app is a lightweight call that tests the connection
         refreshed_app = await async_get_app(connection)
         if refreshed_app is not None:
-            return connection, refreshed_app
+            if refreshed_app is not app:
+                backend = ItermBackend(connection, refreshed_app)
+                app_ctx.terminal_backend = backend
+            return backend
         # App is None, need to refresh
         raise RuntimeError("App is None, refreshing connection")
     except Exception as e:
         logger.warning(f"iTerm2 connection appears stale ({e}), refreshing...")
         # Connection is dead, create a new one
-        connection, app = await refresh_iterm_connection()
-        # Update the context with fresh connection
-        app_ctx.iterm_connection = connection
-        app_ctx.iterm_app = app
-        return connection, app
+        backend = await refresh_iterm_connection()
+        app_ctx.terminal_backend = backend
+        return backend
 
 
 @asynccontextmanager
@@ -177,34 +175,42 @@ async def app_lifespan(
     """
     logger.info("Claude Team MCP Server starting...")
 
-    # Import iterm2 here to fail fast if not available
-    try:
-        from iterm2.app import async_get_app
-        from iterm2.connection import Connection
-    except ImportError as e:
-        logger.error(
-            "iterm2 package not found. Install with: uv add iterm2\n"
-            "Also enable: iTerm2 → Preferences → General → Magic → Enable Python API"
-        )
-        raise RuntimeError("iterm2 package required") from e
+    backend_id = select_backend_id()
+    logger.info("Selecting terminal backend: %s", backend_id)
 
-    # Connect to iTerm2
-    logger.info("Connecting to iTerm2...")
-    try:
-        connection = await Connection.async_create()
-        app = await async_get_app(connection)
-        if app is None:
-            raise RuntimeError("Could not get iTerm2 app")
-        logger.info("Connected to iTerm2 successfully")
-    except Exception as e:
-        logger.error(f"Failed to connect to iTerm2: {e}")
-        logger.error("Make sure iTerm2 is running and Python API is enabled")
-        raise RuntimeError("Could not connect to iTerm2") from e
+    if backend_id == "tmux":
+        backend: TerminalBackend = TmuxBackend()
+    elif backend_id == "iterm":
+        # Import iterm2 here to fail fast if not available
+        try:
+            from iterm2.app import async_get_app
+            from iterm2.connection import Connection
+        except ImportError as e:
+            logger.error(
+                "iterm2 package not found. Install with: uv add iterm2\n"
+                "Also enable: iTerm2 → Preferences → General → Magic → Enable Python API"
+            )
+            raise RuntimeError("iterm2 package required") from e
+
+        # Connect to iTerm2
+        logger.info("Connecting to iTerm2...")
+        try:
+            connection = await Connection.async_create()
+            app = await async_get_app(connection)
+            if app is None:
+                raise RuntimeError("Could not get iTerm2 app")
+            logger.info("Connected to iTerm2 successfully")
+        except Exception as e:
+            logger.error(f"Failed to connect to iTerm2: {e}")
+            logger.error("Make sure iTerm2 is running and Python API is enabled")
+            raise RuntimeError("Could not connect to iTerm2") from e
+        backend = ItermBackend(connection, app)
+    else:
+        raise RuntimeError(f"Unknown terminal backend: {backend_id}")
 
     # Create application context with singleton registry (persists across sessions).
     ctx = AppContext(
-        iterm_connection=connection,
-        iterm_app=app,
+        terminal_backend=backend,
         registry=get_global_registry(),
     )
     poller: WorkerPoller | None = None
@@ -326,7 +332,7 @@ async def resource_session_screen(
     """
     Get the current terminal screen content for a session.
 
-    Returns the visible text in the iTerm2 pane for the specified session.
+    Returns the visible text in the terminal pane for the specified session.
     Useful for checking what Claude is currently displaying or doing.
 
     Args:
@@ -343,7 +349,7 @@ async def resource_session_screen(
         )
 
     try:
-        screen_text = await read_screen_text(session.iterm_session)
+        screen_text = await app_ctx.terminal_backend.read_screen_text(session.terminal_session)
         # Get non-empty lines
         lines = [line for line in screen_text.split("\n") if line.strip()]
 

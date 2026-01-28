@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 from ..registry import SessionStatus
 from ..session_state import find_codex_session_by_iterm_id, find_jsonl_by_iterm_id
+from ..terminal_backends import ItermBackend
 from ..utils import error_response, HINTS
 
 logger = logging.getLogger("claude-team-mcp")
@@ -50,11 +51,20 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         registry = app_ctx.registry
 
         # Ensure we have a fresh connection (websocket can go stale)
-        _, app = await ensure_connection(app_ctx)
+        backend = await ensure_connection(app_ctx)
+        if not isinstance(backend, ItermBackend):
+            return error_response(
+                "adopt_worker is only supported with the iTerm2 backend",
+                hint=HINTS["terminal_backend_required"],
+            )
+        app = backend.app
 
         # Check if already managed
         for managed in registry.list_all():
-            if managed.iterm_session.session_id == iterm_session_id:
+            if (
+                managed.terminal_session.backend_id == "iterm"
+                and managed.terminal_session.native_id == iterm_session_id
+            ):
                 return error_response(
                     f"Session already managed as '{managed.session_id}'",
                     hint="Use message_workers to communicate with the existing session",
@@ -115,7 +125,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
 
         # Register with recovered identity (no new marker needed)
         managed = registry.add(
-            iterm_session=target_session,
+            terminal_session=backend.wrap_session(target_session),
             project_path=match.project_path,
             name=session_name,
             session_id=match.internal_session_id,  # Recover original ID

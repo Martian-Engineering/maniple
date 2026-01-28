@@ -32,6 +32,7 @@ from ..iterm_utils import (
 from ..names import pick_names_for_count
 from ..profile import apply_appearance_colors
 from ..registry import SessionStatus
+from ..terminal_backends import ItermBackend
 from ..utils import HINTS, error_response, get_worktree_tracker_dir
 from ..worker_prompt import generate_worker_prompt, get_coordinator_guidance
 from ..worktree import WorktreeError, create_local_worktree
@@ -212,7 +213,14 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 return error_response(f"Worker {i} missing required 'project_path'")
 
         # Ensure we have a fresh connection
-        connection, app = await ensure_connection(app_ctx)
+            backend = await ensure_connection(app_ctx)
+            if not isinstance(backend, ItermBackend):
+                return error_response(
+                    "spawn_workers is only supported with the iTerm2 backend",
+                    hint=HINTS["terminal_backend_required"],
+                )
+            connection = backend.connection
+            app = backend.app
 
         try:
             # Get base session index for color generation
@@ -396,9 +404,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
 
                 if target_tab is None:
                     managed_iterm_ids: set[str] = {
-                        s.iterm_session.session_id
+                        s.terminal_session.native_id
                         for s in registry.list_all()
-                        if s.iterm_session is not None
+                        if s.terminal_session.backend_id == "iterm"
                     }
 
                     # Find a window with enough space for ALL workers
@@ -606,7 +614,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             managed_sessions = []
             for i in range(worker_count):
                 managed = registry.add(
-                    iterm_session=pane_sessions[i],
+                    terminal_session=backend.wrap_session(pane_sessions[i]),
                     project_path=resolved_paths[i],
                     name=resolved_names[i],
                     session_id=session_ids[i],
@@ -625,7 +633,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             for i, managed in enumerate(managed_sessions):
                 marker_message = generate_marker_message(
                     managed.session_id,
-                    iterm_session_id=managed.iterm_session.session_id,
+                    iterm_session_id=managed.terminal_session.native_id,
                     project_path=(
                         managed.project_path if managed.agent_type == "codex" else None
                     ),
