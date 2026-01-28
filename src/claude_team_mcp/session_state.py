@@ -486,6 +486,7 @@ def _scan_codex_markers(
     *,
     iterm_session_id: Optional[str] = None,
     internal_session_id: Optional[str] = None,
+    tmux_pane_id: Optional[str] = None,
 ) -> Optional[CodexSessionMatch]:
     try:
         with open(jsonl_path, "r") as fp:
@@ -494,6 +495,7 @@ def _scan_codex_markers(
                 if (
                     MARKER_PREFIX not in line
                     and ITERM_MARKER_PREFIX not in line
+                    and TMUX_MARKER_PREFIX not in line
                     and PROJECT_MARKER_PREFIX not in line
                 ):
                     continue
@@ -501,12 +503,15 @@ def _scan_codex_markers(
                 # Extract markers directly from the JSON line string (no full JSON parse).
                 found_internal = extract_marker_session_id(line)
                 found_iterm = extract_iterm_session_id(line)
+                found_tmux = extract_tmux_pane_id(line)
                 found_project = extract_project_path(line)
 
                 # Enforce target filters if provided.
                 if internal_session_id and found_internal != internal_session_id:
                     continue
                 if iterm_session_id and found_iterm != iterm_session_id:
+                    continue
+                if tmux_pane_id and found_tmux != tmux_pane_id:
                     continue
 
                 # Require both internal ID and project path for a valid match.
@@ -544,6 +549,33 @@ def find_codex_session_by_iterm_id(
         match = _scan_codex_markers(
             jsonl_path,
             iterm_session_id=iterm_session_id,
+        )
+        if match:
+            return match
+    return None
+
+
+def find_codex_session_by_tmux_id(
+    tmux_pane_id: str,
+    max_age_seconds: int = 3600,
+) -> Optional[CodexSessionMatch]:
+    """
+    Find a Codex session file containing a specific tmux pane marker.
+
+    Scans recent Codex session files for our markers and returns the
+    first match that includes the tmux pane ID.
+
+    Args:
+        tmux_pane_id: The tmux pane ID to search for
+        max_age_seconds: Only check files modified within this many seconds
+
+    Returns:
+        CodexSessionMatch with recovery info, or None if not found
+    """
+    for jsonl_path in _iter_recent_codex_session_files(max_age_seconds):
+        match = _scan_codex_markers(
+            jsonl_path,
+            tmux_pane_id=tmux_pane_id,
         )
         if match:
             return match

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 from ..session_state import (
     find_codex_session_by_iterm_id,
+    find_codex_session_by_tmux_id,
     find_jsonl_by_iterm_id,
     find_jsonl_by_tmux_id,
     get_project_dir,
@@ -187,6 +188,44 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 )
 
                 if not match:
+                    # Fall back to Codex marker scan if no Claude match
+                    codex_match = find_codex_session_by_tmux_id(
+                        native_id,
+                        max_age_seconds=max_age,
+                    )
+
+                    if not codex_match:
+                        continue
+
+                    project_path = codex_match.project_path
+                    internal_session_id = codex_match.internal_session_id
+
+                    # Get last assistant message preview from Codex JSONL
+                    last_assistant_preview = None
+                    try:
+                        jsonl_path = codex_match.jsonl_path
+                        if jsonl_path.exists():
+                            state = parse_codex_session(jsonl_path)
+                            if state.last_assistant_message:
+                                content = state.last_assistant_message.content
+                                last_assistant_preview = (
+                                    content[:200] + "..."
+                                    if len(content) > 200
+                                    else content
+                                )
+                    except Exception as e:
+                        logger.debug(f"Could not get conversation preview: {e}")
+
+                    discovered.append({
+                        "backend_id": backend_id,
+                        "tmux_pane_id": native_id,
+                        "project_path": project_path,
+                        "codex_session_id": codex_match.jsonl_path.stem,
+                        "internal_session_id": internal_session_id,
+                        "last_assistant_preview": last_assistant_preview,
+                        "already_managed": native_id in managed_ids,
+                        "agent_type": "codex",
+                    })
                     continue
 
                 project_path = match.project_path
