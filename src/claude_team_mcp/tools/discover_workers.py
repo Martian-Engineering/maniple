@@ -20,6 +20,8 @@ from ..session_state import (
     parse_codex_session,
     parse_session,
 )
+from ..terminal_backends import ItermBackend
+from ..utils import error_response, HINTS
 
 logger = logging.getLogger("claude-team-mcp")
 
@@ -67,13 +69,21 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         registry = app_ctx.registry
 
         # Ensure we have a fresh connection (websocket can go stale)
-        _, app = await ensure_connection(app_ctx)
+        backend = await ensure_connection(app_ctx)
+        if not isinstance(backend, ItermBackend):
+            return error_response(
+                "discover_workers is only supported with the iTerm2 backend",
+                hint=HINTS["terminal_backend_required"],
+            )
+        app = backend.app
 
         discovered = []
 
         # Get all managed iTerm session IDs so we can flag already-managed ones
         managed_iterm_ids = {
-            s.iterm_session.session_id for s in registry.list_all()
+            s.terminal_session.native_id
+            for s in registry.list_all()
+            if s.terminal_session.backend_id == "iterm"
         }
 
         # Scan all iTerm2 panes and check if their session ID appears in any JSONL
