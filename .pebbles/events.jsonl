@@ -158,3 +158,5 @@
 {"type":"create","timestamp":"2026-01-28T05:13:26.217794Z","issue_id":"cic-e1b","payload":{"description":"Migrate CLAUDE_TEAM_EVENTS_MAX_SIZE_MB and CLAUDE_TEAM_EVENTS_RECENT_HOURS to config.json","priority":"2","title":"Add event rotation settings to config","type":"task"}}
 {"type":"dep_add","timestamp":"2026-01-28T05:13:29.196306Z","issue_id":"cic-745","payload":{"dep_type":"blocks","depends_on":"cic-e1b"}}
 {"type":"create","timestamp":"2026-01-28T05:54:23.580297Z","issue_id":"cic-5f3","payload":{"description":"_FakeSession fixture missing agent_type attribute required by detect_worker_idle() after Codex support was added. 4 tests failing.","priority":"1","title":"Fix test_poller.py - FakeSession missing agent_type","type":"bug"}}
+{"type":"status_update","timestamp":"2026-01-28T05:54:51.734078Z","issue_id":"cic-5f3","payload":{"status":"in_progress"}}
+{"type":"close","timestamp":"2026-01-28T05:55:55.408423Z","issue_id":"cic-5f3","payload":{}}

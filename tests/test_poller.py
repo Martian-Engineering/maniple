@@ -6,10 +6,13 @@ from claude_team.poller import _build_snapshot, _build_transition_events
 class _FakeSession:
     """Minimal session stub for poller diff tests."""
 
-    def __init__(self, session_id: str, idle: bool) -> None:
-        """Initialize with a session id and idle state."""
+    def __init__(self, session_id: str, idle: bool, agent_type: str = "claude") -> None:
+        """Initialize with a session id, idle state, and agent type."""
         self.session_id = session_id
         self._idle = idle
+        self.agent_type = agent_type
+        self.project_path = ""
+        self.claude_session_id = None
 
     def is_idle(self) -> bool:
         """Return whether the session is idle."""
