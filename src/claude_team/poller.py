@@ -60,11 +60,18 @@ def _sanitize_for_json(obj: object) -> object:
     if obj is None or isinstance(obj, (bool, int, float, str)):
         return obj
     if isinstance(obj, dict):
-        return {k: _sanitize_for_json(v) for k, v in obj.items() if isinstance(k, str)}
+        return {str(k): _sanitize_for_json(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [_sanitize_for_json(item) for item in obj]
-    # Skip non-serializable objects
-    return None
+    if isinstance(obj, Path):
+        return str(obj)
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    # For any other type, try to convert to string, else skip
+    try:
+        return str(obj)
+    except Exception:
+        return None
 
 
 def _build_snapshot(registry: _RegistryLike) -> dict[str, _WorkerSnapshot]:
