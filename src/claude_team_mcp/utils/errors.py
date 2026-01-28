@@ -44,6 +44,10 @@ HINTS = {
         "Ensure iTerm2 is running and Python API is enabled: "
         "iTerm2 → Preferences → General → Magic → Enable Python API"
     ),
+    "terminal_backend_required": (
+        "This tool only supports the iTerm2 backend. "
+        "Set CLAUDE_TEAM_TERMINAL_BACKEND=iterm or run inside iTerm2."
+    ),
     "registry_empty": (
         "No workers are being managed. Use spawn_workers to create new workers, "
         "or discover_workers to find existing Claude sessions in iTerm2"
@@ -73,7 +77,7 @@ def get_session_or_error(
 
     Args:
         registry: The session registry to search
-        session_id: ID to resolve (supports session_id, iterm_session_id, or name)
+        session_id: ID to resolve (supports session_id, terminal_id, or name)
 
     Returns:
         ManagedSession if found, or error dict with hint if not found

@@ -20,11 +20,40 @@ from ..idle_detection import (
     SessionInfo,
 )
 from ..issue_tracker import detect_issue_tracker
-from ..iterm_utils import send_prompt_for_agent
+from ..iterm_utils import CODEX_PRE_ENTER_DELAY, send_prompt_for_agent
 from ..registry import SessionStatus
+from ..terminal_backends import ItermBackend
 from ..utils import build_worker_message_hint, error_response, HINTS
 
 logger = logging.getLogger("claude-team-mcp")
+
+
+def _compute_prompt_delay(text: str, agent_type: str) -> float:
+    """Compute a safe delay before sending Enter for a prompt."""
+    line_count = text.count("\n")
+    char_count = len(text)
+    if line_count > 0:
+        paste_delay = min(2.0, 0.1 + (line_count * 0.01) + (char_count / 1000 * 0.05))
+    else:
+        paste_delay = 0.05
+    if agent_type == "codex":
+        return max(CODEX_PRE_ENTER_DELAY, paste_delay)
+    return paste_delay
+
+
+async def _send_prompt_for_agent(backend, session, text: str, agent_type: str) -> None:
+    """Send a prompt through the active terminal backend."""
+    if isinstance(backend, ItermBackend):
+        await send_prompt_for_agent(
+            backend.unwrap_session(session),
+            text,
+            agent_type=agent_type,
+            submit=True,
+        )
+        return
+    await backend.send_text(session, text)
+    await asyncio.sleep(_compute_prompt_delay(text, agent_type))
+    await backend.send_key(session, "enter")
 
 
 async def _wait_for_sessions_idle(
@@ -136,6 +165,7 @@ def register_tools(mcp: FastMCP) -> None:
         """
         app_ctx = ctx.request_context.lifespan_context
         registry = app_ctx.registry
+        backend = app_ctx.terminal_backend
 
         # Validate wait_mode
         if wait_mode not in ("none", "any", "all"):
@@ -199,11 +229,11 @@ def register_tools(mcp: FastMCP) -> None:
 
                 # Send the message using agent-specific input handling.
                 # Codex needs a longer pre-Enter delay than Claude.
-                await send_prompt_for_agent(
-                    session.iterm_session,
+                await _send_prompt_for_agent(
+                    backend,
+                    session.terminal_session,
                     message_with_hint,
-                    agent_type=session.agent_type,
-                    submit=True,
+                    session.agent_type,
                 )
 
                 return (sid, {

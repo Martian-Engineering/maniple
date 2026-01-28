@@ -14,7 +14,7 @@ from mcp.server.session import ServerSession
 if TYPE_CHECKING:
     from ..server import AppContext
 
-from ..iterm_utils import send_prompt, send_key, close_pane
+from ..iterm_utils import CODEX_PRE_ENTER_DELAY
 from ..registry import SessionRegistry, SessionStatus
 from ..worktree import WorktreeError, remove_worktree
 from ..utils import error_response, HINTS
@@ -22,7 +22,28 @@ from ..utils import error_response, HINTS
 logger = logging.getLogger("claude-team-mcp")
 
 
+def _compute_prompt_delay(text: str, agent_type: str) -> float:
+    """Compute a safe delay before sending Enter for a prompt."""
+    line_count = text.count("\n")
+    char_count = len(text)
+    if line_count > 0:
+        paste_delay = min(2.0, 0.1 + (line_count * 0.01) + (char_count / 1000 * 0.05))
+    else:
+        paste_delay = 0.05
+    if agent_type == "codex":
+        return max(CODEX_PRE_ENTER_DELAY, paste_delay)
+    return paste_delay
+
+
+async def _send_prompt(backend, session, text: str, agent_type: str) -> None:
+    """Send a prompt and press Enter using the active terminal backend."""
+    await backend.send_text(session, text)
+    await asyncio.sleep(_compute_prompt_delay(text, agent_type))
+    await backend.send_key(session, "enter")
+
+
 async def _close_single_worker(
+    backend,
     session,
     session_id: str,
     registry: "SessionRegistry",
@@ -54,12 +75,12 @@ async def _close_single_worker(
 
     try:
         # Send Ctrl+C to interrupt any running operation
-        await send_key(session.iterm_session, "ctrl-c")
+        await backend.send_key(session.terminal_session, "ctrl-c")
         # TODO(rabsef-bicrym): Programmatically time these actions
         await asyncio.sleep(1.0)
 
         # Send /exit to quit Claude
-        await send_prompt(session.iterm_session, "/exit", submit=True)
+        await _send_prompt(backend, session.terminal_session, "/exit", session.agent_type)
         # TODO(rabsef-bicrym): Programmatically time these actions
         await asyncio.sleep(1.0)
 
@@ -76,8 +97,8 @@ async def _close_single_worker(
                 # Log but don't fail the close
                 logger.warning(f"Failed to clean up worktree for {session_id}: {e}")
 
-        # Close the iTerm2 pane/window
-        await close_pane(session.iterm_session, force=force)
+        # Close the terminal pane/window
+        await backend.close_session(session.terminal_session, force=force)
 
         # Remove from registry
         registry.remove(session_id)
@@ -111,7 +132,7 @@ def register_tools(mcp: FastMCP) -> None:
         Close one or more managed Claude Code sessions.
 
         Gracefully terminates the Claude sessions in parallel and closes
-        their iTerm2 panes. All session_ids must exist in the registry.
+        their terminal panes. All session_ids must exist in the registry.
 
         ⚠️ **NOTE: WORKTREE CLEANUP**
         Workers with worktrees commit to ephemeral branches. When closed:
@@ -137,6 +158,7 @@ def register_tools(mcp: FastMCP) -> None:
         """
         app_ctx = ctx.request_context.lifespan_context
         registry = app_ctx.registry
+        backend = app_ctx.terminal_backend
 
         if not session_ids:
             return error_response(
@@ -166,7 +188,7 @@ def register_tools(mcp: FastMCP) -> None:
 
         # Close all sessions in parallel
         async def close_one(sid: str, session) -> tuple[str, dict]:
-            result = await _close_single_worker(session, sid, registry, force)
+            result = await _close_single_worker(backend, session, sid, registry, force)
             return (sid, result)
 
         tasks = [close_one(sid, session) for sid, session in sessions_to_close]

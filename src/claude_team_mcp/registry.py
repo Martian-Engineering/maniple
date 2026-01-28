@@ -2,7 +2,7 @@
 Session Registry for Claude Team MCP
 
 Tracks all spawned Claude Code sessions, maintaining the mapping between
-our session IDs, iTerm2 session objects, and Claude JSONL session IDs.
+our session IDs, terminal session handles, and Claude JSONL session IDs.
 """
 
 import uuid
@@ -10,16 +10,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Optional
-
-if TYPE_CHECKING:
-    from iterm2.session import Session as ItermSession
+from typing import Literal, Optional
 
 from .session_state import (
     find_codex_session_by_internal_id,
     get_project_dir,
     parse_session,
 )
+from .terminal_backends import TerminalSession
 
 # Type alias for supported agent types
 AgentType = Literal["claude", "codex"]
@@ -35,29 +33,26 @@ class TerminalId:
     tools to accept terminal IDs directly for recovery scenarios.
 
     Attributes:
-        terminal_type: Terminal emulator type ("iterm", "zed", "vscode", etc.)
+        backend_id: Terminal backend identifier ("iterm", "tmux", "zed", etc.)
         native_id: Terminal's native session ID (e.g., iTerm's UUID)
     """
 
-    terminal_type: str
+    backend_id: str
     native_id: str
 
     def __str__(self) -> str:
         """For display: 'iterm:DB29DB03-...'"""
-        return f"{self.terminal_type}:{self.native_id}"
+        return f"{self.backend_id}:{self.native_id}"
 
     @classmethod
     def from_string(cls, s: str) -> "TerminalId":
         """
         Parse 'iterm:DB29DB03-...' format.
-
-        Falls back to treating bare IDs as iTerm for backwards compatibility.
         """
-        if ":" in s:
-            terminal_type, native_id = s.split(":", 1)
-            return cls(terminal_type, native_id)
-        # Assume bare ID is iTerm for backwards compatibility
-        return cls("iterm", s)
+        if ":" not in s:
+            raise ValueError("Terminal id must include backend prefix (e.g., 'iterm:UUID')")
+        backend_id, native_id = s.split(":", 1)
+        return cls(backend_id, native_id)
 
 
 class SessionStatus(str, Enum):
@@ -73,12 +68,12 @@ class ManagedSession:
     """
     Represents a spawned Claude Code session.
 
-    Tracks the iTerm2 session object, project path, and Claude session ID
+    Tracks terminal session metadata, project path, and Claude session ID
     discovered from the JSONL file.
     """
 
     session_id: str  # Our assigned ID (e.g., "worker-1")
-    iterm_session: "ItermSession"
+    terminal_session: TerminalSession
     project_path: str
     claude_session_id: Optional[str] = None  # Discovered from JSONL
     name: Optional[str] = None  # Optional friendly name
@@ -91,16 +86,19 @@ class ManagedSession:
     worktree_path: Optional[Path] = None  # Path to worker's git worktree if any
     main_repo_path: Optional[Path] = None  # Path to main git repo (for worktree cleanup)
 
-    # Terminal-agnostic identifier (auto-populated from iterm_session if not set)
+    # Terminal-agnostic identifier (auto-populated from terminal_session if not set)
     terminal_id: Optional[TerminalId] = None
 
     # Agent type: "claude" (default) or "codex"
     agent_type: AgentType = "claude"
 
     def __post_init__(self):
-        """Auto-populate terminal_id from iterm_session if not set."""
-        if self.terminal_id is None and self.iterm_session is not None:
-            self.terminal_id = TerminalId("iterm", self.iterm_session.session_id)
+        """Auto-populate terminal_id from terminal_session if not set."""
+        if self.terminal_id is None:
+            self.terminal_id = TerminalId(
+                self.terminal_session.backend_id,
+                self.terminal_session.native_id,
+            )
 
     def to_dict(self) -> dict:
         """Convert to dictionary for MCP tool responses."""
@@ -285,7 +283,7 @@ class SessionRegistry:
 
     def add(
         self,
-        iterm_session: "ItermSession",
+        terminal_session: TerminalSession,
         project_path: str,
         name: Optional[str] = None,
         session_id: Optional[str] = None,
@@ -294,7 +292,7 @@ class SessionRegistry:
         Add a new session to the registry.
 
         Args:
-            iterm_session: iTerm2 session object
+            terminal_session: Backend-agnostic terminal session handle
             project_path: Directory where Claude is running
             name: Optional friendly name
             session_id: Optional specific ID (auto-generated if not provided)
@@ -307,7 +305,7 @@ class SessionRegistry:
 
         session = ManagedSession(
             session_id=session_id,
-            iterm_session=iterm_session,
+            terminal_session=terminal_session,
             project_path=project_path,
             name=name,
         )
@@ -347,7 +345,7 @@ class SessionRegistry:
 
         Lookup order (most specific first):
         1. Internal session_id (e.g., "d875b833")
-        2. Terminal native ID (e.g., "DB29DB03-AA52-4FBF-879A-4DA2C5F9F823")
+        2. Terminal ID with backend prefix (e.g., "iterm:DB29DB03-...")
         3. Session name
 
         After MCP restart, internal IDs are lost until import. This method
