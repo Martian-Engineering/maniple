@@ -39,6 +39,13 @@ from ..worktree import WorktreeError, create_local_worktree
 logger = logging.getLogger("claude-team-mcp")
 
 
+class WorktreeConfig(TypedDict, total=False):
+    """Configuration for worktree creation."""
+
+    branch: str  # Optional: Branch name for the worktree
+    base: str  # Optional: Base ref/branch for the new branch
+
+
 class WorkerConfig(TypedDict, total=False):
     """Configuration for a single worker."""
 
@@ -50,6 +57,7 @@ class WorkerConfig(TypedDict, total=False):
     prompt: str  # Optional: Custom prompt (None = standard worker prompt)
     skip_permissions: bool  # Optional: Default False
     use_worktree: bool  # Optional: Create isolated worktree (default True)
+    worktree: WorktreeConfig  # Optional: Worktree settings (branch/base)
 
 
 def register_tools(mcp: FastMCP, ensure_connection) -> None:
@@ -106,6 +114,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 - True: Creates worktree at <repo>/.worktrees/<bead>-<annotation>
                   or <repo>/.worktrees/<name>-<uuid>-<annotation>
                 - False: Worker uses the repo directory directly (no isolation)
+            worktree: Optional worktree configuration.
+                - branch: Branch name for the worktree
+                - base: Base ref/branch for the new branch
             name: Optional worker name override. Leaving this empty allows us to auto-pick names
                 from themed sets (Beatles, Marx Brothers, etc.) which aids visual identification.
             annotation: Optional task description. Shown on badge second line, used in
@@ -239,8 +250,24 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             for i, (w, name) in enumerate(zip(workers, resolved_names)):
                 project_path = w["project_path"]
                 use_worktree = w.get("use_worktree", True)  # Default True
+                worktree_config = w.get("worktree")
+                worktree_branch = None
+                worktree_base = None
                 bead = w.get("bead")
                 annotation = w.get("annotation")
+
+                if worktree_config is not None:
+                    if isinstance(worktree_config, dict):
+                        worktree_branch = worktree_config.get("branch")
+                        worktree_base = worktree_config.get("base")
+                        use_worktree = True
+                    elif isinstance(worktree_config, bool):
+                        use_worktree = worktree_config
+                    else:
+                        return error_response(
+                            f"Worker {i} has invalid 'worktree' configuration",
+                            hint="Expected a dict with optional 'branch'/'base' fields or a boolean.",
+                        )
 
                 # Step 1: Resolve repo path
                 if project_path == "auto":
@@ -271,6 +298,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                             worker_name=name,
                             bead_id=bead,
                             annotation=annotation,
+                            branch=worktree_branch,
+                            base=worktree_base,
                         )
                         worktree_paths[i] = worktree_path
                         main_repo_paths[i] = repo_path
