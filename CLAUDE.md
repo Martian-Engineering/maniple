@@ -2,6 +2,25 @@
 
 An MCP server that enables a "manager" Claude Code session to spawn and orchestrate multiple "worker" Claude Code sessions via iTerm2.
 
+## ⚠️ IMPORTANT: Running Tests
+
+**Always use `uv run pytest` to run tests.** Do NOT use `pytest` directly.
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run specific test file
+uv run pytest tests/test_tmux_backend.py
+
+# Run with verbose output
+uv run pytest -v
+```
+
+If you get "pytest not found" or similar errors, run `uv sync` first to install dependencies.
+
+**DO NOT use:** `pytest`, `python -m pytest`, or `python3 -m pytest` — these will fail.
+
 ## Project Structure
 
 ```
