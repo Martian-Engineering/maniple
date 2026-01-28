@@ -56,9 +56,12 @@ def _isoformat_zulu(value: datetime) -> str:
 
 def _sanitize_for_json(obj: object) -> object:
     # Recursively sanitize an object for JSON serialization.
-    # Removes non-serializable types like asyncio Futures.
+    # Removes non-serializable types like asyncio Futures, methods, etc.
     if obj is None or isinstance(obj, (bool, int, float, str)):
         return obj
+    if callable(obj):
+        # Skip methods, functions, lambdas
+        return None
     if isinstance(obj, dict):
         return {str(k): _sanitize_for_json(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):

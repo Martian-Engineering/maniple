@@ -126,7 +126,16 @@ def detect_worker_idle(
 
     Returns (is_idle, reason) where reason explains how idle was detected.
     """
-    current_idle = getattr(worker, "is_idle", False)
+    # Get current idle state, handling both attributes and methods
+    current_idle_attr = getattr(worker, "is_idle", False)
+    if callable(current_idle_attr):
+        # ManagedSession has is_idle() method, call it
+        try:
+            current_idle = current_idle_attr()
+        except Exception:
+            current_idle = False
+    else:
+        current_idle = bool(current_idle_attr)
 
     # Claude workers: JSONL mtime is primary, message count is secondary.
     if worker.agent_type == "claude":

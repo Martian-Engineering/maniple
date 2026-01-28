@@ -51,6 +51,16 @@ def append_event(event: WorkerEvent) -> None:
     append_events([event])
 
 
+def _event_to_dict(event: WorkerEvent) -> dict:
+    """Convert WorkerEvent to dict without using asdict (avoids deepcopy issues)."""
+    return {
+        "ts": event.ts,
+        "type": event.type,
+        "worker_id": event.worker_id,
+        "data": event.data,  # Already sanitized by caller
+    }
+
+
 def append_events(events: list[WorkerEvent]) -> None:
     """Append multiple events atomically."""
     if not events:
@@ -58,7 +68,8 @@ def append_events(events: list[WorkerEvent]) -> None:
 
     path = get_events_path()
     # Serialize upfront so the file write is a single, ordered block.
-    payloads = [json.dumps(asdict(event), ensure_ascii=False) for event in events]
+    # Use _event_to_dict instead of asdict to avoid deepcopy pickle issues.
+    payloads = [json.dumps(_event_to_dict(event), ensure_ascii=False) for event in events]
     block = "\n".join(payloads) + "\n"
 
     with path.open("a", encoding="utf-8") as handle:
