@@ -92,6 +92,7 @@ def register_tools(mcp: FastMCP) -> None:
             session_infos.append(SessionInfo(
                 jsonl_path=jsonl_path,
                 session_id=session.session_id,  # Must use internal ID to match stop hook marker
+                agent_type=session.agent_type,
             ))
 
         # Report any missing sessions/files

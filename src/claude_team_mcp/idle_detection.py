@@ -372,6 +372,7 @@ class SessionInfo:
 
     jsonl_path: Path
     session_id: str
+    agent_type: str = "claude"
 
 
 async def wait_for_any_idle(
@@ -403,7 +404,11 @@ async def wait_for_any_idle(
 
     while time.time() - start < timeout:
         for session in sessions:
-            if is_idle(session.jsonl_path, session.session_id):
+            if session.agent_type == "codex":
+                idle = is_codex_idle(session.jsonl_path)
+            else:
+                idle = is_idle(session.jsonl_path, session.session_id)
+            if idle:
                 return {
                     "idle_session_id": session.session_id,
                     "idle": True,
@@ -453,7 +458,11 @@ async def wait_for_all_idle(
         working_sessions = []
 
         for session in sessions:
-            if is_idle(session.jsonl_path, session.session_id):
+            if session.agent_type == "codex":
+                idle = is_codex_idle(session.jsonl_path)
+            else:
+                idle = is_idle(session.jsonl_path, session.session_id)
+            if idle:
                 idle_sessions.append(session.session_id)
             else:
                 working_sessions.append(session.session_id)
@@ -474,7 +483,11 @@ async def wait_for_all_idle(
     idle_sessions = []
     working_sessions = []
     for session in sessions:
-        if is_idle(session.jsonl_path, session.session_id):
+        if session.agent_type == "codex":
+            idle = is_codex_idle(session.jsonl_path)
+        else:
+            idle = is_idle(session.jsonl_path, session.session_id)
+        if idle:
             idle_sessions.append(session.session_id)
         else:
             working_sessions.append(session.session_id)
