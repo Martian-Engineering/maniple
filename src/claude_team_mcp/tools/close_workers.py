@@ -80,10 +80,16 @@ async def _close_single_worker(
         # TODO(rabsef-bicrym): Programmatically time these actions
         await asyncio.sleep(1.0)
 
-        # Send /exit to quit Claude
-        await _send_prompt(backend, session.terminal_session, "/exit", session.agent_type)
-        # TODO(rabsef-bicrym): Programmatically time these actions
-        await asyncio.sleep(1.0)
+        if session.agent_type == "codex":
+            # Codex exits via Ctrl+C (may require a second press).
+            await backend.send_key(session.terminal_session, "ctrl-c")
+            # TODO(rabsef-bicrym): Programmatically time these actions
+            await asyncio.sleep(1.0)
+        else:
+            # Claude exits via /exit.
+            await _send_prompt(backend, session.terminal_session, "/exit", session.agent_type)
+            # TODO(rabsef-bicrym): Programmatically time these actions
+            await asyncio.sleep(1.0)
 
         # Clean up worktree if exists (keeps branch alive for cherry-picking)
         worktree_cleaned = False
