@@ -19,20 +19,10 @@ if TYPE_CHECKING:
 from ..cli_backends import get_cli_backend
 from ..colors import generate_tab_color
 from ..formatting import format_badge_text, format_session_title
-from ..iterm_utils import (
-    MAX_PANES_PER_TAB,
-    create_multi_pane_layout,
-    find_available_window,
-    get_window_for_session,
-    send_prompt_for_agent,
-    split_pane,
-    start_agent_in_session,
-    start_claude_in_session,
-)
 from ..names import pick_names_for_count
 from ..profile import apply_appearance_colors
 from ..registry import SessionStatus
-from ..terminal_backends import ItermBackend
+from ..terminal_backends import ItermBackend, MAX_PANES_PER_TAB
 from ..utils import HINTS, error_response, get_worktree_tracker_dir
 from ..worker_prompt import generate_worker_prompt, get_coordinator_guidance
 from ..worktree import WorktreeError, create_local_worktree
@@ -202,14 +192,14 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 return error_response(f"Worker {i} missing required 'project_path'")
 
         # Ensure we have a fresh connection
-            backend = await ensure_connection(app_ctx)
-            if not isinstance(backend, ItermBackend):
-                return error_response(
-                    "spawn_workers is only supported with the iTerm2 backend",
-                    hint=HINTS["terminal_backend_required"],
-                )
-            connection = backend.connection
-            app = backend.app
+        backend = await ensure_connection(app_ctx)
+        if not isinstance(backend, ItermBackend):
+            return error_response(
+                "spawn_workers is only supported with the iTerm2 backend",
+                hint=HINTS["terminal_backend_required"],
+            )
+        connection = backend.connection
+        app = backend.app
 
         try:
             # Get base session index for color generation
@@ -327,14 +317,14 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 profile_customizations.append(customization)
 
             # Create panes based on layout mode
-            pane_sessions: list = []  # list of iTerm sessions
+            pane_sessions: list = []  # list of terminal handles
 
             if layout == "auto":
                 # Try to find an existing window where the ENTIRE batch fits.
                 # This keeps spawn batches together rather than spreading across windows.
                 target_tab = None
                 initial_pane_count = 0
-                first_session = None  # Session to split from
+                first_session = None  # Terminal handle to split from
 
                 # Prefer the coordinator's window when running inside iTerm2.
                 # ITERM_SESSION_ID format is "wXtYpZ:UUID" - extract just the UUID.
@@ -359,15 +349,18 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                             break
 
                     if coordinator_session and coordinator_tab:
-                        coordinator_window = await get_window_for_session(
-                            app, coordinator_session
+                        coordinator_handle = backend.handle_from_session(
+                            coordinator_session
+                        )
+                        coordinator_window = await backend.get_window_for_handle(
+                            coordinator_handle
                         )
                         if coordinator_window is not None:
                             initial_pane_count = len(coordinator_tab.sessions)
                             available_slots = MAX_PANES_PER_TAB - initial_pane_count
                             if worker_count <= available_slots:
                                 target_tab = coordinator_tab
-                                first_session = coordinator_session
+                                first_session = coordinator_handle
                                 logger.debug(
                                     "Using coordinator window "
                                     f"({initial_pane_count} panes, {available_slots} slots)"
@@ -381,8 +374,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     }
 
                     # Find a window with enough space for ALL workers
-                    result = await find_available_window(
-                        app,
+                    result = await backend.find_available_window(
                         max_panes=MAX_PANES_PER_TAB,
                         managed_session_ids=managed_iterm_ids,
                     )
@@ -418,7 +410,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                             #                    | worker2
                             if local_pane_count == 1:
                                 # First split: vertical from coordinator
-                                new_session = await split_pane(
+                                new_session = await backend.split_pane(
                                     first_session,
                                     vertical=True,
                                     before=False,
@@ -427,7 +419,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                                 )
                             else:
                                 # Second split: horizontal from first worker (stack on right)
-                                new_session = await split_pane(
+                                new_session = await backend.split_pane(
                                     created_sessions[0],
                                     vertical=False,
                                     before=False,
@@ -438,7 +430,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                             # Quad pattern: TL→TR(vsplit)→BL(hsplit)→BR(hsplit)
                             if local_pane_count == 1:
                                 # First split: vertical (left/right)
-                                new_session = await split_pane(
+                                new_session = await backend.split_pane(
                                     first_session,
                                     vertical=True,
                                     before=False,
@@ -447,7 +439,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                                 )
                             elif local_pane_count == 2:
                                 # Second split: horizontal from left pane (bottom-left)
-                                new_session = await split_pane(
+                                new_session = await backend.split_pane(
                                     first_session,
                                     vertical=False,
                                     before=False,
@@ -459,7 +451,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                                 tr_session = (
                                     created_sessions[0] if created_sessions else first_session
                                 )
-                                new_session = await split_pane(
+                                new_session = await backend.split_pane(
                                     tr_session,
                                     vertical=False,
                                     before=False,
@@ -493,8 +485,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                         pane_names[i]: profile_customizations[i] for i in range(worker_count)
                     }
 
-                    panes = await create_multi_pane_layout(
-                        connection,
+                    panes = await backend.create_multi_pane_layout(
                         window_layout,
                         profile=None,
                         profile_customizations=customizations_dict,
@@ -522,8 +513,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     pane_names[i]: profile_customizations[i] for i in range(worker_count)
                 }
 
-                panes = await create_multi_pane_layout(
-                    connection,
+                panes = await backend.create_multi_pane_layout(
                     window_layout,
                     profile=None,
                     profile_customizations=customizations_dict,
@@ -559,8 +549,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 if agent_type == "codex":
                     # Start Codex in interactive mode using start_agent_in_session
                     cli = get_cli_backend("codex")
-                    await start_agent_in_session(
-                        session=session,
+                    await backend.start_agent_in_session(
+                        handle=session,
                         cli=cli,
                         project_path=project_path,
                         dangerously_skip_permissions=worker_config.get("skip_permissions", False),
@@ -568,8 +558,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     )
                 else:
                     # For Claude: use start_claude_in_session (convenience wrapper)
-                    await start_claude_in_session(
-                        session=session,
+                    await backend.start_claude_in_session(
+                        handle=session,
                         project_path=project_path,
                         dangerously_skip_permissions=worker_config.get("skip_permissions", False),
                         env=env,
@@ -582,7 +572,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             managed_sessions = []
             for i in range(worker_count):
                 managed = registry.add(
-                    terminal_session=backend.wrap_session(pane_sessions[i]),
+                    terminal_session=pane_sessions[i],
                     project_path=resolved_paths[i],
                     name=resolved_names[i],
                     session_id=session_ids[i],
@@ -606,7 +596,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                         managed.project_path if managed.agent_type == "codex" else None
                     ),
                 )
-                await send_prompt_for_agent(
+                await backend.send_prompt_for_agent(
                     pane_sessions[i],
                     marker_message,
                     agent_type=managed.agent_type,
@@ -659,8 +649,17 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
 
                 # Send prompt to the already-running agent (both Claude and Codex)
                 # Use agent-specific timing (Codex needs longer delay before Enter)
-                logger.info(f"Sending prompt to {managed.name} (agent_type={managed.agent_type}, chars={len(worker_prompt)})")
-                await send_prompt_for_agent(pane_sessions[i], worker_prompt, agent_type=managed.agent_type)
+                logger.info(
+                    "Sending prompt to %s (agent_type=%s, chars=%d)",
+                    managed.name,
+                    managed.agent_type,
+                    len(worker_prompt),
+                )
+                await backend.send_prompt_for_agent(
+                    pane_sessions[i],
+                    worker_prompt,
+                    agent_type=managed.agent_type,
+                )
                 logger.info(f"Prompt sent to {managed.name}")
 
             # Mark sessions ready
@@ -671,13 +670,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
 
             # Re-activate the window to bring it to focus
             try:
-                await app.async_activate()
+                await backend.activate_app()
                 if pane_sessions:
-                    tab = pane_sessions[0].tab
-                    if tab is not None:
-                        window = tab.window
-                        if window is not None:
-                            await window.async_activate()
+                    await backend.activate_window_for_handle(pane_sessions[0])
             except Exception as e:
                 logger.debug(f"Failed to re-activate window: {e}")
 

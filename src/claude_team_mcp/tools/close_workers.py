@@ -59,6 +59,7 @@ async def _close_single_worker(
         session: The ManagedSession object
         session_id: ID of the session to close
         registry: The session registry
+        backend: Terminal backend used for terminal operations
         force: If True, force close even if session is busy
 
     Returns:
