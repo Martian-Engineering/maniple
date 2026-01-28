@@ -20,7 +20,7 @@ from ..idle_detection import (
     SessionInfo,
 )
 from ..issue_tracker import detect_issue_tracker
-from ..iterm_utils import CODEX_PRE_ENTER_DELAY, send_prompt_for_agent
+from ..iterm_utils import CODEX_PRE_ENTER_DELAY
 from ..registry import SessionStatus
 from ..terminal_backends import ItermBackend
 from ..utils import build_worker_message_hint, error_response, HINTS
@@ -44,8 +44,8 @@ def _compute_prompt_delay(text: str, agent_type: str) -> float:
 async def _send_prompt_for_agent(backend, session, text: str, agent_type: str) -> None:
     """Send a prompt through the active terminal backend."""
     if isinstance(backend, ItermBackend):
-        await send_prompt_for_agent(
-            backend.unwrap_session(session),
+        await backend.send_prompt_for_agent(
+            session,
             text,
             agent_type=agent_type,
             submit=True,

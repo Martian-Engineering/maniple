@@ -16,6 +16,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 
 from claude_team.poller import WorkerPoller
+
 from .registry import SessionRegistry
 from .terminal_backends import ItermBackend, TerminalBackend, TmuxBackend, select_backend_id
 from .tools import register_all_tools
@@ -123,6 +124,8 @@ async def ensure_connection(app_ctx: "AppContext") -> TerminalBackend:
     (ping_interval=None in the iterm2 library). This function tests the
     connection and refreshes it if needed.
 
+    For non-iTerm backends (e.g., tmux), this simply returns the backend.
+
     Args:
         app_ctx: The application context containing the backend
 
@@ -163,14 +166,14 @@ async def app_lifespan(
     enable_poller: bool = False,
 ) -> AsyncIterator[AppContext]:
     """
-    Manage iTerm2 connection lifecycle.
+    Manage terminal backend connection lifecycle.
 
-    Connects to iTerm2 on startup and maintains the connection
+    Connects to the terminal backend on startup and maintains the connection
     for the duration of the server's lifetime.
 
     Note: The iTerm2 Python API uses websockets with ping_interval=None,
     meaning connections can go stale. Individual tool functions should use
-    ensure_connection() before making iTerm2 API calls that use the
+    ensure_connection() before making terminal backend calls that use the
     connection directly.
     """
     logger.info("Claude Team MCP Server starting...")

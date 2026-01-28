@@ -87,90 +87,88 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         }
 
         # Scan all iTerm2 panes and check if their session ID appears in any JSONL
-        for window in app.terminal_windows:
-            for tab in window.tabs:
-                for iterm_session in tab.sessions:
+        for handle in backend.list_handles():
+            iterm_session_id = handle.native_id
+            try:
+                # Look for this iTerm session ID in recent JSONL files
+                # Claude-team spawned sessions write their iTerm ID as a marker
+                match = find_jsonl_by_iterm_id(
+                    iterm_session_id,
+                    max_age_seconds=max_age,
+                )
+
+                if match:
+                    project_path = match.project_path
+                    claude_session_id = match.jsonl_path.stem
+                    internal_session_id = match.internal_session_id
+
+                    # Get last assistant message preview from JSONL
+                    last_assistant_preview = None
                     try:
-                        # Look for this iTerm session ID in recent JSONL files
-                        # Claude-team spawned sessions write their iTerm ID as a marker
-                        match = find_jsonl_by_iterm_id(
-                            iterm_session.session_id,
-                            max_age_seconds=max_age
-                        )
-
-                        if match:
-                            project_path = match.project_path
-                            claude_session_id = match.jsonl_path.stem
-                            internal_session_id = match.internal_session_id
-
-                            # Get last assistant message preview from JSONL
-                            last_assistant_preview = None
-                            try:
-                                jsonl_path = get_project_dir(project_path) / f"{claude_session_id}.jsonl"
-                                if jsonl_path.exists():
-                                    state = parse_session(jsonl_path)
-                                    if state.last_assistant_message:
-                                        content = state.last_assistant_message.content
-                                        last_assistant_preview = (
-                                            content[:200] + "..."
-                                            if len(content) > 200
-                                            else content
-                                        )
-                            except Exception as e:
-                                logger.debug(f"Could not get conversation preview: {e}")
-
-                            discovered.append({
-                                "iterm_session_id": iterm_session.session_id,
-                                "project_path": project_path,
-                                "claude_session_id": claude_session_id,
-                                "internal_session_id": internal_session_id,
-                                "last_assistant_preview": last_assistant_preview,
-                                "already_managed": iterm_session.session_id in managed_iterm_ids,
-                                "agent_type": "claude",
-                            })
-                            continue
-
-                        # Fall back to Codex marker scan if no Claude match
-                        codex_match = find_codex_session_by_iterm_id(
-                            iterm_session.session_id,
-                            max_age_seconds=max_age,
-                        )
-
-                        if not codex_match:
-                            continue
-
-                        project_path = codex_match.project_path
-                        internal_session_id = codex_match.internal_session_id
-
-                        # Get last assistant message preview from Codex JSONL
-                        last_assistant_preview = None
-                        try:
-                            jsonl_path = codex_match.jsonl_path
-                            if jsonl_path.exists():
-                                state = parse_codex_session(jsonl_path)
-                                if state.last_assistant_message:
-                                    content = state.last_assistant_message.content
-                                    last_assistant_preview = (
-                                        content[:200] + "..."
-                                        if len(content) > 200
-                                        else content
-                                    )
-                        except Exception as e:
-                            logger.debug(f"Could not get conversation preview: {e}")
-
-                        discovered.append({
-                            "iterm_session_id": iterm_session.session_id,
-                            "project_path": project_path,
-                            "codex_session_id": codex_match.jsonl_path.stem,
-                            "internal_session_id": internal_session_id,
-                            "last_assistant_preview": last_assistant_preview,
-                            "already_managed": iterm_session.session_id in managed_iterm_ids,
-                            "agent_type": "codex",
-                        })
-
+                        jsonl_path = get_project_dir(project_path) / f"{claude_session_id}.jsonl"
+                        if jsonl_path.exists():
+                            state = parse_session(jsonl_path)
+                            if state.last_assistant_message:
+                                content = state.last_assistant_message.content
+                                last_assistant_preview = (
+                                    content[:200] + "..."
+                                    if len(content) > 200
+                                    else content
+                                )
                     except Exception as e:
-                        logger.warning(f"Error scanning session {iterm_session.session_id}: {e}")
-                        continue
+                        logger.debug(f"Could not get conversation preview: {e}")
+
+                    discovered.append({
+                        "iterm_session_id": iterm_session_id,
+                        "project_path": project_path,
+                        "claude_session_id": claude_session_id,
+                        "internal_session_id": internal_session_id,
+                        "last_assistant_preview": last_assistant_preview,
+                        "already_managed": iterm_session_id in managed_iterm_ids,
+                        "agent_type": "claude",
+                    })
+                    continue
+
+                # Fall back to Codex marker scan if no Claude match
+                codex_match = find_codex_session_by_iterm_id(
+                    iterm_session_id,
+                    max_age_seconds=max_age,
+                )
+
+                if not codex_match:
+                    continue
+
+                project_path = codex_match.project_path
+                internal_session_id = codex_match.internal_session_id
+
+                # Get last assistant message preview from Codex JSONL
+                last_assistant_preview = None
+                try:
+                    jsonl_path = codex_match.jsonl_path
+                    if jsonl_path.exists():
+                        state = parse_codex_session(jsonl_path)
+                        if state.last_assistant_message:
+                            content = state.last_assistant_message.content
+                            last_assistant_preview = (
+                                content[:200] + "..."
+                                if len(content) > 200
+                                else content
+                            )
+                except Exception as e:
+                    logger.debug(f"Could not get conversation preview: {e}")
+
+                discovered.append({
+                    "iterm_session_id": iterm_session_id,
+                    "project_path": project_path,
+                    "codex_session_id": codex_match.jsonl_path.stem,
+                    "internal_session_id": internal_session_id,
+                    "last_assistant_preview": last_assistant_preview,
+                    "already_managed": iterm_session_id in managed_iterm_ids,
+                    "agent_type": "codex",
+                })
+            except Exception as e:
+                logger.warning(f"Error scanning session {iterm_session_id}: {e}")
+                continue
 
         unmanaged = [s for s in discovered if not s["already_managed"]]
 

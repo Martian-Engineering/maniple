@@ -71,20 +71,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     existing_session=managed.to_dict(),
                 )
 
-        # Find the iTerm2 session by ID
-        target_session = None
-        for window in app.terminal_windows:
-            for tab in window.tabs:
-                for iterm_session in tab.sessions:
-                    if iterm_session.session_id == iterm_session_id:
-                        target_session = iterm_session
-                        break
-                if target_session:
-                    break
-            if target_session:
-                break
-
-        if not target_session:
+        # Find the iTerm2 session by ID via the terminal backend
+        target_handle = await backend.find_handle_by_native_id(iterm_session_id)
+        if not target_handle:
             return error_response(
                 f"iTerm2 session not found: {iterm_session_id}",
                 hint="Run discover_workers to scan for active Claude or Codex sessions in iTerm2",
@@ -125,7 +114,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
 
         # Register with recovered identity (no new marker needed)
         managed = registry.add(
-            terminal_session=backend.wrap_session(target_session),
+            terminal_session=target_handle,
             project_path=match.project_path,
             name=session_name,
             session_id=match.internal_session_id,  # Recover original ID

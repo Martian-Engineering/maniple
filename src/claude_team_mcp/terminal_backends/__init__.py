@@ -6,7 +6,7 @@ import os
 from typing import Mapping
 
 from .base import TerminalBackend, TerminalSession
-from .iterm import ItermBackend
+from .iterm import ItermBackend, MAX_PANES_PER_TAB
 from .tmux import TmuxBackend
 
 
@@ -21,4 +21,11 @@ def select_backend_id(env: Mapping[str, str] | None = None) -> str:
     return "iterm"
 
 
-__all__ = ["TerminalBackend", "TerminalSession", "ItermBackend", "TmuxBackend", "select_backend_id"]
+__all__ = [
+    "TerminalBackend",
+    "TerminalSession",
+    "ItermBackend",
+    "TmuxBackend",
+    "MAX_PANES_PER_TAB",
+    "select_backend_id",
+]
