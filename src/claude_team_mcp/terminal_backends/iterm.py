@@ -57,7 +57,6 @@ class ItermBackend(TerminalBackend):
         """Extract the iTerm2 session handle from a TerminalSession."""
         return session.handle
 
-    # Alias for compatibility with b250576 usage patterns
     def handle_from_session(self, session: "ItermSession") -> TerminalSession:
         """Wrap a native iTerm2 session in a TerminalSession (alias for wrap_session)."""
         return self.wrap_session(session)

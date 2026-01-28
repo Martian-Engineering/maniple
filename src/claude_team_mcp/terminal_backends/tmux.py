@@ -44,12 +44,14 @@ CODEX_PRE_ENTER_DELAY = 0.5
 LAYOUT_PANE_NAMES = {
     "single": ["main"],
     "vertical": ["left", "right"],
+    "triple_vertical": ["left", "middle", "right"],
     "horizontal": ["top", "bottom"],
     "quad": ["top_left", "top_right", "bottom_left", "bottom_right"],
 }
 
 LAYOUT_SELECT = {
     "vertical": "even-horizontal",
+    "triple_vertical": "even-horizontal",
     "horizontal": "even-vertical",
     "quad": "tiled",
 }
@@ -220,6 +222,10 @@ class TmuxBackend(TerminalBackend):
         elif layout == "vertical":
             panes["left"] = initial
             panes["right"] = await self.split_pane(initial, vertical=True)
+        elif layout == "triple_vertical":
+            panes["left"] = initial
+            panes["middle"] = await self.split_pane(initial, vertical=True)
+            panes["right"] = await self.split_pane(panes["middle"], vertical=True)
         elif layout == "horizontal":
             panes["top"] = initial
             panes["bottom"] = await self.split_pane(initial, vertical=False)

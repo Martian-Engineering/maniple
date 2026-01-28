@@ -209,6 +209,12 @@ MARKER_SUFFIX = "!>"
 ITERM_MARKER_PREFIX = "<!claude-team-iterm:"
 ITERM_MARKER_SUFFIX = "!>"
 
+# Tmux-specific marker for session discovery/recovery
+# Tmux pane ids can change across restarts, so we log the pane id in JSONL
+# to recover sessions that were started by claude-team.
+TMUX_MARKER_PREFIX = "<!claude-team-tmux:"
+TMUX_MARKER_SUFFIX = "!>"
+
 # Project path marker for Codex session recovery
 PROJECT_MARKER_PREFIX = "<!claude-team-project:"
 PROJECT_MARKER_SUFFIX = "!>"
@@ -217,6 +223,7 @@ PROJECT_MARKER_SUFFIX = "!>"
 def generate_marker_message(
     session_id: str,
     iterm_session_id: Optional[str] = None,
+    tmux_pane_ids: Optional[list[str]] = None,
     project_path: Optional[str] = None,
 ) -> str:
     """
@@ -229,21 +236,33 @@ def generate_marker_message(
         session_id: The managed session ID (e.g., "worker-1")
         iterm_session_id: Optional iTerm2 session ID for discovery/recovery.
             When provided, an additional iTerm-specific marker is emitted.
+        tmux_pane_ids: Optional tmux pane IDs for discovery/recovery.
+            When provided, tmux-specific markers are emitted for each pane.
         project_path: Optional project path for Codex session recovery.
             When provided, a project marker is emitted.
 
     Returns:
         A message string to send to the session
     """
-    marker = f"{MARKER_PREFIX}{session_id}{MARKER_SUFFIX}"
+    marker_lines = [f"{MARKER_PREFIX}{session_id}{MARKER_SUFFIX}"]
 
     # Add iTerm-specific marker if provided (for session recovery after MCP restart)
     if iterm_session_id:
-        marker += f"\n{ITERM_MARKER_PREFIX}{iterm_session_id}{ITERM_MARKER_SUFFIX}"
+        marker_lines.append(
+            f"{ITERM_MARKER_PREFIX}{iterm_session_id}{ITERM_MARKER_SUFFIX}"
+        )
+
+    if tmux_pane_ids:
+        for pane_id in tmux_pane_ids:
+            marker_lines.append(f"{TMUX_MARKER_PREFIX}{pane_id}{TMUX_MARKER_SUFFIX}")
 
     # Add project path marker if provided (used for Codex recovery)
     if project_path:
-        marker += f"\n{PROJECT_MARKER_PREFIX}{project_path}{PROJECT_MARKER_SUFFIX}"
+        marker_lines.append(
+            f"{PROJECT_MARKER_PREFIX}{project_path}{PROJECT_MARKER_SUFFIX}"
+        )
+
+    marker = "\n".join(marker_lines)
 
     return (
         f"{marker}\n\n"
@@ -313,6 +332,26 @@ def extract_project_path(text: str) -> Optional[str]:
     return text[start:end]
 
 
+def extract_tmux_pane_id(text: str) -> Optional[str]:
+    """
+    Extract a tmux pane ID from marker text if present.
+
+    Args:
+        text: Text that may contain a tmux marker
+
+    Returns:
+        The tmux pane ID from the marker, or None if no marker found
+    """
+    start = text.find(TMUX_MARKER_PREFIX)
+    if start == -1:
+        return None
+    start += len(TMUX_MARKER_PREFIX)
+    end = text.find(TMUX_MARKER_SUFFIX, start)
+    if end == -1:
+        return None
+    return text[start:end]
+
+
 def find_jsonl_by_marker(
     project_path: str,
     session_id: str,
@@ -372,6 +411,16 @@ class ItermSessionMatch:
     """Result of matching an iTerm session ID to a JSONL file."""
 
     iterm_session_id: str
+    internal_session_id: str  # Our claude-team session ID
+    jsonl_path: Path
+    project_path: str  # Recovered from directory slug
+
+
+@dataclass
+class TmuxSessionMatch:
+    """Result of matching a tmux pane ID to a JSONL file."""
+
+    tmux_pane_id: str
     internal_session_id: str  # Our claude-team session ID
     jsonl_path: Path
     project_path: str  # Recovered from directory slug
@@ -614,6 +663,103 @@ def find_jsonl_by_iterm_id(
 
                         return ItermSessionMatch(
                             iterm_session_id=iterm_session_id,
+                            internal_session_id=internal_id,
+                            jsonl_path=f,
+                            project_path=project_path,
+                        )
+
+            except Exception:
+                continue
+
+    return None
+
+
+def find_jsonl_by_tmux_id(
+    tmux_pane_id: str,
+    max_age_seconds: int = 3600,
+) -> Optional[TmuxSessionMatch]:
+    """
+    Find a JSONL file containing a specific tmux pane marker.
+
+    Scans all project directories in ~/.claude/projects/ for JSONLs
+    that contain the tmux-specific marker. This enables session recovery
+    after MCP server restart.
+
+    Only looks at root user messages (type="user", parentUuid=null) and
+    extracts markers from the message.content field for reliability.
+
+    Args:
+        tmux_pane_id: The tmux pane ID to search for
+        max_age_seconds: Only check files modified within this many seconds
+
+    Returns:
+        TmuxSessionMatch with full recovery info, or None if not found
+    """
+    tmux_marker = f"{TMUX_MARKER_PREFIX}{tmux_pane_id}{TMUX_MARKER_SUFFIX}"
+    now = time.time()
+
+    # Scan all project directories
+    if not CLAUDE_PROJECTS_DIR.exists():
+        return None
+
+    for project_dir in CLAUDE_PROJECTS_DIR.iterdir():
+        if not project_dir.is_dir():
+            continue
+
+        # Check JSONL files in this project
+        for f in project_dir.glob("*.jsonl"):
+            # Skip agent files
+            if f.name.startswith("agent-"):
+                continue
+
+            # Skip old files
+            try:
+                if now - f.stat().st_mtime > max_age_seconds:
+                    continue
+            except OSError:
+                continue
+
+            # Parse JSONL looking for root user message with our markers
+            try:
+                with open(f, "r") as fp:
+                    for line in fp:
+                        line = line.strip()
+                        if not line:
+                            continue
+
+                        try:
+                            entry = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+
+                        # Only look at root user messages (our marker message)
+                        if entry.get("type") != "user":
+                            continue
+                        if entry.get("parentUuid") is not None:
+                            continue
+
+                        # Extract message content
+                        message = entry.get("message", {})
+                        content = message.get("content", "")
+                        if not isinstance(content, str):
+                            continue
+
+                        # Check for tmux marker in message content
+                        if tmux_marker not in content:
+                            continue
+
+                        # Extract internal session ID from the same content
+                        internal_id = extract_marker_session_id(content)
+                        if not internal_id:
+                            continue
+
+                        # Recover project path from directory slug
+                        project_path = unslugify_path(project_dir.name)
+                        if not project_path:
+                            continue
+
+                        return TmuxSessionMatch(
+                            tmux_pane_id=tmux_pane_id,
                             internal_session_id=internal_id,
                             jsonl_path=f,
                             project_path=project_path,
