@@ -169,5 +169,5 @@
 {"type":"dep_add","timestamp":"2026-01-28T16:24:20.897885Z","issue_id":"cic-5xot","payload":{"dep_type":"blocks","depends_on":"cic-109"}}
 {"type":"dep_add","timestamp":"2026-01-28T16:24:20.972278Z","issue_id":"cic-5xot","payload":{"dep_type":"blocks","depends_on":"cic-455"}}
 {"type":"dep_add","timestamp":"2026-01-28T16:24:21.047459Z","issue_id":"cic-5xot","payload":{"dep_type":"blocks","depends_on":"cic-8dd"}}
-{"type":"status_update","timestamp":"2026-01-28T16:41:41.790973Z","issue_id":"cic-455","payload":{"status":"in_progress"}}
-{"type":"close","timestamp":"2026-01-28T16:47:02.545075Z","issue_id":"cic-455","payload":{}}
+{"type":"status_update","timestamp":"2026-01-28T16:41:41.916375Z","issue_id":"cic-6e5","payload":{"status":"in_progress"}}
+{"type":"close","timestamp":"2026-01-28T16:44:06.117049Z","issue_id":"cic-6e5","payload":{}}
