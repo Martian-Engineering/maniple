@@ -38,9 +38,13 @@ def get_codex_command() -> str:
 
     # Try config file next.
     # Import here to avoid circular imports and lazy-load config.
-    from ..config import load_config
+    try:
+        from ..config import ConfigError, load_config
 
-    config = load_config()
+        config = load_config()
+    except ConfigError:
+        return _DEFAULT_COMMAND
+
     if config.commands.codex:
         return config.commands.codex
 

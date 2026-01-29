@@ -132,11 +132,15 @@ def detect_issue_tracker(
     # Priority 2: Config file override.
     if config is None:
         # Lazy import to avoid circular dependency at module load time.
-        from claude_team_mcp.config import load_config
+        try:
+            from claude_team_mcp.config import ConfigError, load_config
 
-        config = load_config()
+            config = load_config()
+        except ConfigError as exc:
+            logger.warning("Invalid config file; ignoring overrides: %s", exc)
+            config = None
 
-    if config.issue_tracker.override:
+    if config and config.issue_tracker.override:
         backend = BACKEND_REGISTRY.get(config.issue_tracker.override)
         if backend:
             logger.debug(
