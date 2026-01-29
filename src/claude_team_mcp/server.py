@@ -398,8 +398,10 @@ def run_server(transport: str = "stdio", port: int = 8766):
 def main():
     """CLI entry point with argument parsing."""
     import argparse
+    import sys
 
     parser = argparse.ArgumentParser(description="Claude Team MCP Server")
+    # Global server options apply when no subcommand is provided.
     parser.add_argument(
         "--http",
         action="store_true",
@@ -411,9 +413,76 @@ def main():
         default=8766,
         help="Port for HTTP mode (default: 8766)",
     )
+    # Config subcommands for reading/writing ~/.claude-team/config.json.
+    subparsers = parser.add_subparsers(dest="command")
+
+    config_parser = subparsers.add_parser(
+        "config",
+        help="Manage claude-team configuration",
+    )
+    config_subparsers = config_parser.add_subparsers(dest="config_command")
+
+    init_parser = config_subparsers.add_parser(
+        "init",
+        help="Write default config to disk",
+    )
+    init_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing config file",
+    )
+
+    config_subparsers.add_parser(
+        "show",
+        help="Show effective config (file + env overrides)",
+    )
+
+    get_parser = config_subparsers.add_parser(
+        "get",
+        help="Get a single config value by dotted path",
+    )
+    get_parser.add_argument("key", help="Dotted config key (e.g. defaults.layout)")
+
+    set_parser = config_subparsers.add_parser(
+        "set",
+        help="Set a single config value by dotted path",
+    )
+    set_parser.add_argument("key", help="Dotted config key (e.g. defaults.layout)")
+    set_parser.add_argument("value", help="Value to set")
 
     args = parser.parse_args()
 
+    # Handle config subcommands early to avoid starting the server.
+    if args.command == "config":
+        from .config import ConfigError
+        from .config_cli import (
+            format_value_json,
+            get_config_value,
+            init_config,
+            render_config_json,
+            set_config_value,
+        )
+
+        try:
+            if args.config_command == "init":
+                path = init_config(force=args.force)
+                print(path)
+            elif args.config_command == "show":
+                print(render_config_json())
+            elif args.config_command == "get":
+                value = get_config_value(args.key)
+                print(format_value_json(value))
+            elif args.config_command == "set":
+                set_config_value(args.key, args.value)
+            else:
+                config_parser.print_help()
+                raise SystemExit(2)
+        except ConfigError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
+        return
+
+    # Default behavior: run the MCP server.
     if args.http:
         run_server(transport="streamable-http", port=args.port)
     else:

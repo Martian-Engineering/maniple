@@ -95,6 +95,12 @@ def load_config(config_path: Path | None = None) -> ClaudeTeamConfig:
     return _parse_config(data)
 
 
+def parse_config(data: dict) -> ClaudeTeamConfig:
+    """Parse and validate a config dictionary."""
+
+    return _parse_config(data)
+
+
 def save_config(config: ClaudeTeamConfig, config_path: Path | None = None) -> Path:
     """Persist config to disk and return the path written."""
 
@@ -339,5 +345,6 @@ __all__ = [
     "CONFIG_VERSION",
     "default_config",
     "load_config",
+    "parse_config",
     "save_config",
 ]
