@@ -34,7 +34,7 @@ def error_response(
 HINTS = {
     "session_not_found": (
         "Run list_workers to see available workers, or discover_workers "
-        "to find orphaned iTerm2 sessions that can be adopted"
+        "to find orphaned terminal sessions that can be adopted"
     ),
     "project_path_missing": (
         "Verify the path exists. For git worktrees, check 'git worktree list'. "
@@ -44,9 +44,13 @@ HINTS = {
         "Ensure iTerm2 is running and Python API is enabled: "
         "iTerm2 → Preferences → General → Magic → Enable Python API"
     ),
+    "terminal_backend_required": (
+        "This tool only supports the iTerm2 or tmux backends. "
+        "Set CLAUDE_TEAM_TERMINAL_BACKEND=iterm or tmux, or run inside a supported terminal."
+    ),
     "registry_empty": (
         "No workers are being managed. Use spawn_workers to create new workers, "
-        "or discover_workers to find existing Claude sessions in iTerm2"
+        "or discover_workers to find existing Claude sessions in a supported terminal"
     ),
     "no_jsonl_file": (
         "Claude may not have started yet or the session file doesn't exist. "
@@ -73,7 +77,7 @@ def get_session_or_error(
 
     Args:
         registry: The session registry to search
-        session_id: ID to resolve (supports session_id, iterm_session_id, or name)
+        session_id: ID to resolve (supports session_id, terminal_id, or name)
 
     Returns:
         ManagedSession if found, or error dict with hint if not found
