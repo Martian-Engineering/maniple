@@ -232,11 +232,13 @@ def _parse_events(value: object) -> EventsConfig:
             data.get("max_size_mb"),
             "events.max_size_mb",
             EventsConfig.max_size_mb,
+            min_value=1,
         ),
         recent_hours=_optional_int(
             data.get("recent_hours"),
             "events.recent_hours",
             EventsConfig.recent_hours,
+            min_value=0,
         ),
     )
 
@@ -283,14 +285,14 @@ def _optional_str(value: object, path: str) -> str | None:
     return value
 
 
-def _optional_int(value: object, path: str, default: int) -> int:
+def _optional_int(value: object, path: str, default: int, min_value: int = 1) -> int:
     # Validate optional integer fields.
     if value is None:
         return default
     if not isinstance(value, int) or isinstance(value, bool):
         raise ConfigError(f"{path} must be an integer")
-    if value < 1:
-        raise ConfigError(f"{path} must be at least 1")
+    if value < min_value:
+        raise ConfigError(f"{path} must be at least {min_value}")
     return value
 
 

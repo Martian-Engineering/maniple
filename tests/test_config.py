@@ -511,6 +511,26 @@ class TestFieldTypeValidation:
         with pytest.raises(ConfigError, match="events.recent_hours must be an integer"):
             load_config(config_path)
 
+    def test_events_recent_hours_zero_allowed(self, tmp_path: Path):
+        """Zero recent_hours is allowed."""
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "events": {"recent_hours": 0},
+        }))
+        config = load_config(config_path)
+        assert config.events.recent_hours == 0
+
+    def test_events_recent_hours_negative_raises_error(self, tmp_path: Path):
+        """Negative recent_hours raises ConfigError."""
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "events": {"recent_hours": -1},
+        }))
+        with pytest.raises(ConfigError, match="events.recent_hours must be at least 0"):
+            load_config(config_path)
+
     def test_events_bool_not_accepted_as_int(self, tmp_path: Path):
         """Boolean is not accepted for integer field."""
         config_path = tmp_path / "config.json"
