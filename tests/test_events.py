@@ -1,7 +1,6 @@
 """Tests for event log persistence."""
 
 from datetime import datetime, timezone
-import importlib
 import json
 import multiprocessing
 import os
@@ -13,6 +12,7 @@ import pytest
 
 from claude_team import events
 from claude_team.events import WorkerEvent
+from claude_team_mcp.config import ClaudeTeamConfig, EventsConfig
 
 
 def _hold_lock(path_value: str, ready: multiprocessing.Event, release: multiprocessing.Event) -> None:
@@ -237,14 +237,13 @@ class TestEventLogPersistence:
         assert worker_ids == {"active-old", "recent-idle"}
         assert snapshot["data"]["count"] == 2
 
-    def test_rotate_events_log_env_defaults(self, tmp_path, monkeypatch):
-        """Env vars should configure rotation defaults."""
-        monkeypatch.setenv("CLAUDE_TEAM_EVENTS_MAX_SIZE_MB", "1")
-        monkeypatch.setenv("CLAUDE_TEAM_EVENTS_RECENT_HOURS", "0")
+    def test_rotate_events_log_uses_config_defaults(self, tmp_path, monkeypatch):
+        """Config should supply rotation defaults when env overrides are missing."""
+        config = ClaudeTeamConfig(events=EventsConfig(max_size_mb=2, recent_hours=0))
+        monkeypatch.setattr(events, "load_config", lambda: config)
 
-        events_module = importlib.reload(events)
         path = tmp_path / "events.jsonl"
-        monkeypatch.setattr(events_module, "get_events_path", lambda: path)
+        monkeypatch.setattr(events, "get_events_path", lambda: path)
 
         base = datetime(2026, 1, 28, 10, 0, tzinfo=timezone.utc)
         line = json.dumps({
@@ -253,11 +252,46 @@ class TestEventLogPersistence:
             "worker_id": "idle-worker",
             "data": {"state": "idle"},
         })
-        filler = "x" * (1024 * 1024)
+        filler = "x" * (1024 * 1024 + 512 * 1024)
         path.write_text(line + "\n" + filler + "\n", encoding="utf-8")
         os.utime(path, (base.timestamp(), base.timestamp()))
 
-        events_module.append_event(events_module.WorkerEvent(
+        events.append_event(WorkerEvent(
+            ts=_isoformat_zulu(base.replace(minute=5)),
+            type="worker_started",
+            worker_id="active-worker",
+            data={"state": "active"},
+        ))
+
+        rotated = list(path.parent.glob("events.*.jsonl"))
+        assert rotated == []
+        contents = path.read_text(encoding="utf-8")
+        assert "idle-worker" in contents
+        assert "active-worker" in contents
+
+    def test_rotate_events_log_env_overrides_config(self, tmp_path, monkeypatch):
+        """Env vars should override config-provided rotation defaults."""
+        monkeypatch.setenv("CLAUDE_TEAM_EVENTS_MAX_SIZE_MB", "1")
+        monkeypatch.setenv("CLAUDE_TEAM_EVENTS_RECENT_HOURS", "0")
+
+        config = ClaudeTeamConfig(events=EventsConfig(max_size_mb=2, recent_hours=24))
+        monkeypatch.setattr(events, "load_config", lambda: config)
+
+        path = tmp_path / "events.jsonl"
+        monkeypatch.setattr(events, "get_events_path", lambda: path)
+
+        base = datetime(2026, 1, 28, 10, 0, tzinfo=timezone.utc)
+        line = json.dumps({
+            "ts": _isoformat_zulu(base),
+            "type": "worker_idle",
+            "worker_id": "idle-worker",
+            "data": {"state": "idle"},
+        })
+        filler = "x" * (1024 * 1024 + 512 * 1024)
+        path.write_text(line + "\n" + filler + "\n", encoding="utf-8")
+        os.utime(path, (base.timestamp(), base.timestamp()))
+
+        events.append_event(WorkerEvent(
             ts=_isoformat_zulu(base.replace(minute=5)),
             type="worker_started",
             worker_id="active-worker",
@@ -268,8 +302,3 @@ class TestEventLogPersistence:
         assert backup.exists()
         retained = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
         assert [payload["worker_id"] for payload in retained] == ["active-worker"]
-        assert events_module.DEFAULT_ROTATION_MAX_SIZE_MB == 1
-        assert events_module.DEFAULT_ROTATION_RECENT_HOURS == 0
-        monkeypatch.delenv("CLAUDE_TEAM_EVENTS_MAX_SIZE_MB", raising=False)
-        monkeypatch.delenv("CLAUDE_TEAM_EVENTS_RECENT_HOURS", raising=False)
-        importlib.reload(events_module)

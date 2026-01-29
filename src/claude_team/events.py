@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 from typing import Literal
 
+from claude_team_mcp.config import EventsConfig, load_config
+
 try:
     import fcntl
 except ImportError:  # pragma: no cover - platform-specific
@@ -40,8 +42,14 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
-DEFAULT_ROTATION_MAX_SIZE_MB = _int_env("CLAUDE_TEAM_EVENTS_MAX_SIZE_MB", 1)
-DEFAULT_ROTATION_RECENT_HOURS = _int_env("CLAUDE_TEAM_EVENTS_RECENT_HOURS", 24)
+def _load_rotation_config() -> EventsConfig:
+    # Resolve rotation defaults from config, applying env overrides.
+    config = load_config()
+    events_config = config.events
+    return EventsConfig(
+        max_size_mb=_int_env("CLAUDE_TEAM_EVENTS_MAX_SIZE_MB", events_config.max_size_mb),
+        recent_hours=_int_env("CLAUDE_TEAM_EVENTS_RECENT_HOURS", events_config.recent_hours),
+    )
 
 
 @dataclass
@@ -89,6 +97,7 @@ def append_events(events: list[WorkerEvent]) -> None:
     payloads = [json.dumps(_event_to_dict(event), ensure_ascii=False) for event in events]
     block = "\n".join(payloads) + "\n"
     event_ts = _latest_event_timestamp(events)
+    rotation_config = _load_rotation_config()
 
     with path.open("r+", encoding="utf-8") as handle:
         _lock_file(handle)
@@ -97,8 +106,8 @@ def append_events(events: list[WorkerEvent]) -> None:
                 handle,
                 path,
                 current_ts=event_ts,
-                max_size_mb=DEFAULT_ROTATION_MAX_SIZE_MB,
-                recent_hours=DEFAULT_ROTATION_RECENT_HOURS,
+                max_size_mb=rotation_config.max_size_mb,
+                recent_hours=rotation_config.recent_hours,
             )
             # Hold the lock across the entire write and flush cycle.
             handle.seek(0, os.SEEK_END)
@@ -169,8 +178,8 @@ def get_latest_snapshot() -> dict | None:
 
 
 def rotate_events_log(
-    max_size_mb: int = DEFAULT_ROTATION_MAX_SIZE_MB,
-    recent_hours: int = DEFAULT_ROTATION_RECENT_HOURS,
+    max_size_mb: int | None = None,
+    recent_hours: int | None = None,
     now: datetime | None = None,
 ) -> None:
     """Rotate the log daily or by size, retaining active/recent workers."""
@@ -179,6 +188,12 @@ def rotate_events_log(
         return
 
     current_ts = now or datetime.now(timezone.utc)
+    if max_size_mb is None or recent_hours is None:
+        rotation_config = _load_rotation_config()
+        if max_size_mb is None:
+            max_size_mb = rotation_config.max_size_mb
+        if recent_hours is None:
+            recent_hours = rotation_config.recent_hours
 
     with path.open("r+", encoding="utf-8") as handle:
         _lock_file(handle)
