@@ -5,15 +5,24 @@ from __future__ import annotations
 import os
 from typing import Mapping
 
+from ..config import ClaudeTeamConfig, load_config
 from .base import TerminalBackend, TerminalSession
 from .iterm import ItermBackend, MAX_PANES_PER_TAB
 from .tmux import TmuxBackend
 
 
-def select_backend_id(env: Mapping[str, str] | None = None) -> str:
-    """Select a terminal backend id based on environment configuration."""
-    environ = env or os.environ
+def select_backend_id(
+    env: Mapping[str, str] | None = None,
+    config: ClaudeTeamConfig | None = None,
+) -> str:
+    """Select a terminal backend id based on environment and config."""
+    environ = os.environ if env is None else env
     configured = environ.get("CLAUDE_TEAM_TERMINAL_BACKEND")
+    if configured:
+        return configured.strip().lower()
+    if config is None:
+        config = load_config()
+    configured = config.terminal.backend if config else None
     if configured:
         return configured.strip().lower()
     if environ.get("TMUX"):
