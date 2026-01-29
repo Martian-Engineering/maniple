@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from ..server import AppContext
 
 from ..cli_backends import get_cli_backend
+from ..config import load_config
 from ..colors import generate_tab_color
 from ..formatting import format_badge_text, format_session_title
 from ..names import pick_names_for_count
@@ -58,7 +59,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
     async def spawn_workers(
         ctx: Context[ServerSession, "AppContext"],
         workers: list[WorkerConfig],
-        layout: Literal["auto", "new"] = "auto",
+        layout: Literal["auto", "new"] | None = None,
     ) -> dict:
         """
         Spawn Claude Code worker sessions.
@@ -191,6 +192,14 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         app_ctx = ctx.request_context.lifespan_context
         registry = app_ctx.registry
 
+        # Load config and apply defaults
+        config = load_config()
+        defaults = config.defaults
+
+        # Resolve layout from config if not explicitly provided
+        if layout is None:
+            layout = defaults.layout
+
         # Validate worker count
         if not workers:
             return error_response("At least one worker is required")
@@ -244,7 +253,10 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
 
             for i, (w, name) in enumerate(zip(workers, resolved_names)):
                 project_path = w["project_path"]
-                use_worktree = w.get("use_worktree", True)  # Default True
+                # Use config default when not explicitly set
+                use_worktree = w.get("use_worktree")
+                if use_worktree is None:
+                    use_worktree = defaults.use_worktree
                 worktree_config = w.get("worktree")
                 worktree_explicitly_requested = worktree_config is not None
                 worktree_branch = None
@@ -324,6 +336,16 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             # Pre-generate session IDs for Stop hook injection
             session_ids = [str(uuid.uuid4())[:8] for _ in workers]
 
+            # Pre-calculate agent types for each worker (needed by profile customizations
+            # and agent startup)
+            agent_types: list[str] = []
+            for w in workers:
+                # Use config default when not explicitly set
+                agent_type = w.get("agent_type")
+                if agent_type is None:
+                    agent_type = defaults.agent_type
+                agent_types.append(agent_type)
+
             # Build profile customizations for each worker (iTerm-only)
             profile_customizations: list[object | None] = [None] * worker_count
             if isinstance(backend, ItermBackend):
@@ -335,7 +357,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
 
                     bead = w.get("bead")
                     annotation = w.get("annotation")
-                    agent_type = w.get("agent_type", "claude")
+                    agent_type = agent_types[i]
 
                     # Tab title
                     tab_title = format_session_title(
@@ -591,16 +613,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
 
                 pane_sessions = [panes[name] for name in pane_names[:worker_count]]
 
-            # Pre-calculate agent types for each worker
-            import asyncio
-
-            agent_types: list[str] = []
-
-            for i, w in enumerate(workers):
-                agent_type = w.get("agent_type", "claude")
-                agent_types.append(agent_type)
-
             # Start agent in all panes (both Claude and Codex)
+            import asyncio
             async def start_agent_for_worker(index: int) -> None:
                 session = pane_sessions[index]
                 project_path = resolved_paths[index]
@@ -618,11 +632,15 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
 
                 cli = get_cli_backend(agent_type)
                 stop_hook_marker_id = marker_id if agent_type == "claude" else None
+                # Use config default when not explicitly set
+                skip_permissions = worker_config.get("skip_permissions")
+                if skip_permissions is None:
+                    skip_permissions = defaults.skip_permissions
                 await backend.start_agent_in_session(
                     handle=session,
                     cli=cli,
                     project_path=project_path,
-                    dangerously_skip_permissions=worker_config.get("skip_permissions", False),
+                    dangerously_skip_permissions=skip_permissions,
                     env=env,
                     stop_hook_marker_id=stop_hook_marker_id,
                 )
