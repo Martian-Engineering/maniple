@@ -89,9 +89,7 @@ def load_config(config_path: Path | None = None) -> ClaudeTeamConfig:
 
     path = _resolve_config_path(config_path)
     if not path.exists():
-        config = default_config()
-        save_config(config, path)
-        return config
+        return default_config()
 
     data = _read_json(path)
     return _parse_config(data)

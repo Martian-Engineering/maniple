@@ -141,11 +141,11 @@ class TestLoadConfig:
     """Tests for load_config function."""
 
     def test_creates_default_when_missing(self, tmp_path: Path):
-        """load_config creates default config when file doesn't exist."""
+        """load_config returns defaults without writing when file doesn't exist."""
         config_path = tmp_path / "config.json"
         assert not config_path.exists()
         config = load_config(config_path)
-        assert config_path.exists()
+        assert not config_path.exists()
         assert isinstance(config, ClaudeTeamConfig)
 
     def test_loads_existing_config(self, tmp_path: Path):
