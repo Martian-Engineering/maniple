@@ -6,15 +6,17 @@ This allows claude-team to orchestrate multiple agent types through a unified in
 """
 
 from .base import AgentCLI
-from .claude import ClaudeCLI, claude_cli
-from .codex import CodexCLI, codex_cli
+from .claude import ClaudeCLI, claude_cli, get_claude_command
+from .codex import CodexCLI, codex_cli, get_codex_command
 
 __all__ = [
     "AgentCLI",
     "ClaudeCLI",
     "claude_cli",
+    "get_claude_command",
     "CodexCLI",
     "codex_cli",
+    "get_codex_command",
     "get_cli_backend",
 ]
 

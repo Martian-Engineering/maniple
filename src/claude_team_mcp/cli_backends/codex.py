@@ -12,6 +12,41 @@ from typing import Literal
 
 from .base import AgentCLI
 
+# Built-in default command.
+_DEFAULT_COMMAND = "codex"
+
+# Environment variable for command override (takes highest precedence).
+_ENV_VAR = "CLAUDE_TEAM_CODEX_COMMAND"
+
+
+def get_codex_command() -> str:
+    """
+    Get the Codex CLI command with precedence: env var > config > default.
+
+    Resolution order:
+    1. CLAUDE_TEAM_CODEX_COMMAND environment variable (for override)
+    2. Config file commands.codex setting
+    3. Built-in default "codex"
+
+    Returns:
+        The command to use for Codex CLI
+    """
+    # Environment variable takes highest precedence (for override).
+    env_val = os.environ.get(_ENV_VAR)
+    if env_val:
+        return env_val
+
+    # Try config file next.
+    # Import here to avoid circular imports and lazy-load config.
+    from ..config import load_config
+
+    config = load_config()
+    if config.commands.codex:
+        return config.commands.codex
+
+    # Fall back to built-in default.
+    return _DEFAULT_COMMAND
+
 
 class CodexCLI(AgentCLI):
     """
@@ -35,10 +70,12 @@ class CodexCLI(AgentCLI):
         """
         Return the Codex CLI command.
 
-        Respects CLAUDE_TEAM_CODEX_COMMAND environment variable for overrides
-        (e.g., "happy codex" wrapper).
+        Resolution order:
+        1. CLAUDE_TEAM_CODEX_COMMAND environment variable (for override)
+        2. Config file commands.codex setting
+        3. Built-in default "codex"
         """
-        return os.environ.get("CLAUDE_TEAM_CODEX_COMMAND", "codex")
+        return get_codex_command()
 
     def build_args(
         self,
