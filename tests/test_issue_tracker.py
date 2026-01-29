@@ -2,8 +2,14 @@
 Tests for issue tracker abstraction module.
 """
 
+import os
+
+import pytest
+
+from claude_team_mcp.config import IssueTrackerConfig, default_config
 from claude_team_mcp.issue_tracker import (
     BEADS_BACKEND,
+    ISSUE_TRACKER_ENV_VAR,
     PEBBLES_BACKEND,
     IssueTrackerBackend,
     detect_issue_tracker,
@@ -101,3 +107,122 @@ class TestDetectIssueTracker:
         project_path.mkdir()
         detected = detect_issue_tracker(str(project_path))
         assert detected is None
+
+
+class TestEnvVarOverride:
+    """Tests for CLAUDE_TEAM_ISSUE_TRACKER environment variable override."""
+
+    @pytest.fixture(autouse=True)
+    def clean_env(self, monkeypatch):
+        """Ensure the env var is cleared before each test."""
+        monkeypatch.delenv(ISSUE_TRACKER_ENV_VAR, raising=False)
+
+    def test_env_var_selects_beads(self, tmp_path, monkeypatch):
+        """Env var should select beads even with no markers."""
+        project_path = tmp_path / "repo"
+        project_path.mkdir()
+        monkeypatch.setenv(ISSUE_TRACKER_ENV_VAR, "beads")
+
+        detected = detect_issue_tracker(str(project_path))
+        assert detected == BEADS_BACKEND
+
+    def test_env_var_selects_pebbles(self, tmp_path, monkeypatch):
+        """Env var should select pebbles even with no markers."""
+        project_path = tmp_path / "repo"
+        project_path.mkdir()
+        monkeypatch.setenv(ISSUE_TRACKER_ENV_VAR, "pebbles")
+
+        detected = detect_issue_tracker(str(project_path))
+        assert detected == PEBBLES_BACKEND
+
+    def test_env_var_overrides_markers(self, tmp_path, monkeypatch):
+        """Env var should take priority over marker detection."""
+        project_path = tmp_path / "repo"
+        project_path.mkdir()
+        (project_path / ".pebbles").mkdir()  # Pebbles marker
+        monkeypatch.setenv(ISSUE_TRACKER_ENV_VAR, "beads")
+
+        detected = detect_issue_tracker(str(project_path))
+        assert detected == BEADS_BACKEND
+
+    def test_env_var_case_insensitive(self, tmp_path, monkeypatch):
+        """Env var should be case-insensitive."""
+        project_path = tmp_path / "repo"
+        project_path.mkdir()
+        monkeypatch.setenv(ISSUE_TRACKER_ENV_VAR, "BEADS")
+
+        detected = detect_issue_tracker(str(project_path))
+        assert detected == BEADS_BACKEND
+
+    def test_invalid_env_var_falls_through(self, tmp_path, monkeypatch, caplog):
+        """Invalid env var value should log warning and fall through."""
+        project_path = tmp_path / "repo"
+        project_path.mkdir()
+        (project_path / ".pebbles").mkdir()
+        monkeypatch.setenv(ISSUE_TRACKER_ENV_VAR, "invalid_tracker")
+
+        detected = detect_issue_tracker(str(project_path))
+        assert detected == PEBBLES_BACKEND
+        assert "Unknown issue tracker 'invalid_tracker'" in caplog.text
+
+
+class TestConfigOverride:
+    """Tests for config.issue_tracker.override setting."""
+
+    @pytest.fixture(autouse=True)
+    def clean_env(self, monkeypatch):
+        """Ensure the env var is cleared before each test."""
+        monkeypatch.delenv(ISSUE_TRACKER_ENV_VAR, raising=False)
+
+    def test_config_override_selects_beads(self, tmp_path):
+        """Config override should select beads even with no markers."""
+        project_path = tmp_path / "repo"
+        project_path.mkdir()
+        config = default_config()
+        config.issue_tracker = IssueTrackerConfig(override="beads")
+
+        detected = detect_issue_tracker(str(project_path), config=config)
+        assert detected == BEADS_BACKEND
+
+    def test_config_override_selects_pebbles(self, tmp_path):
+        """Config override should select pebbles even with no markers."""
+        project_path = tmp_path / "repo"
+        project_path.mkdir()
+        config = default_config()
+        config.issue_tracker = IssueTrackerConfig(override="pebbles")
+
+        detected = detect_issue_tracker(str(project_path), config=config)
+        assert detected == PEBBLES_BACKEND
+
+    def test_config_override_overrides_markers(self, tmp_path):
+        """Config override should take priority over marker detection."""
+        project_path = tmp_path / "repo"
+        project_path.mkdir()
+        (project_path / ".pebbles").mkdir()  # Pebbles marker
+        config = default_config()
+        config.issue_tracker = IssueTrackerConfig(override="beads")
+
+        detected = detect_issue_tracker(str(project_path), config=config)
+        assert detected == BEADS_BACKEND
+
+    def test_env_var_overrides_config(self, tmp_path, monkeypatch):
+        """Env var should take priority over config override."""
+        project_path = tmp_path / "repo"
+        project_path.mkdir()
+        config = default_config()
+        config.issue_tracker = IssueTrackerConfig(override="pebbles")
+        monkeypatch.setenv(ISSUE_TRACKER_ENV_VAR, "beads")
+
+        detected = detect_issue_tracker(str(project_path), config=config)
+        assert detected == BEADS_BACKEND
+
+    def test_none_override_falls_through_to_markers(self, tmp_path):
+        """None config override should fall through to marker detection."""
+        project_path = tmp_path / "repo"
+        project_path.mkdir()
+        (project_path / ".beads").mkdir()
+        config = default_config()
+        config.issue_tracker = IssueTrackerConfig(override=None)
+
+        detected = detect_issue_tracker(str(project_path), config=config)
+        assert detected == BEADS_BACKEND

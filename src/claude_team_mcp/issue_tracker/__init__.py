@@ -9,9 +9,15 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from claude_team_mcp.config import ClaudeTeamConfig
 
 logger = logging.getLogger("claude-team-mcp")
+
+# Environment variable for explicit tracker override (highest priority).
+ISSUE_TRACKER_ENV_VAR = "CLAUDE_TEAM_ISSUE_TRACKER"
 
 
 @runtime_checkable
@@ -86,16 +92,70 @@ BACKEND_REGISTRY: dict[str, IssueTrackerBackend] = {
 }
 
 
-def detect_issue_tracker(project_path: str) -> IssueTrackerBackend | None:
+def detect_issue_tracker(
+    project_path: str,
+    config: ClaudeTeamConfig | None = None,
+) -> IssueTrackerBackend | None:
     """
     Detect the issue tracker backend for the given project path.
 
+    Resolution order (highest to lowest priority):
+      1. CLAUDE_TEAM_ISSUE_TRACKER environment variable
+      2. config.issue_tracker.override setting
+      3. Marker directory detection (.pebbles, .beads)
+
     Args:
         project_path: Absolute or relative path to the project root.
+        config: Optional config object. If None, config is loaded from disk.
 
     Returns:
-        The detected IssueTrackerBackend, or None if no markers are present.
+        The detected IssueTrackerBackend, or None if no tracker is configured
+        or detected.
     """
+    # Priority 1: Environment variable override.
+    env_override = os.environ.get(ISSUE_TRACKER_ENV_VAR)
+    if env_override:
+        backend = BACKEND_REGISTRY.get(env_override.lower())
+        if backend:
+            logger.debug(
+                "Using issue tracker '%s' from %s env var",
+                backend.name,
+                ISSUE_TRACKER_ENV_VAR,
+            )
+            return backend
+        logger.warning(
+            "Unknown issue tracker '%s' in %s; ignoring",
+            env_override,
+            ISSUE_TRACKER_ENV_VAR,
+        )
+
+    # Priority 2: Config file override.
+    if config is None:
+        # Lazy import to avoid circular dependency at module load time.
+        from claude_team_mcp.config import load_config
+
+        config = load_config()
+
+    if config.issue_tracker.override:
+        backend = BACKEND_REGISTRY.get(config.issue_tracker.override)
+        if backend:
+            logger.debug(
+                "Using issue tracker '%s' from config override",
+                backend.name,
+            )
+            return backend
+        # Config validation should prevent this, but handle gracefully.
+        logger.warning(
+            "Unknown issue tracker '%s' in config; ignoring",
+            config.issue_tracker.override,
+        )
+
+    # Priority 3: Marker directory detection.
+    return _detect_from_markers(project_path)
+
+
+def _detect_from_markers(project_path: str) -> IssueTrackerBackend | None:
+    """Detect issue tracker by checking for marker directories."""
     beads_marker = os.path.join(project_path, BEADS_BACKEND.marker_dir)
     pebbles_marker = os.path.join(project_path, PEBBLES_BACKEND.marker_dir)
 
@@ -128,5 +188,6 @@ __all__ = [
     "BEADS_BACKEND",
     "PEBBLES_BACKEND",
     "BACKEND_REGISTRY",
+    "ISSUE_TRACKER_ENV_VAR",
     "detect_issue_tracker",
 ]
