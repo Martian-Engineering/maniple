@@ -4,11 +4,13 @@ Tests for CLI backends module.
 Tests the AgentCLI protocol and its implementations (Claude, Codex).
 """
 
+import json
 import os
 from unittest.mock import patch
 
 import pytest
 
+from claude_team_mcp import config as config_module
 from claude_team_mcp.cli_backends import (
     AgentCLI,
     ClaudeCLI,
@@ -17,6 +19,14 @@ from claude_team_mcp.cli_backends import (
     codex_cli,
     get_cli_backend,
 )
+
+
+@pytest.fixture(autouse=True)
+def config_path(tmp_path, monkeypatch):
+    """Point config path to a temp location for deterministic CLI tests."""
+    path = tmp_path / "config.json"
+    monkeypatch.setattr(config_module, "CONFIG_PATH", path)
+    return path
 
 
 class TestAgentCLIProtocol:
@@ -52,6 +62,27 @@ class TestClaudeCLI:
         with patch.dict(os.environ, {"CLAUDE_TEAM_COMMAND": "happy"}):
             cli = ClaudeCLI()
             assert cli.command() == "happy"
+
+    def test_command_from_config(self, config_path):
+        """Command should use config when env var is unset."""
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "commands": {"claude": "/from/config"},
+        }))
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("CLAUDE_TEAM_COMMAND", None)
+            cli = ClaudeCLI()
+            assert cli.command() == "/from/config"
+
+    def test_command_env_overrides_config(self, config_path):
+        """Env var should override config command."""
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "commands": {"claude": "/from/config"},
+        }))
+        with patch.dict(os.environ, {"CLAUDE_TEAM_COMMAND": "from-env"}):
+            cli = ClaudeCLI()
+            assert cli.command() == "from-env"
 
     def test_build_args_empty_default(self):
         """Default args should be empty list."""
@@ -151,6 +182,27 @@ class TestCodexCLI:
         with patch.dict(os.environ, {"CLAUDE_TEAM_CODEX_COMMAND": "happy codex"}):
             cli = CodexCLI()
             assert cli.command() == "happy codex"
+
+    def test_command_from_config(self, config_path):
+        """Command should use config when env var is unset."""
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "commands": {"codex": "/from/config"},
+        }))
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("CLAUDE_TEAM_CODEX_COMMAND", None)
+            cli = CodexCLI()
+            assert cli.command() == "/from/config"
+
+    def test_command_env_overrides_config(self, config_path):
+        """Env var should override config command."""
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "commands": {"codex": "/from/config"},
+        }))
+        with patch.dict(os.environ, {"CLAUDE_TEAM_CODEX_COMMAND": "from-env"}):
+            cli = CodexCLI()
+            assert cli.command() == "from-env"
 
     def test_build_args_empty_default(self):
         """Default args should be empty list."""
