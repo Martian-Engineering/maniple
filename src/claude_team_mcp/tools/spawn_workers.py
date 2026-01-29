@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from ..server import AppContext
 
 from ..cli_backends import get_cli_backend
-from ..config import load_config
+from ..config import ConfigError, default_config, load_config
 from ..colors import generate_tab_color
 from ..formatting import format_badge_text, format_session_title
 from ..names import pick_names_for_count
@@ -193,7 +193,11 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         registry = app_ctx.registry
 
         # Load config and apply defaults
-        config = load_config()
+        try:
+            config = load_config()
+        except ConfigError as exc:
+            logger.warning("Invalid config file; using defaults: %s", exc)
+            config = default_config()
         defaults = config.defaults
 
         # Resolve layout from config if not explicitly provided

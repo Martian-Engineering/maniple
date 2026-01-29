@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Mapping
 
-from ..config import ClaudeTeamConfig, load_config
+from ..config import ClaudeTeamConfig, ConfigError, load_config
 from .base import TerminalBackend, TerminalSession
 from .iterm import ItermBackend, MAX_PANES_PER_TAB
 from .tmux import TmuxBackend
+
+logger = logging.getLogger("claude-team-mcp")
 
 
 def select_backend_id(
@@ -21,7 +24,13 @@ def select_backend_id(
     if configured:
         return configured.strip().lower()
     if config is None:
-        config = load_config()
+        try:
+            config = load_config()
+        except ConfigError as exc:
+            logger.warning(
+                "Invalid config file; ignoring terminal backend override: %s", exc
+            )
+            config = None
     configured = config.terminal.backend if config else None
     if configured:
         return configured.strip().lower()

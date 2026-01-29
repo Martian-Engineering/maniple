@@ -1,6 +1,9 @@
 """Tests for terminal backend selection."""
 
-from claude_team_mcp.config import ClaudeTeamConfig, TerminalConfig
+import pytest
+
+import claude_team_mcp.terminal_backends as terminal_backends
+from claude_team_mcp.config import ClaudeTeamConfig, ConfigError, TerminalConfig
 from claude_team_mcp.terminal_backends import select_backend_id
 
 
@@ -30,3 +33,18 @@ def test_select_backend_id_defaults_to_iterm():
     env = {}
     config = ClaudeTeamConfig(terminal=TerminalConfig(backend=None))
     assert select_backend_id(env=env, config=config) == "iterm"
+
+
+def test_select_backend_id_invalid_config_falls_back(monkeypatch, caplog):
+    """Invalid config should fall back to auto-detect defaults."""
+    env = {}
+
+    def raise_config_error():
+        raise ConfigError("invalid config")
+
+    monkeypatch.setattr(terminal_backends, "load_config", raise_config_error)
+
+    with caplog.at_level("WARNING"):
+        assert select_backend_id(env=env, config=None) == "iterm"
+
+    assert "Invalid config file; ignoring terminal backend override" in caplog.text

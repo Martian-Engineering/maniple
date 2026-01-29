@@ -12,7 +12,7 @@ import pytest
 
 from claude_team import events
 from claude_team.events import WorkerEvent
-from claude_team_mcp.config import ClaudeTeamConfig, EventsConfig
+from claude_team_mcp.config import ClaudeTeamConfig, ConfigError, EventsConfig
 
 
 def _hold_lock(path_value: str, ready: multiprocessing.Event, release: multiprocessing.Event) -> None:
@@ -302,3 +302,19 @@ class TestEventLogPersistence:
         assert backup.exists()
         retained = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
         assert [payload["worker_id"] for payload in retained] == ["active-worker"]
+
+    def test_rotation_config_invalid_config_falls_back(self, monkeypatch, caplog):
+        """Invalid config should fall back to default rotation config."""
+        def raise_config_error():
+            raise ConfigError("invalid config")
+
+        monkeypatch.setattr(events, "load_config", raise_config_error)
+        monkeypatch.delenv("CLAUDE_TEAM_EVENTS_MAX_SIZE_MB", raising=False)
+        monkeypatch.delenv("CLAUDE_TEAM_EVENTS_RECENT_HOURS", raising=False)
+
+        with caplog.at_level("WARNING"):
+            rotation = events._load_rotation_config()
+
+        assert rotation.max_size_mb == 1
+        assert rotation.recent_hours == 24
+        assert "Invalid config file; using default event rotation config" in caplog.text

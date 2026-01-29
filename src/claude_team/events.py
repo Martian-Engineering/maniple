@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
+import logging
 import json
 import os
 from pathlib import Path
 from typing import Literal
 
-from claude_team_mcp.config import EventsConfig, load_config
+from claude_team_mcp.config import ConfigError, EventsConfig, load_config
 
 try:
     import fcntl
@@ -20,6 +21,8 @@ try:
     import msvcrt
 except ImportError:  # pragma: no cover - platform-specific
     msvcrt = None
+
+logger = logging.getLogger("claude-team-mcp")
 
 
 EventType = Literal[
@@ -44,8 +47,14 @@ def _int_env(name: str, default: int) -> int:
 
 def _load_rotation_config() -> EventsConfig:
     # Resolve rotation defaults from config, applying env overrides.
-    config = load_config()
-    events_config = config.events
+    try:
+        config = load_config()
+        events_config = config.events
+    except ConfigError as exc:
+        logger.warning(
+            "Invalid config file; using default event rotation config: %s", exc
+        )
+        events_config = EventsConfig()
     return EventsConfig(
         max_size_mb=_int_env("CLAUDE_TEAM_EVENTS_MAX_SIZE_MB", events_config.max_size_mb),
         recent_hours=_int_env("CLAUDE_TEAM_EVENTS_RECENT_HOURS", events_config.recent_hours),
