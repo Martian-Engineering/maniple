@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-01-30
+
+### Added
+- **System-wide config file** (`~/.claude-team/config.json`): Centralized configuration replacing environment variables
+  - Typed dataclasses with JSON validation
+  - Version field for future migrations
+  - Precedence: env var → config file → built-in default
+- **Config CLI**: `claude-team config init|show|get|set` commands
+- **Per-project tmux sessions**: Each project gets its own tmux session (`claude-team-<slug>-<hash>`) instead of a single shared session
+  - Easier local monitoring — `tmux ls` shows projects separately
+  - Discovery scans all tmux panes and filters by managed prefix
+
+### Fixed
+- Worktree branch/directory names capped at 30 chars to avoid filesystem limits
+- Test isolation from user config file (tests no longer affected by `~/.claude-team/config.json`)
+
+### Changed
+- Tmux `list_sessions` and discovery now scan all sessions with prefix filter instead of targeting a single session
+
 ## [0.7.0] - 2026-01-29
 
 ### Added
