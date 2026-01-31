@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 
 from .session_state import (
     find_codex_session_by_internal_id,
@@ -21,6 +21,12 @@ from .terminal_backends import TerminalSession
 
 # Type alias for supported agent types
 AgentType = Literal["claude", "codex"]
+
+# Type alias for event log states (from WorkerPoller snapshots)
+EventState = Literal["idle", "active", "closed"]
+
+# Type alias for session source provenance
+SessionSource = Literal["registry", "event_log"]
 
 
 @dataclass(frozen=True)
@@ -63,6 +69,108 @@ class SessionStatus(str, Enum):
     SPAWNING = "spawning"  # Claude is starting up
     READY = "ready"  # Claude is idle, waiting for input
     BUSY = "busy"  # Claude is processing/responding
+
+
+@dataclass(frozen=True)
+class RecoveredSession:
+    """
+    Represents a session recovered from the event log.
+
+    This is a lightweight, read-only representation of a worker session
+    that was restored from persisted event snapshots. Unlike ManagedSession,
+    it has no terminal handle and cannot be controlled directly.
+
+    Used by SessionRegistry.recover_from_events() to populate the registry
+    with historical session data after MCP server restart.
+
+    Attributes:
+        session_id: Internal session ID (e.g., "a3f2b1c9")
+        name: Worker's friendly name (e.g., "Groucho")
+        project_path: Directory where the worker was running
+        terminal_id: Terminal identifier from snapshot (may be stale)
+        agent_type: "claude" or "codex"
+        status: Mapped SessionStatus (READY for idle, BUSY for active/closed)
+        last_activity: Last activity timestamp from snapshot
+        created_at: Session creation timestamp from snapshot
+        event_state: Raw state from event log ("idle", "active", or "closed")
+        recovered_at: Timestamp when this session was recovered
+        last_event_ts: Timestamp of the last event applied to this session
+    """
+
+    session_id: str
+    name: str
+    project_path: str
+    terminal_id: Optional[TerminalId]
+    agent_type: AgentType
+    status: SessionStatus
+    last_activity: datetime
+    created_at: datetime
+    event_state: EventState
+    recovered_at: datetime
+    last_event_ts: datetime
+
+    # Optional fields that may be present in snapshots
+    claude_session_id: Optional[str] = None
+    coordinator_annotation: Optional[str] = None
+    worktree_path: Optional[str] = None
+    main_repo_path: Optional[str] = None
+
+    @staticmethod
+    def map_event_state_to_status(event_state: EventState) -> SessionStatus:
+        """
+        Map event log state to SessionStatus.
+
+        Args:
+            event_state: State from event log ("idle", "active", "closed")
+
+        Returns:
+            Corresponding SessionStatus
+        """
+        if event_state == "idle":
+            return SessionStatus.READY
+        # Both "active" and "closed" map to BUSY
+        # (closed sessions were last known to be working)
+        return SessionStatus.BUSY
+
+    def to_dict(self) -> dict:
+        """
+        Convert to dictionary for MCP tool responses.
+
+        Matches ManagedSession.to_dict() output format but adds
+        source, event_state, recovered_at, and last_event_ts fields.
+        """
+        return {
+            # Core fields matching ManagedSession.to_dict()
+            "session_id": self.session_id,
+            "terminal_id": str(self.terminal_id) if self.terminal_id else None,
+            "name": self.name,
+            "project_path": self.project_path,
+            "claude_session_id": self.claude_session_id,
+            "status": self.status.value,
+            "created_at": self.created_at.isoformat(),
+            "last_activity": self.last_activity.isoformat(),
+            "coordinator_annotation": self.coordinator_annotation,
+            "worktree_path": self.worktree_path,
+            "main_repo_path": self.main_repo_path,
+            "agent_type": self.agent_type,
+            # Recovery-specific fields
+            "source": "event_log",
+            "event_state": self.event_state,
+            "recovered_at": self.recovered_at.isoformat(),
+            "last_event_ts": self.last_event_ts.isoformat(),
+        }
+
+    def is_idle(self) -> bool:
+        """
+        Check if this session is idle based on snapshot state.
+
+        Unlike ManagedSession.is_idle(), this does NOT access JSONL files.
+        It relies solely on the event_state from the snapshot.
+
+        Returns:
+            True if event_state is "idle", False otherwise
+        """
+        return self.event_state == "idle"
 
 
 @dataclass
@@ -441,3 +549,8 @@ class SessionRegistry:
 
     def __contains__(self, session_id: str) -> bool:
         return session_id in self._sessions
+
+
+# Union type for session types returned by registry
+# Defined at module level after both classes for type checking
+AnySession = Union[ManagedSession, RecoveredSession]
