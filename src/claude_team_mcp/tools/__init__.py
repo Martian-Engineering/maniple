@@ -20,6 +20,7 @@ from . import poll_worker_changes
 from . import read_worker_logs
 from . import spawn_workers
 from . import wait_idle_workers
+from . import worker_events
 
 
 def register_all_tools(mcp: FastMCP, ensure_connection) -> None:
@@ -42,6 +43,7 @@ def register_all_tools(mcp: FastMCP, ensure_connection) -> None:
     poll_worker_changes.register_tools(mcp)
     read_worker_logs.register_tools(mcp)
     wait_idle_workers.register_tools(mcp)
+    worker_events.register_tools(mcp)
 
     # Tools that need ensure_connection for terminal backend operations
     adopt_worker.register_tools(mcp, ensure_connection)
