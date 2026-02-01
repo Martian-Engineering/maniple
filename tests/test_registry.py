@@ -72,3 +72,43 @@ class TestSessionRegistryBasics:
 
         assert registry.get(session.session_id) is None
         assert registry.count() == 0
+
+
+class TestManagedSessionToDict:
+    """Tests for ManagedSession.to_dict() output format."""
+
+    def test_to_dict_contains_source_field(self):
+        """to_dict() includes source='registry' field for live sessions."""
+        mock_iterm = MagicMock()
+        session = ManagedSession(
+            session_id="test-123",
+            terminal_session=mock_iterm,
+            project_path="/test/path",
+            name="TestWorker",
+        )
+
+        d = session.to_dict()
+        assert d["source"] == "registry"
+
+    def test_to_dict_contains_core_fields(self):
+        """to_dict() includes all expected fields."""
+        mock_iterm = MagicMock()
+        session = ManagedSession(
+            session_id="test-123",
+            terminal_session=mock_iterm,
+            project_path="/test/path",
+            name="TestWorker",
+        )
+
+        d = session.to_dict()
+
+        # Verify core fields are present
+        assert d["session_id"] == "test-123"
+        assert d["name"] == "TestWorker"
+        assert d["project_path"] == "/test/path"
+        assert d["status"] == "spawning"
+        assert d["agent_type"] == "claude"
+        assert "created_at" in d
+        assert "last_activity" in d
+        # Source field distinguishes live from recovered sessions
+        assert d["source"] == "registry"

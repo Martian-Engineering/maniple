@@ -236,7 +236,12 @@ class ManagedSession:
             )
 
     def to_dict(self) -> dict:
-        """Convert to dictionary for MCP tool responses."""
+        """
+        Convert to dictionary for MCP tool responses.
+
+        Includes source='registry' to indicate this is a live session
+        (as opposed to source='event_log' for recovered sessions).
+        """
         result = {
             "session_id": self.session_id,
             "terminal_id": str(self.terminal_id) if self.terminal_id else None,
@@ -250,6 +255,8 @@ class ManagedSession:
             "worktree_path": str(self.worktree_path) if self.worktree_path else None,
             "main_repo_path": str(self.main_repo_path) if self.main_repo_path else None,
             "agent_type": self.agent_type,
+            # Source field for distinguishing live vs recovered sessions
+            "source": "registry",
         }
         return result
 
