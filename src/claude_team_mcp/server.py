@@ -15,9 +15,10 @@ from dataclasses import dataclass
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 
+from claude_team.events import get_latest_snapshot, read_events_since
 from claude_team.poller import WorkerPoller
 
-from .registry import SessionRegistry
+from .registry import RecoveryReport, SessionRegistry
 from .terminal_backends import ItermBackend, TerminalBackend, TmuxBackend, select_backend_id
 from .tools import register_all_tools
 from .utils import error_response, HINTS
@@ -43,6 +44,7 @@ logger.info("=== Claude Team MCP Server Starting ===")
 
 _global_registry: SessionRegistry | None = None
 _global_poller: WorkerPoller | None = None
+_recovery_attempted: bool = False
 
 
 def get_global_registry() -> SessionRegistry:
@@ -61,6 +63,62 @@ def get_global_poller(registry: SessionRegistry) -> WorkerPoller:
         _global_poller = WorkerPoller(registry)
         logger.info("Created global singleton poller")
     return _global_poller
+
+
+def recover_registry(registry: SessionRegistry) -> RecoveryReport | None:
+    """
+    Attempt to recover session state from the event log.
+
+    Reads the latest snapshot and subsequent events from ~/.claude-team/events.jsonl,
+    then feeds them into registry.recover_from_events() to seed the registry with
+    historical session data.
+
+    Args:
+        registry: The SessionRegistry to populate
+
+    Returns:
+        RecoveryReport if recovery was performed, None if no events available
+    """
+    global _recovery_attempted
+    _recovery_attempted = True
+
+    # Get the latest snapshot from the event log.
+    snapshot = get_latest_snapshot()
+
+    # Parse snapshot timestamp to filter subsequent events.
+    # The snapshot dict should contain a 'ts' field with the timestamp.
+    since = None
+    if snapshot is not None:
+        ts_str = snapshot.get("ts")
+        if ts_str:
+            from datetime import datetime, timezone
+
+            # Normalize Zulu timestamps.
+            if ts_str.endswith("Z"):
+                ts_str = ts_str[:-1] + "+00:00"
+            try:
+                since = datetime.fromisoformat(ts_str)
+                if since.tzinfo is None:
+                    since = since.replace(tzinfo=timezone.utc)
+            except ValueError:
+                since = None
+
+    # Read events since the snapshot (or all events if no snapshot).
+    events = read_events_since(since=since, limit=10000)
+
+    # If no snapshot and no events, nothing to recover.
+    if snapshot is None and not events:
+        logger.info("No event log data available for recovery")
+        return None
+
+    # Perform recovery.
+    report = registry.recover_from_events(snapshot, events)
+    return report
+
+
+def is_recovery_attempted() -> bool:
+    """Check whether recovery has been attempted this session."""
+    return _recovery_attempted
 
 
 # =============================================================================
@@ -216,6 +274,22 @@ async def app_lifespan(
         terminal_backend=backend,
         registry=get_global_registry(),
     )
+
+    # Attempt eager recovery from event log to seed the registry with historical
+    # session data. This ensures list_workers returns useful data after restart.
+    if not is_recovery_attempted():
+        logger.info("Attempting eager recovery from event log...")
+        report = recover_registry(ctx.registry)
+        if report is not None:
+            logger.info(
+                "Event log recovery complete: added=%d, skipped=%d, closed=%d",
+                report.added,
+                report.skipped,
+                report.closed,
+            )
+        else:
+            logger.info("No event log data available for recovery")
+
     poller: WorkerPoller | None = None
     if enable_poller:
         poller = get_global_poller(ctx.registry)
