@@ -8,6 +8,9 @@ from claude_team_mcp.terminal_backends.base import TerminalSession
 from claude_team_mcp.terminal_backends.tmux import TmuxBackend, tmux_session_name_for_project
 
 
+# subprocess is still needed for tests that mock tmux CalledProcessError
+
+
 @pytest.mark.asyncio
 async def test_send_text_uses_send_keys(monkeypatch):
     backend = TmuxBackend()
@@ -197,3 +200,27 @@ async def test_find_available_window_returns_none_when_full(monkeypatch):
     result = await backend.find_available_window(max_panes=2)
 
     assert result is None
+
+
+def test_tmux_session_name_format():
+    """Test that session names follow the format claude-team-{slug}."""
+    session = tmux_session_name_for_project("/Users/test/my-project")
+    assert session == "claude-team-my-project"
+
+
+def test_tmux_session_name_same_for_worktree_and_main():
+    """Test that worktree and main repo produce the same session name."""
+    worktree_path = "/Users/test/claude-team/.worktrees/feature-foo"
+    main_repo_path = "/Users/test/claude-team"
+
+    worktree_session = tmux_session_name_for_project(worktree_path)
+    main_session = tmux_session_name_for_project(main_repo_path)
+
+    assert worktree_session == main_session
+    assert worktree_session == "claude-team-claude-team"
+
+
+def test_tmux_session_name_fallback_for_none():
+    """Test that None project path produces fallback session name."""
+    session = tmux_session_name_for_project(None)
+    assert session == "claude-team-project"

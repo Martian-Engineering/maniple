@@ -7,7 +7,6 @@ Provides a TerminalBackend implementation backed by tmux CLI commands.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import re
 import subprocess
 import uuid
@@ -46,7 +45,6 @@ ISSUE_ID_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z0-9]*-[A-Za-z0-9]*\d[A-Za-z0-9]
 SHELL_READY_MARKER = "CLAUDE_TEAM_READY_7f3a9c"
 CODEX_PRE_ENTER_DELAY = 0.5
 TMUX_SESSION_PREFIX = "claude-team"
-TMUX_SESSION_HASH_LEN = 8
 TMUX_SESSION_SLUG_MAX = 32
 TMUX_SESSION_FALLBACK = "project"
 TMUX_SESSION_PREFIXED = f"{TMUX_SESSION_PREFIX}-"
@@ -92,15 +90,15 @@ def project_name_from_path(project_path: str | None) -> str | None:
 
 
 def tmux_session_name_for_project(project_path: str | None) -> str:
-    """Return the per-project tmux session name for a given project path."""
+    """Return the per-project tmux session name for a given project path.
+
+    Worktree paths produce the same session name as their main repository
+    since project_name_from_path extracts the project name from the path.
+    Session names follow the format: claude-team-{project-slug}
+    """
     project_name = project_name_from_path(project_path) or TMUX_SESSION_FALLBACK
     slug = _tmux_safe_slug(project_name)
-    if project_path:
-        digest_source = project_path
-    else:
-        digest_source = uuid.uuid4().hex
-    digest = hashlib.sha1(digest_source.encode("utf-8")).hexdigest()[:TMUX_SESSION_HASH_LEN]
-    return f"{TMUX_SESSION_PREFIXED}{slug}-{digest}"
+    return f"{TMUX_SESSION_PREFIXED}{slug}"
 
 
 # Determine whether a tmux session is managed by claude-team.
