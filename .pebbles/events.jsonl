@@ -213,3 +213,18 @@
 {"type":"dep_add","timestamp":"2026-01-31T22:35:52.91719Z","issue_id":"cic-bbd.6","payload":{"dep_type":"blocks","depends_on":"cic-bbd.2"}}
 {"type":"dep_add","timestamp":"2026-01-31T22:35:53.301899Z","issue_id":"cic-bbd.6","payload":{"dep_type":"blocks","depends_on":"cic-bbd.3"}}
 {"type":"dep_add","timestamp":"2026-01-31T22:35:53.507305Z","issue_id":"cic-bbd.6","payload":{"dep_type":"blocks","depends_on":"cic-bbd.4"}}
+{"type":"status_update","timestamp":"2026-01-31T22:53:29.845364Z","issue_id":"cic-bbd.1","payload":{"status":"in_progress"}}
+{"type":"status_update","timestamp":"2026-01-31T22:53:31.744371Z","issue_id":"cic-bbd.4","payload":{"status":"in_progress"}}
+{"type":"close","timestamp":"2026-01-31T22:55:03.007686Z","issue_id":"cic-bbd.4","payload":{}}
+{"type":"close","timestamp":"2026-01-31T22:55:09.910056Z","issue_id":"cic-bbd.1","payload":{}}
+{"type":"status_update","timestamp":"2026-02-01T00:03:44.3476Z","issue_id":"cic-bbd.5","payload":{"status":"in_progress"}}
+{"type":"status_update","timestamp":"2026-02-01T00:03:49.271441Z","issue_id":"cic-bbd.2","payload":{"status":"in_progress"}}
+{"type":"close","timestamp":"2026-02-01T00:05:11.852731Z","issue_id":"cic-bbd.5","payload":{}}
+{"type":"close","timestamp":"2026-02-01T00:06:14.749225Z","issue_id":"cic-bbd.2","payload":{}}
+{"type":"status_update","timestamp":"2026-02-01T00:14:33.94628Z","issue_id":"cic-bbd.3","payload":{"status":"in_progress"}}
+{"type":"close","timestamp":"2026-02-01T00:16:29.352825Z","issue_id":"cic-bbd.3","payload":{}}
+{"type":"status_update","timestamp":"2026-02-01T01:37:20.777219Z","issue_id":"cic-bbd.6","payload":{"status":"in_progress"}}
+{"type":"close","timestamp":"2026-02-01T01:40:51.835629Z","issue_id":"cic-bbd.6","payload":{}}
+{"type":"create","timestamp":"2026-02-02T23:29:52.330658Z","issue_id":"cic-ebd","payload":{"description":"tmux_session_name_for_project() hashes the full project_path. Worktree paths produce unique hashes, creating one tmux session per worker instead of one per project. Fix: resolve worktree paths to main repo before hashing.","priority":"1","title":"tmux: worktree paths create separate sessions instead of sharing per-project session","type":"bug"}}
+{"type":"status_update","timestamp":"2026-02-02T23:30:32.877924Z","issue_id":"cic-ebd","payload":{"status":"in_progress"}}
+{"type":"close","timestamp":"2026-02-02T23:33:33.785116Z","issue_id":"cic-ebd","payload":{}}

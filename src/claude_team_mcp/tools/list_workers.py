@@ -110,10 +110,11 @@ def register_tools(mcp: FastMCP) -> None:
         workers = []
         for session in sessions:
             info = session.to_dict()
-            # Try to get conversation stats
-            state = session.get_conversation_state()
-            if state:
-                info["message_count"] = state.message_count
+            # Try to get conversation stats (only available on live ManagedSessions)
+            if hasattr(session, "get_conversation_state"):
+                state = session.get_conversation_state()
+                if state:
+                    info["message_count"] = state.message_count
             # Check idle using stop hook detection
             info["is_idle"] = session.is_idle()
             workers.append(info)
