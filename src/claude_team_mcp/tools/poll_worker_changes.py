@@ -18,6 +18,7 @@ from claude_team.events import WorkerEvent
 if TYPE_CHECKING:
     from ..server import AppContext
 
+from ..config import load_config
 from ..utils import error_response
 
 
@@ -120,7 +121,7 @@ def register_tools(mcp: FastMCP) -> None:
     async def poll_worker_changes(
         ctx: Context[ServerSession, "AppContext"],
         since: str | None = None,
-        stale_threshold_minutes: int = 20,
+        stale_threshold_minutes: int | None = None,
         include_snapshots: bool = False,
     ) -> dict:
         """
@@ -132,6 +133,7 @@ def register_tools(mcp: FastMCP) -> None:
         Args:
             since: ISO timestamp to filter events from (inclusive), or None for latest.
             stale_threshold_minutes: Minutes without activity before a worker is marked stuck.
+                Defaults to the value in ~/.claude-team/config.json (events.stale_threshold_minutes).
             include_snapshots: Whether to include snapshot events in the response.
 
         Returns:
@@ -144,6 +146,11 @@ def register_tools(mcp: FastMCP) -> None:
         """
         app_ctx = ctx.request_context.lifespan_context
         registry = app_ctx.registry
+
+        # Resolve stale threshold: tool param overrides config default.
+        if stale_threshold_minutes is None:
+            config = load_config()
+            stale_threshold_minutes = config.events.stale_threshold_minutes
 
         # Validate inputs before reading the log.
         if stale_threshold_minutes <= 0:

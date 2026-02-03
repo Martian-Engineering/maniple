@@ -132,6 +132,12 @@ def _apply_env_overrides(data: dict, env: Mapping[str, str]) -> None:
         if parsed is not None:
             data["events"]["recent_hours"] = parsed
 
+    stale_threshold_override = env.get("CLAUDE_TEAM_STALE_THRESHOLD_MINUTES")
+    if stale_threshold_override:
+        parsed = _parse_int_override(stale_threshold_override)
+        if parsed is not None:
+            data["events"]["stale_threshold_minutes"] = parsed
+
 
 def _parse_int_override(raw_value: str) -> int | None:
     # Parse env overrides as integers; invalid values are ignored.
@@ -253,6 +259,7 @@ _FIELD_PARSERS: dict[str, Callable[[str, str], object]] = {
     ),
     "events.max_size_mb": _parse_int,
     "events.recent_hours": _parse_int,
+    "events.stale_threshold_minutes": _parse_int,
     "issue_tracker.override": lambda value, field: _parse_optional_literal(
         value,
         field,

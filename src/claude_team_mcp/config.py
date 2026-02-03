@@ -53,10 +53,11 @@ class TerminalConfig:
 
 @dataclass
 class EventsConfig:
-    """Event log rotation configuration."""
+    """Event log rotation and polling configuration."""
 
     max_size_mb: int = 1
     recent_hours: int = 24
+    stale_threshold_minutes: int = 10
 
 
 @dataclass
@@ -230,9 +231,11 @@ def _parse_terminal(value: object) -> TerminalConfig:
 
 
 def _parse_events(value: object) -> EventsConfig:
-    # Parse event log rotation configuration.
+    # Parse event log rotation and polling configuration.
     data = _ensure_dict(value, "events")
-    _validate_keys(data, {"max_size_mb", "recent_hours"}, "events")
+    _validate_keys(
+        data, {"max_size_mb", "recent_hours", "stale_threshold_minutes"}, "events"
+    )
     return EventsConfig(
         max_size_mb=_optional_int(
             data.get("max_size_mb"),
@@ -245,6 +248,12 @@ def _parse_events(value: object) -> EventsConfig:
             "events.recent_hours",
             EventsConfig.recent_hours,
             min_value=0,
+        ),
+        stale_threshold_minutes=_optional_int(
+            data.get("stale_threshold_minutes"),
+            "events.stale_threshold_minutes",
+            EventsConfig.stale_threshold_minutes,
+            min_value=1,
         ),
     )
 

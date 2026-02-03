@@ -102,3 +102,39 @@ class TestConfigSet:
         """set_config_value rejects unknown keys."""
         with pytest.raises(ConfigError, match="Unknown config key"):
             set_config_value("defaults.unknown", "true")
+
+    def test_set_stale_threshold_minutes(self, config_path: Path):
+        """set_config_value persists stale_threshold_minutes."""
+        set_config_value("events.stale_threshold_minutes", "30")
+        config = load_config()
+        assert config.events.stale_threshold_minutes == 30
+
+
+class TestStaleThresholdEnvOverride:
+    """Tests for stale_threshold_minutes env override."""
+
+    def test_env_overrides_config(self, config_path: Path):
+        """CLAUDE_TEAM_STALE_THRESHOLD_MINUTES overrides file config."""
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "events": {"stale_threshold_minutes": 15},
+        }))
+        env = {"CLAUDE_TEAM_STALE_THRESHOLD_MINUTES": "25"}
+        data = load_effective_config_data(env=env)
+        assert data["events"]["stale_threshold_minutes"] == 25
+
+    def test_env_overrides_default(self, config_path: Path):
+        """CLAUDE_TEAM_STALE_THRESHOLD_MINUTES overrides default when no file."""
+        env = {"CLAUDE_TEAM_STALE_THRESHOLD_MINUTES": "5"}
+        data = load_effective_config_data(env=env)
+        assert data["events"]["stale_threshold_minutes"] == 5
+
+    def test_invalid_env_value_ignored(self, config_path: Path):
+        """Non-integer env value is silently ignored."""
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "events": {"stale_threshold_minutes": 15},
+        }))
+        env = {"CLAUDE_TEAM_STALE_THRESHOLD_MINUTES": "not_a_number"}
+        data = load_effective_config_data(env=env)
+        assert data["events"]["stale_threshold_minutes"] == 15

@@ -56,6 +56,7 @@ class TestDefaultConfig:
         config = default_config()
         assert config.events.max_size_mb == 1
         assert config.events.recent_hours == 24
+        assert config.events.stale_threshold_minutes == 10
 
     def test_default_issue_tracker(self):
         """Default issue tracker override is None."""
@@ -101,7 +102,7 @@ class TestSaveConfig:
                 layout="new",
             ),
             terminal=TerminalConfig(backend="tmux"),
-            events=EventsConfig(max_size_mb=5, recent_hours=48),
+            events=EventsConfig(max_size_mb=5, recent_hours=48, stale_threshold_minutes=15),
             issue_tracker=IssueTrackerConfig(override="beads"),
         )
         save_config(config, config_path)
@@ -116,6 +117,7 @@ class TestSaveConfig:
         assert data["terminal"]["backend"] == "tmux"
         assert data["events"]["max_size_mb"] == 5
         assert data["events"]["recent_hours"] == 48
+        assert data["events"]["stale_threshold_minutes"] == 15
         assert data["issue_tracker"]["override"] == "beads"
 
     def test_json_is_formatted(self, tmp_path: Path):
@@ -206,7 +208,7 @@ class TestLoadConfig:
                 layout="new",
             ),
             terminal=TerminalConfig(backend="tmux"),
-            events=EventsConfig(max_size_mb=2, recent_hours=12),
+            events=EventsConfig(max_size_mb=2, recent_hours=12, stale_threshold_minutes=30),
             issue_tracker=IssueTrackerConfig(override="beads"),
         )
         save_config(original, config_path)
@@ -221,6 +223,7 @@ class TestLoadConfig:
         assert loaded.terminal.backend == original.terminal.backend
         assert loaded.events.max_size_mb == original.events.max_size_mb
         assert loaded.events.recent_hours == original.events.recent_hours
+        assert loaded.events.stale_threshold_minutes == original.events.stale_threshold_minutes
         assert loaded.issue_tracker.override == original.issue_tracker.override
 
 
@@ -541,6 +544,46 @@ class TestFieldTypeValidation:
         with pytest.raises(ConfigError, match="events.max_size_mb must be an integer"):
             load_config(config_path)
 
+    def test_stale_threshold_minutes_valid(self, tmp_path: Path):
+        """Valid stale_threshold_minutes is accepted."""
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "events": {"stale_threshold_minutes": 30},
+        }))
+        config = load_config(config_path)
+        assert config.events.stale_threshold_minutes == 30
+
+    def test_stale_threshold_minutes_not_int(self, tmp_path: Path):
+        """Non-integer stale_threshold_minutes raises ConfigError."""
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "events": {"stale_threshold_minutes": "ten"},
+        }))
+        with pytest.raises(ConfigError, match="events.stale_threshold_minutes must be an integer"):
+            load_config(config_path)
+
+    def test_stale_threshold_minutes_zero_raises_error(self, tmp_path: Path):
+        """Zero stale_threshold_minutes raises ConfigError."""
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "events": {"stale_threshold_minutes": 0},
+        }))
+        with pytest.raises(ConfigError, match="events.stale_threshold_minutes must be at least 1"):
+            load_config(config_path)
+
+    def test_stale_threshold_minutes_negative_raises_error(self, tmp_path: Path):
+        """Negative stale_threshold_minutes raises ConfigError."""
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "events": {"stale_threshold_minutes": -5},
+        }))
+        with pytest.raises(ConfigError, match="events.stale_threshold_minutes must be at least 1"):
+            load_config(config_path)
+
     def test_issue_tracker_override_invalid_value(self, tmp_path: Path):
         """Invalid issue_tracker.override raises ConfigError."""
         config_path = tmp_path / "config.json"
@@ -686,6 +729,7 @@ class TestDataclasses:
         config = EventsConfig()
         assert config.max_size_mb == 1
         assert config.recent_hours == 24
+        assert config.stale_threshold_minutes == 10
 
     def test_issue_tracker_config_defaults(self):
         """IssueTrackerConfig has correct defaults."""
