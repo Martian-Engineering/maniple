@@ -103,8 +103,16 @@ def register_tools(mcp: FastMCP) -> None:
                         filtered_sessions.append(session)
                 sessions = filtered_sessions
 
-        # Sort by created_at
-        sessions = sorted(sessions, key=lambda s: s.created_at)
+        # Sort by created_at (normalize to UTC-aware for mixed live/recovered)
+        from datetime import timezone as _tz
+
+        def _sort_key(s):
+            dt = s.created_at
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=_tz.utc)
+            return dt
+
+        sessions = sorted(sessions, key=_sort_key)
 
         # Convert to dicts and add message count + idle status
         workers = []
