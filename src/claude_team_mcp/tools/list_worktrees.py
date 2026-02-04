@@ -31,7 +31,7 @@ def register_tools(mcp: FastMCP) -> None:
     async def list_worktrees(
         ctx: Context[ServerSession, "AppContext"],
         repo_path: str,
-        remove_orphans: bool = False,
+        remove_orphans: bool | None = False,
     ) -> dict:
         """
         List worktrees in a repository's .worktrees/ directory.
@@ -58,6 +58,9 @@ def register_tools(mcp: FastMCP) -> None:
                 - orphan_count: Number of orphaned worktrees
                 - removed_count: Number of orphans removed (when remove_orphans=True)
         """
+        # Handle None values from MCP clients that send explicit null for omitted params
+        remove_orphans = remove_orphans if remove_orphans is not None else False
+
         resolved_path = Path(repo_path).resolve()
         if not resolved_path.exists():
             return error_response(

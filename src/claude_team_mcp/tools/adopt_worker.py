@@ -35,7 +35,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         iterm_session_id: str | None = None,
         tmux_pane_id: str | None = None,
         session_name: str | None = None,
-        max_age: int = 3600,
+        max_age: int | None = 3600,
     ) -> dict:
         """
         Adopt an existing terminal Claude Code or Codex session into the MCP registry.
@@ -53,6 +53,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         Returns:
             Dict with adopted worker info, or error if session not found
         """
+        # Handle None values from MCP clients that send explicit null for omitted params
+        max_age = max_age if max_age is not None else 3600
+
         app_ctx = ctx.request_context.lifespan_context
         registry = app_ctx.registry
 

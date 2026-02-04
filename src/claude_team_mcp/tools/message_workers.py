@@ -131,8 +131,8 @@ def register_tools(mcp: FastMCP) -> None:
         ctx: Context[ServerSession, "AppContext"],
         session_ids: list[str],
         message: str,
-        wait_mode: str = "none",
-        timeout: float = 600.0,
+        wait_mode: str | None = "none",
+        timeout: float | None = 600.0,
     ) -> dict:
         """
         Send a message to one or more Claude Code worker sessions.
@@ -163,6 +163,10 @@ def register_tools(mcp: FastMCP) -> None:
                 - all_idle: Whether all sessions are idle (only if wait_mode != "none")
                 - timed_out: Whether the wait timed out (only if wait_mode != "none")
         """
+        # Handle None values from MCP clients that send explicit null for omitted params
+        wait_mode = wait_mode or "none"
+        timeout = timeout if timeout is not None else 600.0
+
         app_ctx = ctx.request_context.lifespan_context
         registry = app_ctx.registry
         backend = app_ctx.terminal_backend

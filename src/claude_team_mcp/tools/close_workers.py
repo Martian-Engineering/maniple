@@ -133,7 +133,7 @@ def register_tools(mcp: FastMCP) -> None:
     async def close_workers(
         ctx: Context[ServerSession, "AppContext"],
         session_ids: list[str],
-        force: bool = False,
+        force: bool | None = False,
     ) -> dict:
         """
         Close one or more managed Claude Code sessions.
@@ -163,6 +163,9 @@ def register_tools(mcp: FastMCP) -> None:
                 - success_count: Number of sessions closed successfully
                 - failure_count: Number of sessions that failed to close
         """
+        # Handle None values from MCP clients that send explicit null for omitted params
+        force = force if force is not None else False
+
         app_ctx = ctx.request_context.lifespan_context
         registry = app_ctx.registry
         backend = app_ctx.terminal_backend

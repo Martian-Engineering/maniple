@@ -33,7 +33,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
     @mcp.tool()
     async def discover_workers(
         ctx: Context[ServerSession, "AppContext"],
-        max_age: int = 3600,
+        max_age: int | None = 3600,
     ) -> dict:
         """
         Discover existing Claude Code and Codex sessions running in the active terminal backend.
@@ -69,6 +69,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 - count: Total number of sessions found
                 - unmanaged_count: Number not yet in registry (available to adopt)
         """
+        # Handle None values from MCP clients that send explicit null for omitted params
+        max_age = max_age if max_age is not None else 3600
+
         app_ctx = ctx.request_context.lifespan_context
         registry = app_ctx.registry
 

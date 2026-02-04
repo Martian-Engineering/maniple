@@ -28,9 +28,9 @@ def register_tools(mcp: FastMCP) -> None:
     async def wait_idle_workers(
         ctx: Context[ServerSession, "AppContext"],
         session_ids: list[str],
-        mode: str = "all",
-        timeout: float = 600.0,
-        poll_interval: float = 2.0,
+        mode: str | None = "all",
+        timeout: float | None = 600.0,
+        poll_interval: float | None = 2.0,
     ) -> dict:
         """
         Wait for worker sessions to become idle.
@@ -56,6 +56,11 @@ def register_tools(mcp: FastMCP) -> None:
                 - waited_seconds: How long we waited
                 - timed_out: Whether we hit the timeout
         """
+        # Handle None values from MCP clients that send explicit null for omitted params
+        mode = mode or "all"
+        timeout = timeout if timeout is not None else 600.0
+        poll_interval = poll_interval if poll_interval is not None else 2.0
+
         app_ctx = ctx.request_context.lifespan_context
         registry = app_ctx.registry
 
