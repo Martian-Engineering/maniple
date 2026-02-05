@@ -114,7 +114,7 @@ wheels = [
 
 [[package]]
 name = "claude-team-mcp"
-version = "0.8.2"
+version = "0.9.1"
 source = { editable = "." }
 dependencies = [
     { name = "iterm2" },
