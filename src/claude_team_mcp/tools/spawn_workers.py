@@ -187,7 +187,11 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             # Then immediately:
             message_workers(session_ids=["Groucho"], message="Your task is...")
         """
-        from ..session_state import await_marker_in_jsonl, generate_marker_message
+        from ..session_state import (
+            await_codex_marker_in_jsonl,
+            await_marker_in_jsonl,
+            generate_marker_message,
+        )
 
         app_ctx = ctx.request_context.lifespan_context
         registry = app_ctx.registry
@@ -693,7 +697,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     submit=True,
                 )
 
-            # Wait for markers to appear in JSONL (Claude only)
+            # Wait for markers to appear in JSONL (Claude and Codex)
             for i, managed in enumerate(managed_sessions):
                 if managed.agent_type == "claude":
                     claude_session_id = await await_marker_in_jsonl(
@@ -707,6 +711,24 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     else:
                         logger.warning(
                             f"Marker polling timed out for {managed.session_id}, "
+                            "JSONL correlation unavailable"
+                        )
+                elif managed.agent_type == "codex":
+                    # Poll for Codex marker and cache the JSONL path
+                    codex_match = await await_codex_marker_in_jsonl(
+                        managed.session_id,
+                        timeout=30.0,
+                        poll_interval=0.5,
+                    )
+                    if codex_match:
+                        managed.codex_jsonl_path = codex_match.jsonl_path
+                        logger.info(
+                            f"Codex JSONL path cached for {managed.session_id}: "
+                            f"{codex_match.jsonl_path}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Codex marker polling timed out for {managed.session_id}, "
                             "JSONL correlation unavailable"
                         )
 

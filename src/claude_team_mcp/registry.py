@@ -139,6 +139,7 @@ class RecoveredSession:
     coordinator_annotation: Optional[str] = None
     worktree_path: Optional[str] = None
     main_repo_path: Optional[str] = None
+    codex_jsonl_path: Optional[str] = None
 
     @staticmethod
     def map_event_state_to_status(event_state: EventState) -> SessionStatus:
@@ -178,6 +179,7 @@ class RecoveredSession:
             "worktree_path": self.worktree_path,
             "main_repo_path": self.main_repo_path,
             "agent_type": self.agent_type,
+            "codex_jsonl_path": self.codex_jsonl_path,
             # Recovery-specific fields
             "source": "event_log",
             "event_state": self.event_state,
@@ -227,6 +229,9 @@ class ManagedSession:
     # Agent type: "claude" (default) or "codex"
     agent_type: AgentType = "claude"
 
+    # Cached Codex JSONL path (discovered at spawn time via marker polling)
+    codex_jsonl_path: Optional[Path] = None
+
     def __post_init__(self):
         """Auto-populate terminal_id from terminal_session if not set."""
         if self.terminal_id is None:
@@ -255,6 +260,7 @@ class ManagedSession:
             "worktree_path": str(self.worktree_path) if self.worktree_path else None,
             "main_repo_path": str(self.main_repo_path) if self.main_repo_path else None,
             "agent_type": self.agent_type,
+            "codex_jsonl_path": str(self.codex_jsonl_path) if self.codex_jsonl_path else None,
             # Source field for distinguishing live vs recovered sessions
             "source": "registry",
         }
@@ -292,22 +298,29 @@ class ManagedSession:
         Get the path to this session's JSONL file.
 
         For Claude workers: uses marker-based discovery in ~/.claude/projects/.
-        For Codex workers: uses marker-based discovery in ~/.codex/sessions/.
+        For Codex workers: uses cached path or marker-based discovery in
+        ~/.codex/sessions/. Returns None (not a wrong file) when discovery fails.
 
         Returns:
             Path object, or None if session cannot be discovered
         """
         if self.agent_type == "codex":
-            from .idle_detection import find_codex_session_file
+            # Use cached path if available (set at spawn time)
+            if self.codex_jsonl_path and self.codex_jsonl_path.exists():
+                return self.codex_jsonl_path
 
-            # Prefer marker-based match, fall back to most recent for legacy sessions.
+            # Try marker-based discovery with generous timeout (workers can run for hours)
             match = find_codex_session_by_internal_id(
                 self.session_id,
-                max_age_seconds=600,
+                max_age_seconds=86400,
             )
             if match:
+                # Cache for future calls
+                self.codex_jsonl_path = match.jsonl_path
                 return match.jsonl_path
-            return find_codex_session_file(max_age_seconds=600)
+
+            # No blind fallback - returning None is better than returning wrong data
+            return None
         else:
             # For Claude, use marker-based discovery
             # Auto-discover if not already known
@@ -353,16 +366,10 @@ class ManagedSession:
             True if idle, False if working or session file not available
         """
         if self.agent_type == "codex":
-            from .idle_detection import find_codex_session_file, is_codex_idle
+            from .idle_detection import is_codex_idle
 
-            # Prefer marker-based match, fall back to most recent for legacy sessions.
-            match = find_codex_session_by_internal_id(
-                self.session_id,
-                max_age_seconds=600,
-            )
-            session_file = match.jsonl_path if match else None
-            if not session_file:
-                session_file = find_codex_session_file(max_age_seconds=600)
+            # Use the same path resolution as get_jsonl_path() (cached or marker-based)
+            session_file = self.get_jsonl_path()
             if not session_file:
                 return False
             return is_codex_idle(session_file)
@@ -795,6 +802,7 @@ class SessionRegistry:
             coordinator_annotation=data.get("coordinator_annotation"),
             worktree_path=data.get("worktree_path"),
             main_repo_path=data.get("main_repo_path"),
+            codex_jsonl_path=data.get("codex_jsonl_path"),
         )
 
     def count(self) -> int:

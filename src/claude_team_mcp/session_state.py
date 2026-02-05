@@ -838,6 +838,42 @@ async def await_marker_in_jsonl(
     return None
 
 
+async def await_codex_marker_in_jsonl(
+    session_id: str,
+    timeout: float = 30.0,
+    poll_interval: float = 0.5,
+) -> Optional[CodexSessionMatch]:
+    """
+    Poll for a Codex session marker to appear in the JSONL.
+
+    Codex workers write markers into ~/.codex/sessions/ files. This function
+    polls until the marker for the given session_id is found.
+
+    Args:
+        session_id: The internal session ID to search for in markers
+        timeout: Maximum seconds to wait (default 30)
+        poll_interval: Seconds between polls (default 0.5, slower than Claude
+            because Codex takes longer to start)
+
+    Returns:
+        CodexSessionMatch if found, None on timeout
+    """
+    import asyncio
+
+    start = time.time()
+
+    while time.time() - start < timeout:
+        match = find_codex_session_by_internal_id(
+            session_id,
+            max_age_seconds=300,
+        )
+        if match:
+            return match
+        await asyncio.sleep(poll_interval)
+
+    return None
+
+
 # =============================================================================
 # Session Discovery
 # =============================================================================
