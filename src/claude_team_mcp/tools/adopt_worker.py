@@ -78,7 +78,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         # Check if already managed
         for managed in registry.list_all():
             if (
-                managed.terminal_session.backend_id == backend_id
+                hasattr(managed, 'terminal_session')
+                and managed.terminal_session.backend_id == backend_id
                 and managed.terminal_session.native_id == target_id
             ):
                 return error_response(

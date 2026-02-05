@@ -456,7 +456,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     managed_session_ids = {
                         s.terminal_session.native_id
                         for s in registry.list_all()
-                        if s.terminal_session.backend_id == backend.backend_id
+                        if hasattr(s, 'terminal_session') and s.terminal_session.backend_id == backend.backend_id
                     }
 
                     # Find a window with enough space for ALL workers
