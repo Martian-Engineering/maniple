@@ -122,7 +122,7 @@ def register_tools(mcp: FastMCP) -> None:
         ctx: Context[ServerSession, "AppContext"],
         since: str | None = None,
         stale_threshold_minutes: int | None = None,
-        include_snapshots: bool = False,
+        include_snapshots: bool | None = False,
     ) -> dict:
         """
         Poll worker event changes since a timestamp.
@@ -144,6 +144,9 @@ def register_tools(mcp: FastMCP) -> None:
                 - idle_count: Count of idle workers
                 - poll_ts: Timestamp when poll was generated
         """
+        # Handle None values from MCP clients that send explicit null for omitted params
+        include_snapshots = include_snapshots if include_snapshots is not None else False
+
         app_ctx = ctx.request_context.lifespan_context
         registry = app_ctx.registry
 

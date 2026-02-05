@@ -22,8 +22,8 @@ def register_tools(mcp: FastMCP) -> None:
     async def read_worker_logs(
         ctx: Context[ServerSession, "AppContext"],
         session_id: str,
-        pages: int = 1,
-        offset: int = 0,
+        pages: int | None = 1,
+        offset: int | None = 0,
     ) -> dict:
         """
         Get conversation history from a Claude Code session with reverse pagination.
@@ -51,6 +51,10 @@ def register_tools(mcp: FastMCP) -> None:
                 - page_info: Pagination metadata (total_messages, total_pages, etc.)
                 - session_id: The session ID
         """
+        # Handle None values from MCP clients that send explicit null for omitted params
+        pages = pages if pages is not None else 1
+        offset = offset if offset is not None else 0
+
         app_ctx = ctx.request_context.lifespan_context
         registry = app_ctx.registry
 

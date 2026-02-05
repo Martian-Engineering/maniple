@@ -193,10 +193,10 @@ def register_tools(mcp: FastMCP) -> None:
     async def worker_events(
         ctx: Context[ServerSession, "AppContext"],
         since: str | None = None,
-        limit: int = 1000,
-        include_snapshot: bool = False,
-        include_summary: bool = False,
-        stale_threshold_minutes: int = 10,
+        limit: int | None = 1000,
+        include_snapshot: bool | None = False,
+        include_summary: bool | None = False,
+        stale_threshold_minutes: int | None = 10,
         project_filter: str | None = None,
     ) -> dict:
         """
@@ -230,6 +230,12 @@ def register_tools(mcp: FastMCP) -> None:
                     - last_event_ts: newest event timestamp
                 - snapshot: (if include_snapshot) Latest snapshot {ts, data}
         """
+        # Handle None values from MCP clients that send explicit null for omitted params
+        limit = limit if limit is not None else 1000
+        include_snapshot = include_snapshot if include_snapshot is not None else False
+        include_summary = include_summary if include_summary is not None else False
+        stale_threshold_minutes = stale_threshold_minutes if stale_threshold_minutes is not None else 10
+
         # Parse the since timestamp if provided.
         parsed_since = None
         if since is not None and since.strip():
