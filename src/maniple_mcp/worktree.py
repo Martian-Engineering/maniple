@@ -8,7 +8,7 @@ while sharing the same repository history.
 Two worktree strategies are supported:
 
 1. External worktrees (legacy):
-   ~/.claude-team/worktrees/{repo-path-hash}/{worker-name}-{timestamp}/
+   ~/.maniple/worktrees/{repo-path-hash}/{worker-name}-{timestamp}/
    - Created outside the target repo to avoid polluting it
    - No .gitignore modifications needed
 
@@ -26,9 +26,6 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-
-# Base directory for all worktrees (outside any repo)
-WORKTREE_BASE_DIR = Path.home() / ".claude-team" / "worktrees"
 
 # Local worktree directory name within repos
 LOCAL_WORKTREE_DIR = ".worktrees"
@@ -151,11 +148,13 @@ def get_worktree_base_for_repo(repo_path: Path) -> Path:
         repo_path: Path to the main repository
 
     Returns:
-        Path to ~/.claude-team/worktrees/{repo-hash}/
+        Path to ~/.maniple/worktrees/{repo-hash}/
     """
     repo_path = Path(repo_path).resolve()
     repo_hash = get_repo_hash(repo_path)
-    return WORKTREE_BASE_DIR / repo_hash
+    from maniple.paths import resolve_data_dir
+
+    return resolve_data_dir() / "worktrees" / repo_hash
 
 
 def create_worktree(
@@ -168,7 +167,7 @@ def create_worktree(
     Create a git worktree for a worker.
 
     Creates a new worktree at:
-        ~/.claude-team/worktrees/{repo-hash}/{worktree_name}-{timestamp}/
+        ~/.maniple/worktrees/{repo-hash}/{worktree_name}-{timestamp}/
 
     If a branch is specified and doesn't exist, it will be created from HEAD.
     If no branch is specified, creates a detached HEAD worktree.
@@ -191,7 +190,7 @@ def create_worktree(
             worktree_name="John-abc123",
             branch="John-abc123"
         )
-        # Returns: Path("~/.claude-team/worktrees/a1b2c3d4/John-abc123-1703001234")
+        # Returns: Path("~/.maniple/worktrees/a1b2c3d4/John-abc123-1703001234")
     """
     repo_path = Path(repo_path).resolve()
 
@@ -427,7 +426,7 @@ def remove_worktree(
     Example:
         success = remove_worktree(
             repo_path=Path("/path/to/repo"),
-            worktree_path=Path("~/.claude-team/worktrees/a1b2c3d4/John-abc123-1703001234")
+            worktree_path=Path("~/.maniple/worktrees/a1b2c3d4/John-abc123-1703001234")
         )
     """
     repo_path = Path(repo_path).resolve()
