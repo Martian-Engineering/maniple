@@ -203,9 +203,9 @@ async def test_find_available_window_returns_none_when_full(monkeypatch):
 
 
 def test_tmux_session_name_format():
-    """Test that session names follow the format claude-team-{slug}."""
+    """Test that session names follow the format maniple-{slug}."""
     session = tmux_session_name_for_project("/Users/test/my-project")
-    assert session == "claude-team-my-project"
+    assert session == "maniple-my-project"
 
 
 def test_tmux_session_name_same_for_worktree_and_main():
@@ -217,10 +217,10 @@ def test_tmux_session_name_same_for_worktree_and_main():
     main_session = tmux_session_name_for_project(main_repo_path)
 
     assert worktree_session == main_session
-    assert worktree_session == "claude-team-claude-team"
+    assert worktree_session == "maniple-claude-team"
 
 
 def test_tmux_session_name_fallback_for_none():
     """Test that None project path produces fallback session name."""
     session = tmux_session_name_for_project(None)
-    assert session == "claude-team-project"
+    assert session == "maniple-project"
