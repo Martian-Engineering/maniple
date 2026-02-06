@@ -43,19 +43,19 @@ class TestFormatSessionTitle:
 class TestFormatBadgeText:
     """Tests for format_badge_text function."""
 
-    def test_badge_with_bead_and_annotation(self):
-        """Test multi-line badge with bead and annotation."""
+    def test_badge_with_issue_id_and_annotation(self):
+        """Test multi-line badge with issue ID and annotation."""
         result = format_badge_text("Groucho", "cic-3dj", "profile module")
         assert result == "cic-3dj\nprofile module"
 
     def test_badge_with_name_and_annotation(self):
-        """Test multi-line badge with name and annotation (no bead)."""
+        """Test multi-line badge with name and annotation (no issue ID)."""
         result = format_badge_text("Groucho", annotation="quick task")
         assert result == "Groucho\nquick task"
 
-    def test_badge_with_bead_only(self):
-        """Test single-line badge with just bead."""
-        result = format_badge_text("Groucho", bead="cic-xyz")
+    def test_badge_with_issue_id_only(self):
+        """Test single-line badge with just issue ID."""
+        result = format_badge_text("Groucho", issue_id="cic-xyz")
         assert result == "cic-xyz"
 
     def test_badge_with_name_only(self):
@@ -63,29 +63,29 @@ class TestFormatBadgeText:
         result = format_badge_text("Groucho")
         assert result == "Groucho"
 
-    def test_badge_bead_takes_precedence_over_name(self):
-        """Test that bead is shown on first line when provided, not name."""
-        result = format_badge_text("Groucho", bead="cic-abc")
+    def test_badge_issue_id_takes_precedence_over_name(self):
+        """Test that issue ID is shown on first line when provided, not name."""
+        result = format_badge_text("Groucho", issue_id="cic-abc")
         assert result == "cic-abc"
         assert "Groucho" not in result
 
     def test_badge_newline_separator(self):
         """Test that multi-line badge uses newline separator."""
-        result = format_badge_text("Worker", bead="cic-123", annotation="task")
+        result = format_badge_text("Worker", issue_id="cic-123", annotation="task")
         assert "\n" in result
         lines = result.split("\n")
         assert len(lines) == 2
         assert lines[0] == "cic-123"
         assert lines[1] == "task"
 
-    def test_badge_empty_bead_uses_name(self):
-        """Test that empty string bead falls back to name."""
-        result = format_badge_text("Groucho", bead="", annotation="task")
+    def test_badge_empty_issue_id_uses_name(self):
+        """Test that empty string issue_id falls back to name."""
+        result = format_badge_text("Groucho", issue_id="", annotation="task")
         assert result == "Groucho\ntask"
 
-    def test_badge_none_bead_uses_name(self):
-        """Test that None bead falls back to name."""
-        result = format_badge_text("Groucho", bead=None, annotation="task")
+    def test_badge_none_issue_id_uses_name(self):
+        """Test that None issue_id falls back to name."""
+        result = format_badge_text("Groucho", issue_id=None, annotation="task")
         assert result == "Groucho\ntask"
 
     def test_badge_annotation_truncation(self):
@@ -129,7 +129,7 @@ class TestFormatBadgeText:
         assert len(lines[1]) == 30
 
     def test_badge_first_line_not_truncated(self):
-        """Test that first line (bead/name) is never truncated."""
-        long_bead = "cic-very-long-bead-identifier-here"
-        result = format_badge_text("Groucho", bead=long_bead)
-        assert result == long_bead
+        """Test that first line (issue_id/name) is never truncated."""
+        long_issue_id = "cic-very-long-issue-id-here"
+        result = format_badge_text("Groucho", issue_id=long_issue_id)
+        assert result == long_issue_id

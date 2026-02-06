@@ -45,7 +45,7 @@ class WorkerConfig(TypedDict, total=False):
     agent_type: str  # Optional: "claude" (default) or "codex". Don't specify unless user requests.
     name: str  # Optional: Worker name override. None = auto-pick from themed sets.
     annotation: str  # Optional: Tracking label (NOT sent to worker). For badges/branches only.
-    bead: str  # Optional: Issue ID - THIS IS the worker's assignment if provided
+    issue_id: str  # Optional: Issue ID - THIS IS the worker's assignment if provided
     prompt: str  # Optional: Custom instructions - THIS IS the worker's task if provided
     skip_permissions: bool  # Optional: Default False
     use_worktree: bool  # Optional: Create isolated worktree (default True)
@@ -111,7 +111,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 ⚠️ **IMPORTANT**: Do not specify this field unless explicitly requested by the user.
                 The default agent type is used unless an override is required.
             use_worktree: Whether to create an isolated worktree (default True).
-                - True: Creates worktree at <repo>/.worktrees/<bead>-<annotation>
+                - True: Creates worktree at <repo>/.worktrees/<issue_id>-<annotation>
                   or <repo>/.worktrees/<name>-<uuid>-<annotation>
                 - False: Worker uses the repo directory directly (no isolation)
             worktree: Optional worktree configuration.
@@ -122,32 +122,32 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             annotation: Optional task label for coordinator tracking. NOT sent to worker.
                 Used for: badge display (2nd line), branch names, and list_workers output.
                 This is metadata for YOUR reference, not task instructions for the worker.
-                If using a bead, it's recommended to use the bead title as the annotation
-                for clarity. Truncated to 30 chars in badge.
-            bead: Optional beads issue ID. If provided, this IS the worker's assignment.
-                The worker receives beads workflow instructions (mark in_progress, close,
+                If using an issue_id, it's recommended to use the issue title as the
+                annotation for clarity. Truncated to 30 chars in badge.
+            issue_id: Optional issue tracker issue ID. If provided, this IS the worker's assignment.
+                The worker receives issue tracker workflow instructions (mark in_progress, close,
                 commit with issue reference). Used for badge first line and branch naming.
             prompt: Optional additional instructions. Combined with standard worker prompt,
-                not a replacement. Use for extra context beyond what the bead describes.
+                not a replacement. Use for extra context beyond what the issue describes.
             skip_permissions: Whether to start Claude with --dangerously-skip-permissions.
                 Default False. Without this, workers can only read local files and will
                 struggle with most commands (writes, shell, etc.).
 
         **Worker Assignment (how workers know what to do):**
 
-        ⚠️ **IMPORTANT**: Tasks are delivered via `bead` and/or `prompt` parameters ONLY.
+        ⚠️ **IMPORTANT**: Tasks are delivered via `issue_id` and/or `prompt` parameters ONLY.
         The `annotation` parameter is never sent to workers - it's just metadata for
         coordinator tracking (badges, branches, list output).
 
-        The worker's task is determined by `bead` and/or `prompt`:
+        The worker's task is determined by `issue_id` and/or `prompt`:
 
-        1. **bead only**: Worker assigned to the bead. They'll `bd show <bead>` for details
-           and follow the beads workflow (mark in_progress → implement → close → commit).
+        1. **issue_id only**: Worker assigned to the issue. They'll `pb show <issue_id>` for details
+           and follow the issue tracker workflow (mark in_progress → implement → close → commit).
 
-        2. **bead + prompt**: Worker assigned to bead with additional instructions.
-           Gets both the beads workflow and your custom guidance.
+        2. **issue_id + prompt**: Worker assigned to issue with additional instructions.
+           Gets both the issue tracker workflow and your custom guidance.
 
-        3. **prompt only**: Worker assigned a custom task (no beads tracking).
+        3. **prompt only**: Worker assigned a custom task (no issue tracking).
            Your prompt text is their assignment.
 
         4. **neither**: Worker spawns idle, waiting for you to message them.
@@ -155,7 +155,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
 
         **Badge Format:**
         ```
-        <bead or name>
+        <issue_id or name>
         <annotation (truncated)>
         ```
 
@@ -171,16 +171,16 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 - coordinator_guidance: Per-worker summary with assignments and coordination reminder
                 - workers_awaiting_task: (only if any) List of worker names needing tasks
 
-        Example (bead assignment with auto worktrees):
+        Example (issue assignment with auto worktrees):
             spawn_workers(
                 workers=[
-                    {"project_path": "auto", "bead": "cic-abc", "annotation": "Fix auth bug"},
-                    {"project_path": "auto", "bead": "cic-xyz", "annotation": "Add unit tests"},
+                    {"project_path": "auto", "issue_id": "cic-abc", "annotation": "Fix auth bug"},
+                    {"project_path": "auto", "issue_id": "cic-xyz", "annotation": "Add unit tests"},
                 ],
                 layout="auto",
             )
 
-        Example (custom prompt, no bead):
+        Example (custom prompt, no issue_id):
             spawn_workers(
                 workers=[
                     {"project_path": "/path/to/repo", "prompt": "Review auth module for security issues"},
@@ -277,7 +277,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 worktree_explicitly_requested = worktree_config is not None
                 worktree_branch = None
                 worktree_base = None
-                bead = w.get("bead")
+                issue_id = w.get("issue_id")
                 annotation = w.get("annotation")
 
                 if worktree_config is not None:
@@ -320,7 +320,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                         worktree_path = create_local_worktree(
                             repo_path=repo_path,
                             worker_name=name,
-                            bead_id=bead,
+                            issue_id=issue_id,
                             annotation=annotation,
                             branch=worktree_branch,
                             base=worktree_base,
@@ -371,13 +371,13 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 for i, (w, name) in enumerate(zip(workers, resolved_names)):
                     customization = LocalWriteOnlyProfile()
 
-                    bead = w.get("bead")
+                    issue_id = w.get("issue_id")
                     annotation = w.get("annotation")
                     agent_type = agent_types[i]
 
                     # Tab title
                     tab_title = format_session_title(
-                        name, issue_id=bead, annotation=annotation
+                        name, issue_id=issue_id, annotation=annotation
                     )
                     customization.set_name(tab_title)
 
@@ -386,9 +386,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     customization.set_tab_color(color)
                     customization.set_use_tab_color(True)
 
-                    # Badge (multi-line with bead/name, annotation, and agent type indicator)
+                    # Badge (multi-line with issue_id/name, annotation, and agent type indicator)
                     badge_text = format_badge_text(
-                        name, bead=bead, annotation=annotation, agent_type=agent_type
+                        name, issue_id=issue_id, annotation=annotation, agent_type=agent_type
                     )
                     customization.set_badge_text(badge_text)
 
@@ -406,7 +406,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                         await backend.create_session(
                             name=resolved_names[i],
                             project_path=resolved_paths[i],
-                            issue_id=workers[i].get("bead"),
+                            issue_id=workers[i].get("issue_id"),
                             coordinator_annotation=workers[i].get("annotation"),
                         )
                     )
@@ -740,16 +740,16 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                             "JSONL correlation unavailable"
                         )
 
-            # Send worker prompts - always use generate_worker_prompt with bead/custom_prompt
-            workers_awaiting_task: list[str] = []  # Workers with no bead and no prompt
+            # Send worker prompts - always use generate_worker_prompt with issue_id/custom_prompt
+            workers_awaiting_task: list[str] = []  # Workers with no issue_id and no prompt
             for i, managed in enumerate(managed_sessions):
                 worker_config = workers[i]
-                bead = worker_config.get("bead")
+                issue_id = worker_config.get("issue_id")
                 custom_prompt = worker_config.get("prompt")
                 use_worktree = i in worktree_paths
 
-                # Track workers that need immediate attention (case 4: no bead, no prompt)
-                if not bead and not custom_prompt:
+                # Track workers that need immediate attention (case 4: no issue_id, no prompt)
+                if not issue_id and not custom_prompt:
                     workers_awaiting_task.append(managed.name)
 
                 tracker_path = (
@@ -762,7 +762,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     resolved_names[i],
                     agent_type=managed.agent_type,
                     use_worktree=use_worktree,
-                    bead=bead,
+                    issue_id=issue_id,
                     project_path=tracker_path,
                     custom_prompt=custom_prompt,
                 )
@@ -801,14 +801,14 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             worker_summaries = []
             for i, name in enumerate(resolved_names):
                 worker_config = workers[i]
-                bead = worker_config.get("bead")
+                issue_id = worker_config.get("issue_id")
                 custom_prompt = worker_config.get("prompt")
                 awaiting = name in workers_awaiting_task
 
                 worker_summaries.append({
                     "name": name,
                     "agent_type": agent_types[i],
-                    "bead": bead,
+                    "issue_id": issue_id,
                     "custom_prompt": custom_prompt,
                     "awaiting_task": awaiting,
                 })

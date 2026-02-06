@@ -38,7 +38,7 @@ A key feature of `claude-team` is **git worktree support**. When spawning worker
 - **Shared repository history** - All worktrees share the same `.git` database, so commits are immediately visible across workers
 
 Worktree naming depends on how workers are spawned:
-- With a bead (issue tracker ID): `{repo}/.worktrees/{bead}-{annotation}/`
+- With an issue ID: `{repo}/.worktrees/{issue_id}-{annotation}/`
 - Without: `{repo}/.worktrees/{worker-name}-{uuid}-{annotation}/`
 
 The `.worktrees` directory is automatically added to `.gitignore`.
@@ -265,7 +265,7 @@ WorkerConfig fields:
   agent_type: str           - "claude" (default) or "codex"
   name: str                 - Optional worker name override (auto-picked from themed sets if omitted)
   annotation: str           - Task description (shown in badge, used in branch names)
-  bead: str                 - Issue tracker ID (for badge, branch naming, and workflow instructions)
+  issue_id: str             - Issue tracker ID (for badge, branch naming, and workflow instructions)
   prompt: str               - Additional instructions (combined with standard worker prompt)
   skip_permissions: bool    - Start with --dangerously-skip-permissions
   use_worktree: bool        - Create isolated git worktree (default: true)
@@ -279,9 +279,9 @@ Returns:
   sessions, layout, count, coordinator_guidance
 ```
 
-Worker assignment is determined by `bead` and/or `prompt`:
-- **bead only**: Worker follows issue tracker workflow (mark in_progress, implement, close, commit)
-- **bead + prompt**: Issue tracker workflow plus additional custom instructions
+Worker assignment is determined by `issue_id` and/or `prompt`:
+- **issue_id only**: Worker follows issue tracker workflow (mark in_progress, implement, close, commit)
+- **issue_id + prompt**: Issue tracker workflow plus additional custom instructions
 - **prompt only**: Custom task with no issue tracking
 - **neither**: Worker spawns idle, waiting for a message
 
@@ -408,12 +408,12 @@ Assign workers to issue tracker items for structured workflows:
 
 ```
 "Spawn a worker for issue cic-123"
--> spawn_workers with bead="cic-123", annotation="Fix auth bug"
+-> spawn_workers with issue_id="cic-123", annotation="Fix auth bug"
 -> Worker automatically marks issue in_progress, implements, closes, and commits
 
 "Spawn workers for all ready issues"
 -> Check `bd ready` or `pb ready` for available work
--> Spawn one worker per issue with bead assignments
+-> Spawn one worker per issue with issue_id assignments
 ```
 
 ### Coordinated Workflow
