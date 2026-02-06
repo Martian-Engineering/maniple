@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 from ..registry import SessionStatus
 from ..utils import error_response
 
-logger = logging.getLogger("claude-team-mcp")
+logger = logging.getLogger("maniple")
 
 
 def register_tools(mcp: FastMCP) -> None:

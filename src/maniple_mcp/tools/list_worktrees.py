@@ -21,7 +21,7 @@ from ..worktree import (
 )
 from ..utils import error_response, HINTS
 
-logger = logging.getLogger("claude-team-mcp")
+logger = logging.getLogger("maniple")
 
 
 def register_tools(mcp: FastMCP) -> None:

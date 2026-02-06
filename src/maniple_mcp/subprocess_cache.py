@@ -10,7 +10,7 @@ import subprocess
 import time
 from typing import Optional
 
-logger = logging.getLogger("claude-team-mcp.subprocess_cache")
+logger = logging.getLogger("maniple.subprocess_cache")
 
 
 # =============================================================================

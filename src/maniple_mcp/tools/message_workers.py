@@ -25,7 +25,7 @@ from ..registry import SessionStatus
 from ..terminal_backends import ItermBackend
 from ..utils import build_worker_message_hint, error_response, HINTS
 
-logger = logging.getLogger("claude-team-mcp")
+logger = logging.getLogger("maniple")
 
 
 def _compute_prompt_delay(text: str, agent_type: str) -> float:
