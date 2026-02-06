@@ -24,11 +24,11 @@ from ..names import pick_names_for_count
 from ..profile import apply_appearance_colors
 from ..registry import SessionStatus
 from ..terminal_backends import ItermBackend, MAX_PANES_PER_TAB
-from ..utils import HINTS, error_response, get_worktree_tracker_dir
+from ..utils import HINTS, error_response, get_env_with_fallback, get_worktree_tracker_dir
 from ..worker_prompt import generate_worker_prompt, get_coordinator_guidance
 from ..worktree import WorktreeError, create_local_worktree
 
-logger = logging.getLogger("maniple")
+logger = logging.getLogger("claude-team-mcp")
 
 
 class WorktreeConfig(TypedDict, total=False):
@@ -256,15 +256,11 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             main_repo_paths: dict[int, Path] = {}  # index -> main repo
             worktree_warnings: list[str] = []
 
-            # Get MANIPLE_PROJECT_DIR for "auto" paths (fall back to old name).
-            env_project_dir = os.environ.get("MANIPLE_PROJECT_DIR")
-            if env_project_dir is None:
-                old_project_dir = os.environ.get("CLAUDE_TEAM_PROJECT_DIR")
-                if old_project_dir is not None:
-                    logger.warning(
-                        "CLAUDE_TEAM_PROJECT_DIR is deprecated; use MANIPLE_PROJECT_DIR"
-                    )
-                    env_project_dir = old_project_dir
+            # Get MANIPLE_PROJECT_DIR for "auto" paths (fallback: CLAUDE_TEAM_PROJECT_DIR).
+            env_project_dir = get_env_with_fallback(
+                "MANIPLE_PROJECT_DIR",
+                "CLAUDE_TEAM_PROJECT_DIR",
+            )
 
             for i, (w, name) in enumerate(zip(workers, resolved_names)):
                 project_path = w["project_path"]

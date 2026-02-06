@@ -9,7 +9,19 @@ from maniple_mcp.terminal_backends import select_backend_id
 
 def test_select_backend_id_env_overrides_config():
     """Environment variable should override config backend."""
-    env = {"CLAUDE_TEAM_TERMINAL_BACKEND": "ITERM"}
+    env = {"MANIPLE_TERMINAL_BACKEND": "ITERM"}
+    config = ClaudeTeamConfig(terminal=TerminalConfig(backend="tmux"))
+    assert select_backend_id(env=env, config=config) == "iterm"
+
+def test_select_backend_id_deprecated_env_overrides_config():
+    """Deprecated CLAUDE_TEAM_TERMINAL_BACKEND should still override config."""
+    env = {"CLAUDE_TEAM_TERMINAL_BACKEND": "TMUX"}
+    config = ClaudeTeamConfig(terminal=TerminalConfig(backend="iterm"))
+    assert select_backend_id(env=env, config=config) == "tmux"
+
+def test_select_backend_id_env_precedence():
+    """MANIPLE_TERMINAL_BACKEND should take precedence over CLAUDE_TEAM_TERMINAL_BACKEND."""
+    env = {"MANIPLE_TERMINAL_BACKEND": "iterm", "CLAUDE_TEAM_TERMINAL_BACKEND": "tmux"}
     config = ClaudeTeamConfig(terminal=TerminalConfig(backend="tmux"))
     assert select_backend_id(env=env, config=config) == "iterm"
 

@@ -10,6 +10,7 @@ from .constants import (
     build_worker_message_hint,
 )
 from .errors import error_response, HINTS, get_session_or_error
+from .env_vars import get_env_with_fallback, get_int_env_with_fallback
 from .worktree_detection import get_worktree_tracker_dir
 
 __all__ = [
@@ -21,5 +22,7 @@ __all__ = [
     "error_response",
     "HINTS",
     "get_session_or_error",
+    "get_env_with_fallback",
+    "get_int_env_with_fallback",
     "get_worktree_tracker_dir",
 ]

@@ -51,8 +51,8 @@ class TestConfigShow:
             "events": {"max_size_mb": 2},
         }))
         env = {
-            "CLAUDE_TEAM_COMMAND": "from-env",
-            "CLAUDE_TEAM_EVENTS_MAX_SIZE_MB": "5",
+            "MANIPLE_COMMAND": "from-env",
+            "MANIPLE_EVENTS_MAX_SIZE_MB": "5",
         }
         data = load_effective_config_data(env=env)
         assert data["commands"]["claude"] == "from-env"
@@ -80,7 +80,7 @@ class TestConfigGet:
     def test_get_reads_env_override(self, config_path: Path):
         """get_config_value returns env-overridden values."""
         config_path.write_text(json.dumps({"version": 1}))
-        env = {"CLAUDE_TEAM_TERMINAL_BACKEND": "tmux"}
+        env = {"MANIPLE_TERMINAL_BACKEND": "tmux"}
         assert get_config_value("terminal.backend", env=env) == "tmux"
 
 
@@ -114,18 +114,18 @@ class TestStaleThresholdEnvOverride:
     """Tests for stale_threshold_minutes env override."""
 
     def test_env_overrides_config(self, config_path: Path):
-        """CLAUDE_TEAM_STALE_THRESHOLD_MINUTES overrides file config."""
+        """MANIPLE_STALE_THRESHOLD_MINUTES overrides file config."""
         config_path.write_text(json.dumps({
             "version": 1,
             "events": {"stale_threshold_minutes": 15},
         }))
-        env = {"CLAUDE_TEAM_STALE_THRESHOLD_MINUTES": "25"}
+        env = {"MANIPLE_STALE_THRESHOLD_MINUTES": "25"}
         data = load_effective_config_data(env=env)
         assert data["events"]["stale_threshold_minutes"] == 25
 
     def test_env_overrides_default(self, config_path: Path):
-        """CLAUDE_TEAM_STALE_THRESHOLD_MINUTES overrides default when no file."""
-        env = {"CLAUDE_TEAM_STALE_THRESHOLD_MINUTES": "5"}
+        """MANIPLE_STALE_THRESHOLD_MINUTES overrides default when no file."""
+        env = {"MANIPLE_STALE_THRESHOLD_MINUTES": "5"}
         data = load_effective_config_data(env=env)
         assert data["events"]["stale_threshold_minutes"] == 5
 
@@ -135,6 +135,18 @@ class TestStaleThresholdEnvOverride:
             "version": 1,
             "events": {"stale_threshold_minutes": 15},
         }))
-        env = {"CLAUDE_TEAM_STALE_THRESHOLD_MINUTES": "not_a_number"}
+        env = {"MANIPLE_STALE_THRESHOLD_MINUTES": "not_a_number"}
         data = load_effective_config_data(env=env)
         assert data["events"]["stale_threshold_minutes"] == 15
+
+    def test_deprecated_env_fallback(self, config_path: Path):
+        """Deprecated CLAUDE_TEAM_STALE_THRESHOLD_MINUTES is still honored."""
+        env = {"CLAUDE_TEAM_STALE_THRESHOLD_MINUTES": "7"}
+        data = load_effective_config_data(env=env)
+        assert data["events"]["stale_threshold_minutes"] == 7
+
+    def test_env_precedence(self, config_path: Path):
+        """MANIPLE_STALE_THRESHOLD_MINUTES takes precedence over deprecated env var."""
+        env = {"MANIPLE_STALE_THRESHOLD_MINUTES": "9", "CLAUDE_TEAM_STALE_THRESHOLD_MINUTES": "7"}
+        data = load_effective_config_data(env=env)
+        assert data["events"]["stale_threshold_minutes"] == 9

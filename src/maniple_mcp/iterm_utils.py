@@ -385,7 +385,7 @@ async def close_pane(session: "ItermSession", force: bool = False) -> bool:
 # =============================================================================
 
 # Marker used to detect shell readiness - must be unique enough not to appear randomly
-SHELL_READY_MARKER = "CLAUDE_TEAM_READY_7f3a9c"
+SHELL_READY_MARKER = "MANIPLE_READY_7f3a9c"
 
 
 async def wait_for_shell_ready(

@@ -5,16 +5,17 @@ Implements the AgentCLI protocol for Claude Code CLI.
 This preserves the existing behavior from iterm_utils.py.
 """
 
-import os
 from typing import Literal
 
 from .base import AgentCLI
+from ..utils.env_vars import get_env_with_fallback
 
 # Built-in default command.
 _DEFAULT_COMMAND = "claude"
 
-# Environment variable for command override (takes highest precedence).
-_ENV_VAR = "CLAUDE_TEAM_COMMAND"
+# Environment variables for command override (takes highest precedence).
+_ENV_VAR = "MANIPLE_COMMAND"
+_ENV_VAR_FALLBACK = "CLAUDE_TEAM_COMMAND"
 
 
 def get_claude_command() -> str:
@@ -22,7 +23,7 @@ def get_claude_command() -> str:
     Get the Claude CLI command with precedence: env var > config > default.
 
     Resolution order:
-    1. CLAUDE_TEAM_COMMAND environment variable (for override)
+    1. MANIPLE_COMMAND environment variable (for override)
     2. Config file commands.claude setting
     3. Built-in default "claude"
 
@@ -30,7 +31,7 @@ def get_claude_command() -> str:
         The command to use for Claude CLI
     """
     # Environment variable takes highest precedence (for override).
-    env_val = os.environ.get(_ENV_VAR)
+    env_val = get_env_with_fallback(_ENV_VAR, _ENV_VAR_FALLBACK)
     if env_val:
         return env_val
 
@@ -71,7 +72,7 @@ class ClaudeCLI(AgentCLI):
         Return the Claude CLI command.
 
         Resolution order:
-        1. CLAUDE_TEAM_COMMAND environment variable (for override)
+        1. MANIPLE_COMMAND environment variable (for override)
         2. Config file commands.claude setting
         3. Built-in default "claude"
         """
