@@ -172,36 +172,6 @@ Current epics are tracked with dependencies. Check `pb list` / `bd --no-db list`
 
 IMPORTANT: Before doing any work, always create an issue (or epic) in the active tracker.
 
-### Plan Mode Workflow
-
-When working on complex features that require planning (via `EnterPlanMode`), follow this workflow:
-
-1. **During plan mode**: Explore the codebase, understand patterns, and write a detailed plan to the plan file
-2. **Before exiting plan mode**: Ensure the plan captures all subtasks, configuration decisions, and dependencies
-3. **First implementation step**: After exiting plan mode, **always** create issues in the active tracker before writing any code:
-   - Create an **epic** for the overall feature/deployment
-   - Create **subtasks** as individual pebbles issues, one per discrete piece of work
-- Each issue description should capture relevant context from the plan (what to implement, key decisions, file paths)
-   - Set up **dependencies** using `pb dep add <epic-id> <subtask-id>` or
-     `bd --no-db dep add <epic-id> <subtask-id>` so the epic depends on its subtasks
-   - Subtasks that depend on each other should also have dependencies set
-
-4. **Then proceed with implementation**: Work through the subtasks using the normal task workflow
-
-This ensures planning context is preserved in trackable issues rather than lost when the plan file is no longer referenced.
-
-**Example**:
-```bash
-# After exiting plan mode for "RDS Deployment" epic:
-pb create --title="RDS Deployment & pg-sync Service" --type=epic --description="..."
-pb create --title="Create RDS Terraform module" --type=task --description="Create terraform/modules/rds/ with..."
-pb create --title="Add RDS to dev environment" --type=task --description="..."
-pb dep add <epic-id> <task1-id>
-pb dep add <epic-id> <task2-id>
-pb dep add <task2-id> <task1-id>  # task2 depends on task1
-```
-Replace `pb` with `bd --no-db` when using Beads.
-
 ### Prioritizing Work
 
 Always start by checking for in-progress work:
