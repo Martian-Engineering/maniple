@@ -1,5 +1,5 @@
 {
-  "name": "claude-team",
+  "name": "maniple",
   "version": "0.10.0",
   "description": "MCP server for spawning and orchestrating multiple Claude Code sessions via iTerm2",
   "author": {
@@ -7,8 +7,8 @@
     "email": "josh@martianengineering.com",
     "url": "https://github.com/Martian-Engineering"
   },
-  "homepage": "https://github.com/Martian-Engineering/claude-team",
-  "repository": "https://github.com/Martian-Engineering/claude-team",
+  "homepage": "https://github.com/Martian-Engineering/maniple",
+  "repository": "https://github.com/Martian-Engineering/maniple",
   "license": "MIT",
   "keywords": ["mcp", "iterm2", "orchestration", "multi-agent"],
   "commands": "./commands/",
