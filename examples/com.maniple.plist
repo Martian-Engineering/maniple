@@ -31,11 +31,6 @@
       <string>true</string>
       <key>MANIPLE_INDEX_CRON</key>
       <string>1h</string>
-      <!-- Compatibility during rename -->
-      <key>CLAUDE_TEAM_QMD_INDEXING</key>
-      <string>true</string>
-      <key>CLAUDE_TEAM_INDEX_CRON</key>
-      <string>1h</string>
       <key>PATH</key>
       <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     </dict>

@@ -59,10 +59,6 @@ cat <<PLIST > "${plist_path}"
       <string>true</string>
       <key>MANIPLE_INDEX_CRON</key>
       <string>${index_cron}</string>
-      <key>CLAUDE_TEAM_QMD_INDEXING</key>
-      <string>true</string>
-      <key>CLAUDE_TEAM_INDEX_CRON</key>
-      <string>${index_cron}</string>
       <key>PATH</key>
       <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     </dict>

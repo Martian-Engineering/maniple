@@ -110,12 +110,13 @@ class TestDetectIssueTracker:
 
 
 class TestEnvVarOverride:
-    """Tests for CLAUDE_TEAM_ISSUE_TRACKER environment variable override."""
+    """Tests for MANIPLE_ISSUE_TRACKER environment variable override."""
 
     @pytest.fixture(autouse=True)
     def clean_env(self, monkeypatch):
         """Ensure the env var is cleared before each test."""
         monkeypatch.delenv(ISSUE_TRACKER_ENV_VAR, raising=False)
+        monkeypatch.delenv("CLAUDE_TEAM_ISSUE_TRACKER", raising=False)
 
     def test_env_var_selects_beads(self, tmp_path, monkeypatch):
         """Env var should select beads even with no markers."""
@@ -165,6 +166,25 @@ class TestEnvVarOverride:
         assert detected == PEBBLES_BACKEND
         assert "Unknown issue tracker 'invalid_tracker'" in caplog.text
 
+    def test_deprecated_env_var_selects_beads(self, tmp_path, monkeypatch):
+        """Deprecated CLAUDE_TEAM_ISSUE_TRACKER should still be respected."""
+        project_path = tmp_path / "repo"
+        project_path.mkdir()
+        monkeypatch.setenv("CLAUDE_TEAM_ISSUE_TRACKER", "beads")
+
+        detected = detect_issue_tracker(str(project_path))
+        assert detected == BEADS_BACKEND
+
+    def test_env_precedence(self, tmp_path, monkeypatch):
+        """MANIPLE_ISSUE_TRACKER should take precedence over CLAUDE_TEAM_ISSUE_TRACKER."""
+        project_path = tmp_path / "repo"
+        project_path.mkdir()
+        monkeypatch.setenv("CLAUDE_TEAM_ISSUE_TRACKER", "pebbles")
+        monkeypatch.setenv(ISSUE_TRACKER_ENV_VAR, "beads")
+
+        detected = detect_issue_tracker(str(project_path))
+        assert detected == BEADS_BACKEND
+
 
 class TestConfigOverride:
     """Tests for config.issue_tracker.override setting."""
@@ -173,6 +193,7 @@ class TestConfigOverride:
     def clean_env(self, monkeypatch):
         """Ensure the env var is cleared before each test."""
         monkeypatch.delenv(ISSUE_TRACKER_ENV_VAR, raising=False)
+        monkeypatch.delenv("CLAUDE_TEAM_ISSUE_TRACKER", raising=False)
 
     def test_config_override_selects_beads(self, tmp_path):
         """Config override should select beads even with no markers."""

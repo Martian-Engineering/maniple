@@ -271,8 +271,8 @@ class TestEventLogPersistence:
 
     def test_rotate_events_log_env_overrides_config(self, tmp_path, monkeypatch):
         """Env vars should override config-provided rotation defaults."""
-        monkeypatch.setenv("CLAUDE_TEAM_EVENTS_MAX_SIZE_MB", "1")
-        monkeypatch.setenv("CLAUDE_TEAM_EVENTS_RECENT_HOURS", "0")
+        monkeypatch.setenv("MANIPLE_EVENTS_MAX_SIZE_MB", "1")
+        monkeypatch.setenv("MANIPLE_EVENTS_RECENT_HOURS", "0")
 
         config = ClaudeTeamConfig(events=EventsConfig(max_size_mb=2, recent_hours=24))
         monkeypatch.setattr(events, "load_config", lambda: config)
@@ -309,6 +309,8 @@ class TestEventLogPersistence:
             raise ConfigError("invalid config")
 
         monkeypatch.setattr(events, "load_config", raise_config_error)
+        monkeypatch.delenv("MANIPLE_EVENTS_MAX_SIZE_MB", raising=False)
+        monkeypatch.delenv("MANIPLE_EVENTS_RECENT_HOURS", raising=False)
         monkeypatch.delenv("CLAUDE_TEAM_EVENTS_MAX_SIZE_MB", raising=False)
         monkeypatch.delenv("CLAUDE_TEAM_EVENTS_RECENT_HOURS", raising=False)
 
@@ -318,3 +320,12 @@ class TestEventLogPersistence:
         assert rotation.max_size_mb == 1
         assert rotation.recent_hours == 24
         assert "Invalid config file; using default event rotation config" in caplog.text
+
+    def test_rotation_config_deprecated_env_fallback(self, monkeypatch):
+        """Deprecated CLAUDE_TEAM_EVENTS_* env vars are still honored."""
+        monkeypatch.setenv("CLAUDE_TEAM_EVENTS_MAX_SIZE_MB", "3")
+        monkeypatch.setenv("CLAUDE_TEAM_EVENTS_RECENT_HOURS", "11")
+
+        rotation = events._load_rotation_config()
+        assert rotation.max_size_mb == 3
+        assert rotation.recent_hours == 11

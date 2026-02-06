@@ -46,7 +46,8 @@ HINTS = {
     ),
     "terminal_backend_required": (
         "This tool only supports the iTerm2 or tmux backends. "
-        "Set CLAUDE_TEAM_TERMINAL_BACKEND=iterm or tmux, or run inside a supported terminal."
+        "Set MANIPLE_TERMINAL_BACKEND=iterm or tmux (or CLAUDE_TEAM_TERMINAL_BACKEND for older versions), "
+        "or run inside a supported terminal."
     ),
     "registry_empty": (
         "No workers are being managed. Use spawn_workers to create new workers, "
