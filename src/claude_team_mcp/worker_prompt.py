@@ -86,7 +86,7 @@ def generate_worker_prompt(
     *,
     agent_type: AgentType = "claude",
     use_worktree: bool = False,
-    bead: Optional[str] = None,
+    issue_id: Optional[str] = None,
     project_path: Optional[str] = None,
     custom_prompt: Optional[str] = None,
 ) -> str:
@@ -97,7 +97,7 @@ def generate_worker_prompt(
         name: The friendly name assigned to this worker
         agent_type: The type of agent CLI ("claude" or "codex")
         use_worktree: Whether this worker is in an isolated worktree
-        bead: Optional issue tracker ID (if provided, this is the assignment)
+        issue_id: Optional issue tracker ID (if provided, this is the assignment)
         project_path: Optional project path for issue tracker detection
         custom_prompt: Optional additional instructions from the coordinator
 
@@ -115,7 +115,7 @@ def generate_worker_prompt(
             session_id=session_id,
             name=name,
             use_worktree=use_worktree,
-            bead=bead,
+            issue_id=issue_id,
             project_path=project_path,
             custom_prompt=custom_prompt,
         )
@@ -124,7 +124,7 @@ def generate_worker_prompt(
         session_id=session_id,
         name=name,
         use_worktree=use_worktree,
-        bead=bead,
+        issue_id=issue_id,
         project_path=project_path,
         custom_prompt=custom_prompt,
     )
@@ -134,7 +134,7 @@ def _generate_claude_worker_prompt(
     session_id: str,
     name: str,
     use_worktree: bool = False,
-    bead: Optional[str] = None,
+    issue_id: Optional[str] = None,
     project_path: Optional[str] = None,
     custom_prompt: Optional[str] = None,
 ) -> str:
@@ -149,7 +149,7 @@ def _generate_claude_worker_prompt(
         session_id: The unique identifier for this worker session
         name: The friendly name assigned to this worker
         use_worktree: Whether this worker is in an isolated worktree
-        bead: Optional issue tracker ID
+        issue_id: Optional issue tracker ID
         project_path: Optional project path for issue tracker detection
         custom_prompt: Optional additional instructions
 
@@ -164,9 +164,9 @@ def _generate_claude_worker_prompt(
     extra_sections = ""
 
     # Issue tracker section (if issue ID provided)
-    if bead:
+    if issue_id:
         tracker_section, show_cmd = _build_tracker_workflow_section(
-            issue_id=bead,
+            issue_id=issue_id,
             backend=tracker_backend,
             step_number=next_step,
         )
@@ -174,7 +174,7 @@ def _generate_claude_worker_prompt(
         next_step += 1
 
     # Commit section (if worktree but issue tracker section didn't already cover commit)
-    if use_worktree and not bead:
+    if use_worktree and not issue_id:
         commit_section = f"""
 {next_step}. **Commit when done.** You're in an isolated worktree branch — commit your
    completed work so it can be easily cherry-picked or merged. Use a clear
@@ -183,28 +183,28 @@ def _generate_claude_worker_prompt(
 """
         extra_sections += commit_section
 
-    # Closing/assignment section - 4 cases based on bead and custom_prompt
-    if bead and custom_prompt:
-        # Case 2: bead + custom instructions
+    # Closing/assignment section - 4 cases based on issue_id and custom_prompt
+    if issue_id and custom_prompt:
+        # Case 2: issue_id + custom instructions
         show_hint = (
             f"Use `{show_cmd}` for details." if show_cmd else "Use your issue tracker for details."
         )
         closing = f"""=== YOUR ASSIGNMENT ===
 
-The coordinator assigned you `{bead}` ({show_hint}) and included
+The coordinator assigned you `{issue_id}` ({show_hint}) and included
 the following instructions:
 
 {custom_prompt}
 
 Get to work!"""
-    elif bead:
-        # Case 1: bead only
+    elif issue_id:
+        # Case 1: issue_id only
         show_hint = (
             f"Use `{show_cmd}` for details." if show_cmd else "Use your issue tracker for details."
         )
         closing = f"""=== YOUR ASSIGNMENT ===
 
-Your assignment is `{bead}`. {show_hint} Get to work!"""
+Your assignment is `{issue_id}`. {show_hint} Get to work!"""
     elif custom_prompt:
         # Case 3: custom instructions only
         closing = f"""=== YOUR ASSIGNMENT ===
@@ -215,7 +215,7 @@ The coordinator assigned you the following task:
 
 Get to work!"""
     else:
-        # Case 4: no bead, no instructions - coordinator will message shortly
+        # Case 4: no issue_id, no instructions - coordinator will message shortly
         closing = "Alright, you're all set. The coordinator will send your first task shortly."
 
     return f'''Hey {name}! Welcome to the team.
@@ -245,7 +245,7 @@ def _generate_codex_worker_prompt(
     session_id: str,
     name: str,
     use_worktree: bool = False,
-    bead: Optional[str] = None,
+    issue_id: Optional[str] = None,
     project_path: Optional[str] = None,
     custom_prompt: Optional[str] = None,
 ) -> str:
@@ -260,7 +260,7 @@ def _generate_codex_worker_prompt(
         session_id: The unique identifier for this worker session
         name: The friendly name assigned to this worker
         use_worktree: Whether this worker is in an isolated worktree
-        bead: Optional issue tracker ID
+        issue_id: Optional issue tracker ID
         project_path: Optional project path for issue tracker detection
         custom_prompt: Optional additional instructions
 
@@ -275,9 +275,9 @@ def _generate_codex_worker_prompt(
     extra_sections = ""
 
     # Issue tracker section (if issue ID provided) - same workflow as Claude
-    if bead:
+    if issue_id:
         tracker_section, show_cmd = _build_tracker_workflow_section(
-            issue_id=bead,
+            issue_id=issue_id,
             backend=tracker_backend,
             step_number=next_step,
         )
@@ -285,7 +285,7 @@ def _generate_codex_worker_prompt(
         next_step += 1
 
     # Commit section (if worktree but issue tracker section didn't already cover commit)
-    if use_worktree and not bead:
+    if use_worktree and not issue_id:
         commit_section = f"""
 {next_step}. **Commit when done.** You're in an isolated worktree branch — commit your
    completed work so it can be easily cherry-picked or merged. Use a clear
@@ -294,20 +294,20 @@ def _generate_codex_worker_prompt(
 """
         extra_sections += commit_section
 
-    # Closing/assignment section - 4 cases based on bead and custom_prompt
-    if bead and custom_prompt:
+    # Closing/assignment section - 4 cases based on issue_id and custom_prompt
+    if issue_id and custom_prompt:
         closing = f"""=== YOUR ASSIGNMENT ===
 
-The coordinator assigned you `{bead}` ({f"Use `{show_cmd}` for details." if show_cmd else "Use your issue tracker for details."}) and included
+The coordinator assigned you `{issue_id}` ({f"Use `{show_cmd}` for details." if show_cmd else "Use your issue tracker for details."}) and included
 the following instructions:
 
 {custom_prompt}
 
 Get to work!"""
-    elif bead:
+    elif issue_id:
         closing = f"""=== YOUR ASSIGNMENT ===
 
-Your assignment is `{bead}`. {f"Use `{show_cmd}` for details." if show_cmd else "Use your issue tracker for details."} Get to work!"""
+Your assignment is `{issue_id}`. {f"Use `{show_cmd}` for details." if show_cmd else "Use your issue tracker for details."} Get to work!"""
     elif custom_prompt:
         closing = f"""=== YOUR ASSIGNMENT ===
 
@@ -356,9 +356,9 @@ def get_coordinator_guidance(
         worker_summaries: List of dicts with keys:
             - name: Worker name
             - agent_type: Agent type ("claude" or "codex")
-            - bead: Optional issue tracker ID
+            - issue_id: Optional issue tracker ID
             - custom_prompt: Optional custom instructions (truncated for display)
-            - awaiting_task: True if worker has no bead and no prompt
+            - awaiting_task: True if worker has no issue_id and no prompt
 
     Returns:
         Formatted coordinator guidance string
@@ -372,7 +372,7 @@ def get_coordinator_guidance(
     for w in worker_summaries:
         name = w["name"]
         agent_type = w.get("agent_type", "claude")
-        bead = w.get("bead")
+        issue_id = w.get("issue_id")
         custom_prompt = w.get("custom_prompt")
         awaiting = w.get("awaiting_task", False)
 
@@ -384,17 +384,17 @@ def get_coordinator_guidance(
                 f"- **{name}**{type_indicator}: "
                 "AWAITING TASK - send them instructions now"
             )
-        elif bead and custom_prompt:
+        elif issue_id and custom_prompt:
             # Truncate custom prompt for display
             short_prompt = (
                 custom_prompt[:50] + "..." if len(custom_prompt) > 50 else custom_prompt
             )
             worker_lines.append(
-                f"- **{name}**{type_indicator}: `{bead}` + custom: \"{short_prompt}\""
+                f"- **{name}**{type_indicator}: `{issue_id}` + custom: \"{short_prompt}\""
             )
-        elif bead:
+        elif issue_id:
             worker_lines.append(
-                f"- **{name}**{type_indicator}: `{bead}` "
+                f"- **{name}**{type_indicator}: `{issue_id}` "
                 "(issue tracker workflow: mark in_progress -> implement -> close -> commit)"
             )
         elif custom_prompt:
