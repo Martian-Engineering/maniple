@@ -90,16 +90,16 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         **WorkerConfig fields:**
             project_path: Required. Path to the repository.
                 - Explicit path: Use this repo (e.g., "/path/to/repo")
-                - "auto": Use CLAUDE_TEAM_PROJECT_DIR from environment
+                - "auto": Use MANIPLE_PROJECT_DIR from environment
 
                 **Note**: When using "auto", the project needs a `.mcp.json`:
                 ```json
                 {
                   "mcpServers": {
-                    "claude-team": {
+                    "maniple": {
                       "command": "uvx",
-                      "args": ["--from", "claude-team-mcp", "claude-team"],
-                      "env": {"CLAUDE_TEAM_PROJECT_DIR": "${PWD}"}
+                      "args": ["--from", "maniple@latest", "maniple"],
+                      "env": {"MANIPLE_PROJECT_DIR": "${PWD}"}
                     }
                   }
                 }
@@ -285,8 +285,15 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             main_repo_paths: dict[int, Path] = {}  # index -> main repo
             worktree_warnings: list[str] = []
 
-            # Get CLAUDE_TEAM_PROJECT_DIR for "auto" paths
-            env_project_dir = os.environ.get("CLAUDE_TEAM_PROJECT_DIR")
+            # Get MANIPLE_PROJECT_DIR for "auto" paths (fall back to old name).
+            env_project_dir = os.environ.get("MANIPLE_PROJECT_DIR")
+            if env_project_dir is None:
+                old_project_dir = os.environ.get("CLAUDE_TEAM_PROJECT_DIR")
+                if old_project_dir is not None:
+                    logger.warning(
+                        "CLAUDE_TEAM_PROJECT_DIR is deprecated; use MANIPLE_PROJECT_DIR"
+                    )
+                    env_project_dir = old_project_dir
 
             for i, (w, name) in enumerate(zip(workers, resolved_names)):
                 project_path = w["project_path"]
@@ -320,10 +327,10 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                         repo_path = Path(env_project_dir).resolve()
                     else:
                         return error_response(
-                            "project_path='auto' requires CLAUDE_TEAM_PROJECT_DIR",
+                            "project_path='auto' requires MANIPLE_PROJECT_DIR",
                             hint=(
                                 "Add a .mcp.json to your project with: "
-                                '"env": {"CLAUDE_TEAM_PROJECT_DIR": "${PWD}"}\n'
+                                '"env": {"MANIPLE_PROJECT_DIR": "${PWD}"}\n'
                                 "Or use an explicit path."
                             ),
                         )

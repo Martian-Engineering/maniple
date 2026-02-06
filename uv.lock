@@ -333,6 +333,39 @@ wheels = [
 ]
 
 [[package]]
+name = "maniple"
+version = "0.9.2"
+source = { editable = "." }
+dependencies = [
+    { name = "iterm2" },
+    { name = "mcp" },
+    { name = "msgspec" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "iterm2", specifier = ">=2.7" },
+    { name = "mcp", specifier = ">=1.0.0" },
+    { name = "msgspec", specifier = ">=0.19.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pyright", specifier = ">=1.1.407" },
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-asyncio", specifier = ">=0.23" },
+    { name = "ruff", specifier = ">=0.14.10" },
+]
+
+[[package]]
 name = "mcp"
 version = "1.23.3"
 source = { registry = "https://pypi.org/simple" }
