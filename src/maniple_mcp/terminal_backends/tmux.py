@@ -44,7 +44,7 @@ ISSUE_ID_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z0-9]*-[A-Za-z0-9]*\d[A-Za-z0-9]
 
 SHELL_READY_MARKER = "CLAUDE_TEAM_READY_7f3a9c"
 CODEX_PRE_ENTER_DELAY = 0.5
-TMUX_SESSION_PREFIX = "claude-team"
+TMUX_SESSION_PREFIX = "maniple"
 TMUX_SESSION_SLUG_MAX = 32
 TMUX_SESSION_FALLBACK = "project"
 TMUX_SESSION_PREFIXED = f"{TMUX_SESSION_PREFIX}-"
@@ -94,14 +94,14 @@ def tmux_session_name_for_project(project_path: str | None) -> str:
 
     Worktree paths produce the same session name as their main repository
     since project_name_from_path extracts the project name from the path.
-    Session names follow the format: claude-team-{project-slug}
+    Session names follow the format: maniple-{project-slug}
     """
     project_name = project_name_from_path(project_path) or TMUX_SESSION_FALLBACK
     slug = _tmux_safe_slug(project_name)
     return f"{TMUX_SESSION_PREFIXED}{slug}"
 
 
-# Determine whether a tmux session is managed by claude-team.
+# Determine whether a tmux session is managed by maniple.
 def _is_managed_session_name(session_name: str) -> bool:
     return session_name.startswith(TMUX_SESSION_PREFIXED)
 
@@ -340,7 +340,7 @@ class TmuxBackend(TerminalBackend):
         return panes
 
     async def list_sessions(self) -> list[TerminalSession]:
-        """List all tmux panes in claude-team-managed sessions."""
+        """List all tmux panes in maniple-managed sessions."""
         try:
             output = await self._run_tmux(
                 [
