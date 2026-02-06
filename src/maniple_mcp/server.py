@@ -69,7 +69,7 @@ def recover_registry(registry: SessionRegistry) -> RecoveryReport | None:
     """
     Attempt to recover session state from the event log.
 
-    Reads the latest snapshot and subsequent events from ~/.claude-team/events.jsonl,
+    Reads the latest snapshot and subsequent events from ~/.maniple/events.jsonl,
     then feeds them into registry.recover_from_events() to seed the registry with
     historical session data.
 
@@ -487,7 +487,7 @@ def main():
         default=8766,
         help="Port for HTTP mode (default: 8766)",
     )
-    # Config subcommands for reading/writing ~/.claude-team/config.json.
+    # Config subcommands for reading/writing ~/.maniple/config.json.
     subparsers = parser.add_subparsers(dest="command")
 
     config_parser = subparsers.add_parser(

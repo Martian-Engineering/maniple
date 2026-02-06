@@ -133,7 +133,7 @@ def register_tools(mcp: FastMCP) -> None:
         Args:
             since: ISO timestamp to filter events from (inclusive), or None for latest.
             stale_threshold_minutes: Minutes without activity before a worker is marked stuck.
-                Defaults to the value in ~/.claude-team/config.json (events.stale_threshold_minutes).
+                Defaults to the value in ~/.maniple/config.json (events.stale_threshold_minutes).
             include_snapshots: Whether to include snapshot events in the response.
 
         Returns:

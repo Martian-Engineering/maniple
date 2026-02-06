@@ -72,8 +72,10 @@ class WorkerEvent:
 
 
 def get_events_path() -> Path:
-    """Returns ~/.claude-team/events.jsonl, creating parent dir if needed."""
-    base_dir = Path.home() / ".claude-team"
+    """Returns the events JSONL path, creating parent dir if needed."""
+    from maniple.paths import resolve_data_dir
+
+    base_dir = resolve_data_dir()
     base_dir.mkdir(parents=True, exist_ok=True)
     return base_dir / "events.jsonl"
 
