@@ -13,6 +13,7 @@ from .colors import generate_tab_color, get_hue_for_index, hsl_to_rgb_tuple
 def main():
     """Entry point for the CLI command."""
     from .server import main as server_main
+
     server_main()
 
 
@@ -22,3 +23,4 @@ __all__ = [
     "get_hue_for_index",
     "hsl_to_rgb_tuple",
 ]
+

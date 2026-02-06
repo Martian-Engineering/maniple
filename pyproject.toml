@@ -1,5 +1,5 @@
 [project]
-name = "claude-team-mcp"
+name = "maniple"
 version = "0.10.0"
 description = "MCP server for managing multiple Claude Code sessions via iTerm2"
 readme = "README.md"
@@ -41,7 +41,7 @@ Issues = "https://github.com/Martian-Engineering/claude-team/issues"
 Changelog = "https://github.com/Martian-Engineering/claude-team/releases"
 
 [project.scripts]
-claude-team = "maniple_mcp:main"
+maniple = "maniple_mcp:main"
 
 [build-system]
 requires = ["hatchling"]
