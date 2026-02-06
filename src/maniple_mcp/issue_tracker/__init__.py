@@ -11,13 +11,16 @@ import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from ..utils.env_vars import get_env_with_fallback
+
 if TYPE_CHECKING:
     from maniple_mcp.config import ClaudeTeamConfig
 
 logger = logging.getLogger("claude-team-mcp")
 
-# Environment variable for explicit tracker override (highest priority).
-ISSUE_TRACKER_ENV_VAR = "CLAUDE_TEAM_ISSUE_TRACKER"
+# Environment variables for explicit tracker override (highest priority).
+ISSUE_TRACKER_ENV_VAR = "MANIPLE_ISSUE_TRACKER"
+ISSUE_TRACKER_ENV_VAR_FALLBACK = "CLAUDE_TEAM_ISSUE_TRACKER"
 
 
 @runtime_checkable
@@ -100,7 +103,7 @@ def detect_issue_tracker(
     Detect the issue tracker backend for the given project path.
 
     Resolution order (highest to lowest priority):
-      1. CLAUDE_TEAM_ISSUE_TRACKER environment variable
+      1. MANIPLE_ISSUE_TRACKER environment variable
       2. config.issue_tracker.override setting
       3. Marker directory detection (.pebbles, .beads)
 
@@ -113,7 +116,10 @@ def detect_issue_tracker(
         or detected.
     """
     # Priority 1: Environment variable override.
-    env_override = os.environ.get(ISSUE_TRACKER_ENV_VAR)
+    env_override = get_env_with_fallback(
+        ISSUE_TRACKER_ENV_VAR,
+        ISSUE_TRACKER_ENV_VAR_FALLBACK,
+    )
     if env_override:
         backend = BACKEND_REGISTRY.get(env_override.lower())
         if backend:

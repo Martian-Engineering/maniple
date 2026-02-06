@@ -24,7 +24,7 @@ from ..names import pick_names_for_count
 from ..profile import apply_appearance_colors
 from ..registry import SessionStatus
 from ..terminal_backends import ItermBackend, MAX_PANES_PER_TAB
-from ..utils import HINTS, error_response, get_worktree_tracker_dir
+from ..utils import HINTS, error_response, get_env_with_fallback, get_worktree_tracker_dir
 from ..worker_prompt import generate_worker_prompt, get_coordinator_guidance
 from ..worktree import WorktreeError, create_local_worktree
 
@@ -90,16 +90,16 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         **WorkerConfig fields:**
             project_path: Required. Path to the repository.
                 - Explicit path: Use this repo (e.g., "/path/to/repo")
-                - "auto": Use CLAUDE_TEAM_PROJECT_DIR from environment
+                - "auto": Use MANIPLE_PROJECT_DIR from environment
 
                 **Note**: When using "auto", the project needs a `.mcp.json`:
                 ```json
                 {
                   "mcpServers": {
-                    "claude-team": {
+                    "maniple": {
                       "command": "uvx",
-                      "args": ["--from", "claude-team-mcp", "claude-team"],
-                      "env": {"CLAUDE_TEAM_PROJECT_DIR": "${PWD}"}
+                      "args": ["--from", "maniple@latest", "maniple"],
+                      "env": {"MANIPLE_PROJECT_DIR": "${PWD}"}
                     }
                   }
                 }
@@ -285,8 +285,11 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             main_repo_paths: dict[int, Path] = {}  # index -> main repo
             worktree_warnings: list[str] = []
 
-            # Get CLAUDE_TEAM_PROJECT_DIR for "auto" paths
-            env_project_dir = os.environ.get("CLAUDE_TEAM_PROJECT_DIR")
+            # Get MANIPLE_PROJECT_DIR for "auto" paths (fallback: CLAUDE_TEAM_PROJECT_DIR).
+            env_project_dir = get_env_with_fallback(
+                "MANIPLE_PROJECT_DIR",
+                "CLAUDE_TEAM_PROJECT_DIR",
+            )
 
             for i, (w, name) in enumerate(zip(workers, resolved_names)):
                 project_path = w["project_path"]
@@ -320,10 +323,10 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                         repo_path = Path(env_project_dir).resolve()
                     else:
                         return error_response(
-                            "project_path='auto' requires CLAUDE_TEAM_PROJECT_DIR",
+                            "project_path='auto' requires MANIPLE_PROJECT_DIR",
                             hint=(
                                 "Add a .mcp.json to your project with: "
-                                '"env": {"CLAUDE_TEAM_PROJECT_DIR": "${PWD}"}\n'
+                                '"env": {"MANIPLE_PROJECT_DIR": "${PWD}"}\n'
                                 "Or use an explicit path."
                             ),
                         )
