@@ -1,5 +1,5 @@
 [project]
-name = "claude-team-mcp"
+name = "maniple"
 version = "0.9.2"
 description = "MCP server for managing multiple Claude Code sessions via iTerm2"
 readme = "README.md"
@@ -41,14 +41,16 @@ Issues = "https://github.com/Martian-Engineering/claude-team/issues"
 Changelog = "https://github.com/Martian-Engineering/claude-team/releases"
 
 [project.scripts]
-claude-team = "maniple_mcp:main"
+maniple = "maniple_mcp:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/maniple", "src/maniple_mcp"]
+# NOTE: Keep the old package paths temporarily so existing imports keep working
+# while the full rename (see docs/rename-decisions.md) is implemented.
+packages = ["src/maniple", "src/maniple_mcp", "src/claude_team", "src/claude_team_mcp"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
