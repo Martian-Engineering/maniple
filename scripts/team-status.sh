@@ -34,9 +34,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -n "$PROJECT_FILTER" ]]; then
-  WORKERS_JSON=$(mcporter call claude-team-http.list_workers project_filter="$PROJECT_FILTER" 2>/dev/null || echo '{"workers":[],"count":0}')
+  WORKERS_JSON=$(mcporter call maniple-http.list_workers project_filter="$PROJECT_FILTER" 2>/dev/null || echo '{"workers":[],"count":0}')
 else
-  WORKERS_JSON=$(mcporter call claude-team-http.list_workers 2>/dev/null || echo '{"workers":[],"count":0}')
+  WORKERS_JSON=$(mcporter call maniple-http.list_workers 2>/dev/null || echo '{"workers":[],"count":0}')
 fi
 
 COUNT=$(echo "$WORKERS_JSON" | jq -r '.count // 0')
@@ -46,7 +46,7 @@ if [[ "$JSON_OUTPUT" == "true" ]]; then
   exit 0
 fi
 
-HEADER="Claude Team"
+HEADER="Maniple"
 if [[ -n "$PROJECT_FILTER" ]]; then
   HEADER+=" (project: $PROJECT_FILTER)"
 fi
