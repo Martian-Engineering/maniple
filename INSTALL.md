@@ -4,11 +4,11 @@ This repository can run as a persistent HTTP server for Smart Fork indexing.
 The launchd setup installs a LaunchAgent that runs:
 
 ```
-uv run python -m claude_team_mcp --http --port 5111
+uv run python -m maniple_mcp --http --port 5111
 ```
 
-It also sets `CLAUDE_TEAM_QMD_INDEXING=true` and defaults
-`CLAUDE_TEAM_INDEX_CRON=1h`.
+It also sets `MANIPLE_QMD_INDEXING=true` and defaults
+`MANIPLE_INDEX_CRON=1h`.
 
 ## Install
 
@@ -24,23 +24,26 @@ It also sets `CLAUDE_TEAM_QMD_INDEXING=true` and defaults
    scripts/install-launchd.sh
    ```
 
-This writes `~/Library/LaunchAgents/com.claude-team.plist`, creates
-`~/.claude-team/logs/`, and loads the service with `launchctl`.
+This writes `~/Library/LaunchAgents/com.maniple.plist`, creates
+`~/.maniple/logs/`, and loads the service with `launchctl`.
+
+If an old `com.claude-team` agent is present, the installer will stop it
+before loading the new agent.
 
 ### Customize
 
 - Override the indexing cadence before install:
 
   ```bash
-  CLAUDE_TEAM_INDEX_CRON=30m scripts/install-launchd.sh
+  MANIPLE_INDEX_CRON=30m scripts/install-launchd.sh
   ```
 
-- Edit `~/Library/LaunchAgents/com.claude-team.plist` to change port,
+- Edit `~/Library/LaunchAgents/com.maniple.plist` to change port,
   log paths, or working directory. After editing, reload the agent:
 
   ```bash
-  launchctl bootout "gui/${UID}" ~/Library/LaunchAgents/com.claude-team.plist
-  launchctl bootstrap "gui/${UID}" ~/Library/LaunchAgents/com.claude-team.plist
+  launchctl bootout "gui/${UID}" ~/Library/LaunchAgents/com.maniple.plist
+  launchctl bootstrap "gui/${UID}" ~/Library/LaunchAgents/com.maniple.plist
   ```
 
 ### Verify
@@ -48,14 +51,14 @@ This writes `~/Library/LaunchAgents/com.claude-team.plist`, creates
 - Check status:
 
   ```bash
-  launchctl print gui/${UID}/com.claude-team
+  launchctl print gui/${UID}/com.maniple
   ```
 
 - View logs:
 
   ```bash
-  tail -f ~/.claude-team/logs/claude-team.out.log
-  tail -f ~/.claude-team/logs/claude-team.err.log
+  tail -f ~/.maniple/logs/maniple.out.log
+  tail -f ~/.maniple/logs/maniple.err.log
   ```
 
 ## Uninstall
@@ -64,8 +67,8 @@ This writes `~/Library/LaunchAgents/com.claude-team.plist`, creates
 scripts/uninstall-launchd.sh
 ```
 
-Logs are left in `~/.claude-team/logs/` for inspection.
+Logs are left in `~/.maniple/logs/` for inspection.
 
 ## Example plist
 
-See `examples/com.claude-team.plist` for a commented template.
+See `examples/com.maniple.plist` for a commented template.
