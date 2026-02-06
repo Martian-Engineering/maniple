@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 import json
 
-from claude_team_mcp.idle_detection import (
+from maniple_mcp.idle_detection import (
     is_idle,
     is_codex_idle,
     wait_for_idle,

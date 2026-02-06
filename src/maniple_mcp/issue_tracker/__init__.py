@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from claude_team_mcp.config import ClaudeTeamConfig
+    from maniple_mcp.config import ClaudeTeamConfig
 
 logger = logging.getLogger("claude-team-mcp")
 
@@ -133,7 +133,7 @@ def detect_issue_tracker(
     if config is None:
         # Lazy import to avoid circular dependency at module load time.
         try:
-            from claude_team_mcp.config import ConfigError, load_config
+            from maniple_mcp.config import ConfigError, load_config
 
             config = load_config()
         except ConfigError as exc:

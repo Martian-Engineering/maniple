@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from claude_team_mcp import config as config_module
-from claude_team_mcp.config import ConfigError, load_config
-from claude_team_mcp.config_cli import (
+from maniple_mcp import config as config_module
+from maniple_mcp.config import ConfigError, load_config
+from maniple_mcp.config_cli import (
     get_config_value,
     init_config,
     load_effective_config_data,

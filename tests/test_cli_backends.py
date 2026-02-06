@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 import pytest
 
-from claude_team_mcp import config as config_module
-from claude_team_mcp.cli_backends import (
+from maniple_mcp import config as config_module
+from maniple_mcp.cli_backends import (
     AgentCLI,
     ClaudeCLI,
     CodexCLI,

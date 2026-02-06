@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from claude_team_mcp import config as config_module
-from claude_team_mcp.config import EventsConfig, load_config
+from maniple_mcp import config as config_module
+from maniple_mcp.config import EventsConfig, load_config
 
 
 @pytest.fixture(autouse=True)

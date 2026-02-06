@@ -2,7 +2,7 @@
 
 import pytest
 
-from claude_team_mcp.formatting import format_session_title, format_badge_text
+from maniple_mcp.formatting import format_session_title, format_badge_text
 
 
 class TestFormatSessionTitle:

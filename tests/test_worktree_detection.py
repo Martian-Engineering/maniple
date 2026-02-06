@@ -5,7 +5,7 @@ Tests for worktree detection utilities.
 import subprocess
 from unittest.mock import patch
 
-from claude_team_mcp.utils.worktree_detection import get_worktree_tracker_dir
+from maniple_mcp.utils.worktree_detection import get_worktree_tracker_dir
 
 
 class TestGetWorktreeTrackerDir:
@@ -27,7 +27,7 @@ class TestGetWorktreeTrackerDir:
 
         # Patch subprocess.run to use the simulated git output.
         with patch(
-            "claude_team_mcp.utils.worktree_detection.subprocess.run",
+            "maniple_mcp.utils.worktree_detection.subprocess.run",
             return_value=result,
         ):
             assert get_worktree_tracker_dir(str(project_path)) is None
@@ -52,7 +52,7 @@ class TestGetWorktreeTrackerDir:
 
         # Patch subprocess.run so the worktree detection uses the fake output.
         with patch(
-            "claude_team_mcp.utils.worktree_detection.subprocess.run",
+            "maniple_mcp.utils.worktree_detection.subprocess.run",
             return_value=result,
         ):
             assert get_worktree_tracker_dir(str(worktree)) == (
@@ -80,7 +80,7 @@ class TestGetWorktreeTrackerDir:
 
         # Patch subprocess.run so the worktree detection uses the fake output.
         with patch(
-            "claude_team_mcp.utils.worktree_detection.subprocess.run",
+            "maniple_mcp.utils.worktree_detection.subprocess.run",
             return_value=result,
         ):
             assert get_worktree_tracker_dir(str(worktree)) == (
@@ -109,7 +109,7 @@ class TestGetWorktreeTrackerDir:
 
         # Patch subprocess.run so the worktree detection uses the fake output.
         with patch(
-            "claude_team_mcp.utils.worktree_detection.subprocess.run",
+            "maniple_mcp.utils.worktree_detection.subprocess.run",
             return_value=result,
         ):
             assert get_worktree_tracker_dir(str(worktree)) == (

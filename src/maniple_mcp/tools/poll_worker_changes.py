@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 
-from claude_team import events as events_module
-from claude_team.events import WorkerEvent
+from maniple import events as events_module
+from maniple.events import WorkerEvent
 
 if TYPE_CHECKING:
     from ..server import AppContext

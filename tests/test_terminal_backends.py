@@ -2,9 +2,9 @@
 
 import pytest
 
-import claude_team_mcp.terminal_backends as terminal_backends
-from claude_team_mcp.config import ClaudeTeamConfig, ConfigError, TerminalConfig
-from claude_team_mcp.terminal_backends import select_backend_id
+import maniple_mcp.terminal_backends as terminal_backends
+from maniple_mcp.config import ClaudeTeamConfig, ConfigError, TerminalConfig
+from maniple_mcp.terminal_backends import select_backend_id
 
 
 def test_select_backend_id_env_overrides_config():

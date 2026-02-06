@@ -10,13 +10,13 @@ import time
 
 import pytest
 
-from claude_team import events
-from claude_team.events import WorkerEvent
-from claude_team_mcp.config import ClaudeTeamConfig, ConfigError, EventsConfig
+from maniple import events
+from maniple.events import WorkerEvent
+from maniple_mcp.config import ClaudeTeamConfig, ConfigError, EventsConfig
 
 
 def _hold_lock(path_value: str, ready: multiprocessing.Event, release: multiprocessing.Event) -> None:
-    from claude_team import events as events_module
+    from maniple import events as events_module
 
     path = Path(path_value)
     path.parent.mkdir(parents=True, exist_ok=True)

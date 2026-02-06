@@ -4,7 +4,7 @@ import json
 import pytest
 from pathlib import Path
 
-from claude_team_mcp.config import (
+from maniple_mcp.config import (
     CONFIG_VERSION,
     ClaudeTeamConfig,
     CommandsConfig,

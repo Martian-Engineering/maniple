@@ -4,8 +4,8 @@ import subprocess
 
 import pytest
 
-from claude_team_mcp.terminal_backends.base import TerminalSession
-from claude_team_mcp.terminal_backends.tmux import TmuxBackend, tmux_session_name_for_project
+from maniple_mcp.terminal_backends.base import TerminalSession
+from maniple_mcp.terminal_backends.tmux import TmuxBackend, tmux_session_name_for_project
 
 
 # subprocess is still needed for tests that mock tmux CalledProcessError

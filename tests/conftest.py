@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from claude_team_mcp import config as config_module
+from maniple_mcp import config as config_module
 
 
 @pytest.fixture(autouse=True)

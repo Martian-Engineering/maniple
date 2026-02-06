@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 
-from claude_team.events import get_latest_snapshot, read_events_since
-from claude_team.poller import WorkerPoller
+from maniple.events import get_latest_snapshot, read_events_since
+from maniple.poller import WorkerPoller
 
 from .registry import RecoveryReport, SessionRegistry
 from .terminal_backends import ItermBackend, TerminalBackend, TmuxBackend, select_backend_id

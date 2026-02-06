@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from claude_team_mcp.registry import (
+from maniple_mcp.registry import (
     ManagedSession,
     SessionRegistry,
     SessionStatus,
