@@ -32,7 +32,7 @@ import msgspec
 from .schemas.codex import ThreadStarted, TurnCompleted, TurnFailed, TurnStarted, decode_event
 from .session_state import is_session_stopped
 
-logger = logging.getLogger("claude-team-mcp")
+logger = logging.getLogger("maniple")
 
 # Path to Codex session files
 CODEX_SESSIONS_DIR = Path.home() / ".codex" / "sessions"

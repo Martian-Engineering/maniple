@@ -24,7 +24,7 @@ from ..session_state import (
 )
 from ..utils import error_response, HINTS
 
-logger = logging.getLogger("claude-team-mcp")
+logger = logging.getLogger("maniple")
 
 
 def register_tools(mcp: FastMCP, ensure_connection) -> None:

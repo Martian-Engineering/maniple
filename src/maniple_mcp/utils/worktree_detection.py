@@ -15,7 +15,7 @@ from maniple_mcp.issue_tracker import (
     detect_issue_tracker,
 )
 
-logger = logging.getLogger("claude-team-mcp")
+logger = logging.getLogger("maniple")
 
 
 def get_worktree_tracker_dir(project_path: str) -> tuple[str, str] | None:

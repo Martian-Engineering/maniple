@@ -1,1 +1,1 @@
-# Tests for claude-team-mcp
+# Tests for maniple
