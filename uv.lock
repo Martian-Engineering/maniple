@@ -113,7 +113,7 @@ wheels = [
 ]
 
 [[package]]
-name = "claude-team-mcp"
+name = "maniple"
 version = "0.10.0"
 source = { editable = "." }
 dependencies = [
