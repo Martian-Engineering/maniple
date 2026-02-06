@@ -34,11 +34,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Martian-Engineering/claude-team"
-Repository = "https://github.com/Martian-Engineering/claude-team"
-Documentation = "https://github.com/Martian-Engineering/claude-team#readme"
-Issues = "https://github.com/Martian-Engineering/claude-team/issues"
-Changelog = "https://github.com/Martian-Engineering/claude-team/releases"
+Homepage = "https://github.com/Martian-Engineering/maniple"
+Repository = "https://github.com/Martian-Engineering/maniple"
+Documentation = "https://github.com/Martian-Engineering/maniple#readme"
+Issues = "https://github.com/Martian-Engineering/maniple/issues"
+Changelog = "https://github.com/Martian-Engineering/maniple/releases"
 
 [project.scripts]
 claude-team = "claude_team_mcp:main"

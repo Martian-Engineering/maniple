@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "claude-team": {
+    "maniple": {
       "command": "uvx",
-      "args": ["--from", "claude-team-mcp@latest", "claude-team"]
+      "args": ["--from", "maniple@latest", "maniple"]
     }
   }
 }
