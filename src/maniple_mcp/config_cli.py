@@ -1,5 +1,5 @@
 """
-CLI helpers for claude-team configuration commands.
+CLI helpers for maniple configuration commands.
 """
 
 from __future__ import annotations
@@ -94,8 +94,8 @@ def format_value_json(value: object) -> str:
 
 
 def _resolve_config_path(config_path: Path | None) -> Path:
-    # Resolve the config path, defaulting to ~/.claude-team/config.json.
-    return (config_path or config_module.CONFIG_PATH).expanduser()
+    # Resolve the config path (defaults under ~/.maniple/, with legacy migration).
+    return config_module.resolve_config_path(config_path)
 
 
 def _apply_env_overrides(data: dict, env: Mapping[str, str]) -> None:
