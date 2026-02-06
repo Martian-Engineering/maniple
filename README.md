@@ -269,7 +269,11 @@ WorkerConfig fields:
   prompt: str               - Additional instructions (combined with standard worker prompt)
   skip_permissions: bool    - Start with --dangerously-skip-permissions
   use_worktree: bool        - Create isolated git worktree (default: true)
-  worktree: WorktreeConfig  - Optional: { branch: str, base: str } for explicit branch/base
+  worktree: WorktreeConfig  - Optional worktree settings:
+                              branch: Explicit branch name (auto-generated if omitted)
+                              base: Ref/branch to branch FROM (default: HEAD). Set this
+                                    when subtask workers need a feature branch's commits
+                                    (e.g. {"base": "epic-id/feature-branch"})
 
 Top-level arguments:
   workers: list[WorkerConfig]  - 1-4 worker configurations

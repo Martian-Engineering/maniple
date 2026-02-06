@@ -48,6 +48,37 @@ spawn_workers(workers=[
 - `annotation`: Short task description (use the issue title for clarity)
 - `skip_permissions`: Set `True` — without this, workers can only read files
 - `use_worktree`: Set `False` to skip worktree creation (default `True`)
+- `worktree`: Dict with optional `branch` and `base` fields for worktree control
+  - `branch`: Explicit branch name (auto-generated if omitted)
+  - `base`: The ref/branch to branch FROM. Without this, workers branch from HEAD
+    (often main). Set this when subtask workers need commits from a feature branch.
+
+**Branching from a feature branch (epic/subtask workflow):**
+
+When working on an epic with subtasks, the epic has a feature branch. Subtask workers
+should branch FROM that feature branch so they have prerequisite commits:
+```python
+# Epic feature branch: "cic-100/auth-epic"
+# Subtask workers branch from it, not from main:
+spawn_workers(workers=[
+    {
+        "project_path": "/path/to/repo",
+        "bead": "cic-101",
+        "annotation": "Add login endpoint",
+        "worktree": {"base": "cic-100/auth-epic"},
+        "skip_permissions": True,
+    },
+    {
+        "project_path": "/path/to/repo",
+        "bead": "cic-102",
+        "annotation": "Add signup endpoint",
+        "worktree": {"base": "cic-100/auth-epic"},
+        "skip_permissions": True,
+    },
+])
+# Both workers start with all commits from the epic branch.
+# Without base, they'd branch from HEAD/main and miss prior work.
+```
 
 **What workers are instructed to do:** When given an issue ID, workers receive the
 issue tracker workflow using the detected CLI (`pb` or `bd --no-db`):

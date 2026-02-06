@@ -112,8 +112,29 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                   or <repo>/.worktrees/<name>-<uuid>-<annotation>
                 - False: Worker uses the repo directory directly (no isolation)
             worktree: Optional worktree configuration.
-                - branch: Branch name for the worktree
-                - base: Base ref/branch for the new branch
+                - branch: Explicit branch name for the worktree (auto-generated if omitted)
+                - base: The ref, branch, or commit to branch FROM. Without this, the
+                  new branch is created from the current HEAD (often main). Set this
+                  when workers need commits that aren't on HEAD — most commonly when
+                  an epic has a feature branch and subtask workers need to start from
+                  that branch so they have prerequisite work available.
+
+                  Accepts branch names ("feat/auth"), tags ("v1.0"), or commit SHAs.
+                  The ref is resolved to a commit hash internally, so it works even
+                  if the branch is checked out in another worktree.
+
+                  Example — epic subtask branching from a feature branch:
+                  ```python
+                  spawn_workers(workers=[{
+                      "project_path": "auto",
+                      "bead": "cic-456",
+                      "annotation": "Add login endpoint",
+                      "worktree": {"base": "cic-123/auth-epic"},
+                      "skip_permissions": True,
+                  }])
+                  # Worker branches from cic-123/auth-epic instead of HEAD,
+                  # so it has all prior epic commits available.
+                  ```
             name: Optional worker name override. Leaving this empty allows us to auto-pick names
                 from themed sets (Beatles, Marx Brothers, etc.) which aids visual identification.
             annotation: Optional task description. Shown on badge second line, used in
