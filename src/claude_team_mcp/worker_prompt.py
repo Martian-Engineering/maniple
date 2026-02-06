@@ -356,9 +356,9 @@ def get_coordinator_guidance(
         worker_summaries: List of dicts with keys:
             - name: Worker name
             - agent_type: Agent type ("claude" or "codex")
-            - bead: Optional issue tracker ID
+            - issue_id: Optional issue tracker ID
             - custom_prompt: Optional custom instructions (truncated for display)
-            - awaiting_task: True if worker has no bead and no prompt
+            - awaiting_task: True if worker has no issue_id and no prompt
 
     Returns:
         Formatted coordinator guidance string
@@ -372,7 +372,7 @@ def get_coordinator_guidance(
     for w in worker_summaries:
         name = w["name"]
         agent_type = w.get("agent_type", "claude")
-        bead = w.get("bead")
+        issue_id = w.get("issue_id")
         custom_prompt = w.get("custom_prompt")
         awaiting = w.get("awaiting_task", False)
 
@@ -384,17 +384,17 @@ def get_coordinator_guidance(
                 f"- **{name}**{type_indicator}: "
                 "AWAITING TASK - send them instructions now"
             )
-        elif bead and custom_prompt:
+        elif issue_id and custom_prompt:
             # Truncate custom prompt for display
             short_prompt = (
                 custom_prompt[:50] + "..." if len(custom_prompt) > 50 else custom_prompt
             )
             worker_lines.append(
-                f"- **{name}**{type_indicator}: `{bead}` + custom: \"{short_prompt}\""
+                f"- **{name}**{type_indicator}: `{issue_id}` + custom: \"{short_prompt}\""
             )
-        elif bead:
+        elif issue_id:
             worker_lines.append(
-                f"- **{name}**{type_indicator}: `{bead}` "
+                f"- **{name}**{type_indicator}: `{issue_id}` "
                 "(issue tracker workflow: mark in_progress -> implement -> close -> commit)"
             )
         elif custom_prompt:

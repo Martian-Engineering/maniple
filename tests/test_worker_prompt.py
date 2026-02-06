@@ -126,18 +126,18 @@ class TestGetCoordinatorGuidance:
 
     def test_returns_non_empty_string(self):
         """Should return a non-empty string."""
-        guidance = get_coordinator_guidance([{"name": "Groucho", "bead": "cic-123"}])
+        guidance = get_coordinator_guidance([{"name": "Groucho", "issue_id": "cic-123"}])
         assert isinstance(guidance, str)
         assert len(guidance) > 0
 
     def test_contains_team_dispatched_header(self):
         """Guidance should have team dispatched header."""
-        guidance = get_coordinator_guidance([{"name": "Groucho", "bead": "cic-123"}])
+        guidance = get_coordinator_guidance([{"name": "Groucho", "issue_id": "cic-123"}])
         assert "TEAM DISPATCHED" in guidance
 
     def test_shows_worker_with_issue(self):
         """Should show worker name and issue assignment."""
-        guidance = get_coordinator_guidance([{"name": "Groucho", "bead": "cic-123"}])
+        guidance = get_coordinator_guidance([{"name": "Groucho", "issue_id": "cic-123"}])
         assert "Groucho" in guidance
         assert "cic-123" in guidance
         assert "mark in_progress" in guidance
@@ -161,7 +161,7 @@ class TestGetCoordinatorGuidance:
     def test_shows_multiple_workers(self):
         """Should show all workers."""
         guidance = get_coordinator_guidance([
-            {"name": "Groucho", "bead": "cic-123"},
+            {"name": "Groucho", "issue_id": "cic-123"},
             {"name": "Harpo", "custom_prompt": "Do something"},
             {"name": "Chico", "awaiting_task": True},
         ])
@@ -171,7 +171,7 @@ class TestGetCoordinatorGuidance:
 
     def test_includes_coordination_reminder(self):
         """Should include coordination style reminder."""
-        guidance = get_coordinator_guidance([{"name": "Groucho", "bead": "cic-123"}])
+        guidance = get_coordinator_guidance([{"name": "Groucho", "issue_id": "cic-123"}])
         assert "Coordination style" in guidance or "Hands-off" in guidance
 
     def test_truncates_long_custom_prompt(self):
@@ -320,8 +320,8 @@ class TestMixedTeamCoordinatorGuidance:
     def test_single_agent_type_no_indicator(self):
         """With only one agent type, no [type] indicator should appear."""
         guidance = get_coordinator_guidance([
-            {"name": "Groucho", "bead": "cic-123", "agent_type": "claude"},
-            {"name": "Harpo", "bead": "cic-456", "agent_type": "claude"},
+            {"name": "Groucho", "issue_id": "cic-123", "agent_type": "claude"},
+            {"name": "Harpo", "issue_id": "cic-456", "agent_type": "claude"},
         ])
         assert "[claude]" not in guidance
         assert "[codex]" not in guidance
@@ -329,8 +329,8 @@ class TestMixedTeamCoordinatorGuidance:
     def test_mixed_team_shows_type_indicators(self):
         """With mixed team, should show [type] indicators."""
         guidance = get_coordinator_guidance([
-            {"name": "Groucho", "bead": "cic-123", "agent_type": "claude"},
-            {"name": "GPT-4", "bead": "cic-456", "agent_type": "codex"},
+            {"name": "Groucho", "issue_id": "cic-123", "agent_type": "claude"},
+            {"name": "GPT-4", "issue_id": "cic-456", "agent_type": "codex"},
         ])
         assert "[claude]" in guidance
         assert "[codex]" in guidance
@@ -338,8 +338,8 @@ class TestMixedTeamCoordinatorGuidance:
     def test_mixed_team_shows_guidance_note(self):
         """Mixed team should include guidance about different idle detection."""
         guidance = get_coordinator_guidance([
-            {"name": "Groucho", "agent_type": "claude", "bead": "cic-123"},
-            {"name": "Codex-1", "agent_type": "codex", "bead": "cic-456"},
+            {"name": "Groucho", "agent_type": "claude", "issue_id": "cic-123"},
+            {"name": "Codex-1", "agent_type": "codex", "issue_id": "cic-456"},
         ])
         assert "Mixed team note" in guidance
         assert "Claude workers" in guidance
@@ -348,8 +348,8 @@ class TestMixedTeamCoordinatorGuidance:
     def test_default_agent_type_is_claude(self):
         """Workers without explicit agent_type should default to claude."""
         guidance = get_coordinator_guidance([
-            {"name": "Groucho", "bead": "cic-123"},  # No agent_type
-            {"name": "Codex-1", "agent_type": "codex", "bead": "cic-456"},
+            {"name": "Groucho", "issue_id": "cic-123"},  # No agent_type
+            {"name": "Codex-1", "agent_type": "codex", "issue_id": "cic-456"},
         ])
         # Should still be mixed team because one is explicitly codex
         assert "[claude]" in guidance
@@ -358,8 +358,8 @@ class TestMixedTeamCoordinatorGuidance:
     def test_codex_only_team_no_mixed_note(self):
         """Codex-only team should not show mixed team note."""
         guidance = get_coordinator_guidance([
-            {"name": "Codex-1", "agent_type": "codex", "bead": "cic-123"},
-            {"name": "Codex-2", "agent_type": "codex", "bead": "cic-456"},
+            {"name": "Codex-1", "agent_type": "codex", "issue_id": "cic-123"},
+            {"name": "Codex-2", "agent_type": "codex", "issue_id": "cic-456"},
         ])
         assert "Mixed team note" not in guidance
         # Should still not show type indicators (not mixed)
