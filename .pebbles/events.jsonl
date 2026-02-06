@@ -341,3 +341,5 @@
 {"type":"close","timestamp":"2026-02-06T22:20:23.626685Z","issue_id":"cic-76a","payload":{}}
 {"type":"close","timestamp":"2026-02-06T22:20:23.626685Z","issue_id":"cic-410","payload":{}}
 {"type":"close","timestamp":"2026-02-06T22:20:23.626685Z","issue_id":"cic-95f","payload":{}}
+{"type":"create","timestamp":"2026-02-06T22:20:33.742625Z","issue_id":"cic-bd4","payload":{"description":"Completed. Expanded docs for worktree.base in spawn_workers.py, commands/spawn-workers.md, and README.md.","priority":"2","title":"Improve worktree.base parameter documentation","type":"task"}}
+{"type":"close","timestamp":"2026-02-06T22:20:33.870953Z","issue_id":"cic-bd4","payload":{}}
