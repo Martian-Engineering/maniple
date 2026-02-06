@@ -11,7 +11,7 @@ CONVERSATION_PAGE_SIZE = 5
 
 # Directory for Codex JSONL output capture
 # Codex streams JSONL to stdout; we pipe it through tee to this directory
-CODEX_JSONL_DIR = Path.home() / ".claude-team" / "codex"
+CODEX_JSONL_DIR = Path.home() / ".maniple" / "codex"
 
 # Tool name used for issue tracker help
 ISSUE_TRACKER_HELP_TOOL = "issue_tracker_help"

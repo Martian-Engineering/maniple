@@ -13,8 +13,12 @@ from pathlib import Path
 from typing import Literal
 
 CONFIG_VERSION = 1
-CONFIG_DIR = Path.home() / ".claude-team"
-CONFIG_PATH = CONFIG_DIR / "config.json"
+DEFAULT_CONFIG_DIR = Path.home() / ".maniple"
+DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "config.json"
+
+# Allow tests to monkeypatch CONFIG_PATH without needing to patch Path.home().
+CONFIG_DIR = DEFAULT_CONFIG_DIR
+CONFIG_PATH = DEFAULT_CONFIG_PATH
 
 AgentType = Literal["claude", "codex"]
 LayoutMode = Literal["auto", "new"]
@@ -112,9 +116,24 @@ def save_config(config: ClaudeTeamConfig, config_path: Path | None = None) -> Pa
     return path
 
 
+def resolve_config_path(config_path: Path | None = None) -> Path:
+    """Resolve the config path used for `load_config`/`save_config`."""
+
+    return _resolve_config_path(config_path)
+
+
 def _resolve_config_path(config_path: Path | None) -> Path:
     # Resolve the config path, using the default location if needed.
-    return (config_path or CONFIG_PATH).expanduser()
+    if config_path is not None:
+        return config_path.expanduser()
+
+    # If tests have monkeypatched CONFIG_PATH, respect it and avoid touching user paths.
+    if CONFIG_PATH != DEFAULT_CONFIG_PATH:
+        return CONFIG_PATH.expanduser()
+
+    from maniple.paths import resolve_data_dir
+
+    return (resolve_data_dir() / "config.json").expanduser()
 
 
 def _read_json(path: Path) -> dict:
@@ -352,8 +371,11 @@ __all__ = [
     "CONFIG_DIR",
     "CONFIG_PATH",
     "CONFIG_VERSION",
+    "DEFAULT_CONFIG_DIR",
+    "DEFAULT_CONFIG_PATH",
     "default_config",
     "load_config",
     "parse_config",
+    "resolve_config_path",
     "save_config",
 ]
