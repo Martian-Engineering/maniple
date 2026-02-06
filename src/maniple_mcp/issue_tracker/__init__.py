@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from maniple_mcp.config import ClaudeTeamConfig
 
-logger = logging.getLogger("claude-team-mcp")
+logger = logging.getLogger("maniple")
 
 # Environment variable for explicit tracker override (highest priority).
 ISSUE_TRACKER_ENV_VAR = "CLAUDE_TEAM_ISSUE_TRACKER"

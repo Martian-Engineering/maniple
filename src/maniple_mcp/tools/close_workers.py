@@ -19,7 +19,7 @@ from ..registry import SessionRegistry, SessionStatus
 from ..worktree import WorktreeError, remove_worktree
 from ..utils import error_response, HINTS
 
-logger = logging.getLogger("claude-team-mcp")
+logger = logging.getLogger("maniple")
 
 
 def _compute_prompt_delay(text: str, agent_type: str) -> float:

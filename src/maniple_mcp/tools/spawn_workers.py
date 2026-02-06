@@ -28,7 +28,7 @@ from ..utils import HINTS, error_response, get_worktree_tracker_dir
 from ..worker_prompt import generate_worker_prompt, get_coordinator_guidance
 from ..worktree import WorktreeError, create_local_worktree
 
-logger = logging.getLogger("claude-team-mcp")
+logger = logging.getLogger("maniple")
 
 
 class WorktreeConfig(TypedDict, total=False):

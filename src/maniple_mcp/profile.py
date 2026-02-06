@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 from .subprocess_cache import cached_system_profiler
 
-logger = logging.getLogger("claude-team-mcp.profile")
+logger = logging.getLogger("maniple.profile")
 
 
 # =============================================================================
@@ -360,5 +360,4 @@ def _apply_colors_to_profile(
     for color_name, setter in ansi_color_setters:
         if color_name in colors:
             setter(rgb_to_color(colors[color_name]))
-
 

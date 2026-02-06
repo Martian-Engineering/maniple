@@ -28,14 +28,14 @@ logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-logger = logging.getLogger("claude-team-mcp")
+logger = logging.getLogger("maniple")
 # Add file handler for debugging
-_fh = logging.FileHandler("/tmp/claude-team-debug.log")
+_fh = logging.FileHandler("/tmp/maniple-debug.log")
 _fh.setLevel(logging.DEBUG)
 _fh.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
 logger.addHandler(_fh)
 logging.getLogger().addHandler(_fh)  # Also capture root logger
-logger.info("=== Claude Team MCP Server Starting ===")
+logger.info("=== Maniple MCP Server Starting ===")
 
 
 # =============================================================================
@@ -234,7 +234,7 @@ async def app_lifespan(
     ensure_connection() before making terminal backend calls that use the
     connection directly.
     """
-    logger.info("Claude Team MCP Server starting...")
+    logger.info("Maniple MCP Server starting...")
 
     backend_id = select_backend_id()
     logger.info("Selecting terminal backend: %s", backend_id)
@@ -300,7 +300,7 @@ async def app_lifespan(
     finally:
         # Keep the global poller running across per-session lifespans.
         # Cleanup: close any remaining sessions gracefully
-        logger.info("Claude Team MCP Server shutting down...")
+        logger.info("Maniple MCP Server shutting down...")
         if ctx.registry.count() > 0:
             logger.info(f"Cleaning up {ctx.registry.count()} managed session(s)...")
         logger.info("Shutdown complete")
@@ -318,7 +318,7 @@ def create_mcp_server(
 ) -> FastMCP:
     """Create and configure the FastMCP server instance."""
     server = FastMCP(
-        "Claude Team Manager",
+        "Maniple Manager",
         lifespan=functools.partial(app_lifespan, enable_poller=enable_poller),
         host=host,
         port=port,
@@ -460,12 +460,12 @@ def run_server(transport: str = "stdio", port: int = 8766):
         port: Port for HTTP transport (default 8766)
     """
     if transport == "streamable-http":
-        logger.info(f"Starting Claude Team MCP Server (HTTP on port {port})...")
+        logger.info(f"Starting Maniple MCP Server (HTTP on port {port})...")
         # Create server with configured port for HTTP mode
         server = create_mcp_server(host="127.0.0.1", port=port, enable_poller=True)
         server.run(transport="streamable-http")
     else:
-        logger.info("Starting Claude Team MCP Server (stdio)...")
+        logger.info("Starting Maniple MCP Server (stdio)...")
         mcp.run(transport="stdio")
 
 
@@ -474,7 +474,7 @@ def main():
     import argparse
     import sys
 
-    parser = argparse.ArgumentParser(description="Claude Team MCP Server")
+    parser = argparse.ArgumentParser(description="Maniple MCP Server")
     # Global server options apply when no subcommand is provided.
     parser.add_argument(
         "--http",
@@ -492,7 +492,7 @@ def main():
 
     config_parser = subparsers.add_parser(
         "config",
-        help="Manage claude-team configuration",
+        help="Manage maniple configuration",
     )
     config_subparsers = config_parser.add_subparsers(dest="config_command")
 

@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 from .subprocess_cache import cached_system_profiler
 
-logger = logging.getLogger("claude-team-mcp.iterm_utils")
+logger = logging.getLogger("maniple.iterm_utils")
 
 
 # =============================================================================
@@ -1048,4 +1048,3 @@ async def get_window_for_session(
                 if s.session_id == session.session_id:
                     return window
     return None
-

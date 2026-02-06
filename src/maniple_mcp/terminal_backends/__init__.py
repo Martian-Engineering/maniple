@@ -11,7 +11,7 @@ from .base import TerminalBackend, TerminalSession
 from .iterm import ItermBackend, MAX_PANES_PER_TAB
 from .tmux import TmuxBackend
 
-logger = logging.getLogger("claude-team-mcp")
+logger = logging.getLogger("maniple")
 
 
 def select_backend_id(
