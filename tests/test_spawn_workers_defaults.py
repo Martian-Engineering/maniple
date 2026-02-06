@@ -5,11 +5,11 @@ from types import SimpleNamespace
 import pytest
 from mcp.server.fastmcp import FastMCP
 
-import claude_team_mcp.session_state as session_state
-from claude_team_mcp.config import ConfigError, DefaultsConfig, default_config
-from claude_team_mcp.registry import SessionRegistry
-from claude_team_mcp.terminal_backends.base import TerminalSession
-from claude_team_mcp.tools import spawn_workers as spawn_workers_module
+import maniple_mcp.session_state as session_state
+from maniple_mcp.config import ConfigError, DefaultsConfig, default_config
+from maniple_mcp.registry import SessionRegistry
+from maniple_mcp.terminal_backends.base import TerminalSession
+from maniple_mcp.tools import spawn_workers as spawn_workers_module
 
 
 class FakeBackend:

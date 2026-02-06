@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from claude_team.events import WorkerEvent
-from claude_team_mcp.registry import (
+from maniple.events import WorkerEvent
+from maniple_mcp.registry import (
     RecoveredSession,
     RecoveryReport,
     SessionRegistry,

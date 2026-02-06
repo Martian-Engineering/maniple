@@ -1,5 +1,5 @@
 """
-Allow running the package directly with: python -m claude_team_mcp
+Allow running the package directly with: python -m maniple_mcp
 """
 
 from . import main

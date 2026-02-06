@@ -1,6 +1,6 @@
 """Tests for session_state module - iTerm marker functionality."""
 
-from claude_team_mcp.session_state import (
+from maniple_mcp.session_state import (
     ITERM_MARKER_PREFIX,
     ITERM_MARKER_SUFFIX,
     MARKER_PREFIX,

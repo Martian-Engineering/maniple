@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import colorsys
 
 # Import the pure functions that don't need iterm2
-from claude_team_mcp.colors import (
+from maniple_mcp.colors import (
     GOLDEN_RATIO_CONJUGATE,
     DEFAULT_SATURATION,
     DEFAULT_LIGHTNESS,
@@ -105,7 +105,7 @@ class TestGenerateTabColor:
             'iterm2': mock_iterm2,
             'iterm2.color': mock_color_module,
         }):
-            from claude_team_mcp.colors import generate_tab_color
+            from maniple_mcp.colors import generate_tab_color
             result = generate_tab_color(0)
 
             # Verify Color was called with RGB values
@@ -136,7 +136,7 @@ class TestGenerateTabColor:
             'iterm2': mock_iterm2,
             'iterm2.color': mock_color_module,
         }):
-            from claude_team_mcp.colors import generate_tab_color
+            from maniple_mcp.colors import generate_tab_color
             for i in range(5):
                 generate_tab_color(i)
 

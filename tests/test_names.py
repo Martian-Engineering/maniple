@@ -2,7 +2,7 @@
 
 import pytest
 
-from claude_team_mcp.names import (
+from maniple_mcp.names import (
     pick_names_for_count,
     pick_names,
     get_name_set,

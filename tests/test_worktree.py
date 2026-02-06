@@ -1,6 +1,6 @@
 """Tests for the worktree module."""
 
-from claude_team_mcp.worktree import short_slug
+from maniple_mcp.worktree import short_slug
 
 
 class TestShortSlug:

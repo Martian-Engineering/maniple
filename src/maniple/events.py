@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Literal
 
-from claude_team_mcp.config import ConfigError, EventsConfig, load_config
+from maniple_mcp.config import ConfigError, EventsConfig, load_config
 
 try:
     import fcntl

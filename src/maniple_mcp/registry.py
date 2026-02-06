@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Optional, Union
 
 if TYPE_CHECKING:
-    from claude_team.events import WorkerEvent
+    from maniple.events import WorkerEvent
 
 from .session_state import (
     find_codex_session_by_internal_id,

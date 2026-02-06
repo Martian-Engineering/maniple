@@ -5,7 +5,7 @@ from datetime import datetime
 
 import pytest
 
-from claude_team_mcp.registry import (
+from maniple_mcp.registry import (
     AnySession,
     EventState,
     RecoveredSession,

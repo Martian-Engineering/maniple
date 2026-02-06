@@ -2,8 +2,8 @@
 
 import pytest
 
-from claude_team_mcp.worker_prompt import generate_worker_prompt
-from claude_team_mcp.issue_tracker import (
+from maniple_mcp.worker_prompt import generate_worker_prompt
+from maniple_mcp.issue_tracker import (
     BEADS_BACKEND,
     PEBBLES_BACKEND,
     detect_issue_tracker,

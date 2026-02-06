@@ -3,8 +3,8 @@
 import pytest
 import msgspec
 
-from claude_team_mcp.schemas import codex
-from claude_team_mcp.schemas.codex import (
+from maniple_mcp.schemas import codex
+from maniple_mcp.schemas.codex import (
     AgentMessageItem,
     CommandExecutionItem,
     FileChangeItem,

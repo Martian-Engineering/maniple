@@ -6,8 +6,8 @@ import os
 
 import pytest
 
-from claude_team_mcp.config import IssueTrackerConfig, default_config
-from claude_team_mcp.issue_tracker import (
+from maniple_mcp.config import IssueTrackerConfig, default_config
+from maniple_mcp.issue_tracker import (
     BEADS_BACKEND,
     ISSUE_TRACKER_ENV_VAR,
     PEBBLES_BACKEND,

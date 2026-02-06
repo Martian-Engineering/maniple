@@ -9,7 +9,7 @@ import logging
 import os
 import subprocess
 
-from claude_team_mcp.issue_tracker import (
+from maniple_mcp.issue_tracker import (
     BEADS_BACKEND,
     PEBBLES_BACKEND,
     detect_issue_tracker,

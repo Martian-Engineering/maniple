@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from claude_team_mcp.iterm_utils import build_stop_hook_settings_file
+from maniple_mcp.iterm_utils import build_stop_hook_settings_file
 
 
 class TestClaudeCommandBuilding:
