@@ -22,7 +22,7 @@ try:
 except ImportError:  # pragma: no cover - platform-specific
     msvcrt = None
 
-logger = logging.getLogger("claude-team-mcp")
+logger = logging.getLogger("maniple")
 
 
 EventType = Literal[

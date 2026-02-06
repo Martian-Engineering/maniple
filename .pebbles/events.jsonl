@@ -304,3 +304,5 @@
 {"type":"dep_add","timestamp":"2026-02-06T00:34:04.927933Z","issue_id":"cic-a78","payload":{"dep_type":"blocks","depends_on":"cic-f03"}}
 {"type":"status_update","timestamp":"2026-02-06T02:13:59.307461Z","issue_id":"cic-d0a","payload":{"status":"in_progress"}}
 {"type":"close","timestamp":"2026-02-06T02:16:45.805609Z","issue_id":"cic-d0a","payload":{}}
+{"type":"status_update","timestamp":"2026-02-06T02:39:06.388635Z","issue_id":"cic-f84","payload":{"status":"in_progress"}}
+{"type":"close","timestamp":"2026-02-06T02:43:06.904883Z","issue_id":"cic-f84","payload":{}}
