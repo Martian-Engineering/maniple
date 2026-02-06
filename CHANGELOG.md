@@ -5,6 +5,16 @@ All notable changes to claude-team will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-02-06
+
+### Changed
+- **Renamed `bead` parameter to `issue_id`**: `spawn_workers` now uses `issue_id` instead of `bead` for tracker-agnostic issue assignment. `bead` is still accepted as a deprecated alias. (#23)
+
+### Documentation
+- **`coordinator_annotation` clarified**: Documented that this field is coordinator-facing metadata, not task delivery. Tasks must be sent via follow-up message. (#22)
+- **`agent_type` parameter guidance**: Added note that this field should not be specified unless explicitly requested by the user.
+- **`worktree.base` documentation improved**: Clearer explanation of base branch resolution for worktrees. (#24)
+
 ## [Unreleased]
 
 ## [0.9.2] - 2026-02-05
