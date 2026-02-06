@@ -13,7 +13,7 @@ Two worktree strategies are supported:
    - No .gitignore modifications needed
 
 2. Local worktrees (preferred):
-   {repo}/.worktrees/{bead-annotation}/ or {name-uuid-annotation}/
+   {repo}/.worktrees/{issue-annotation}/ or {name-uuid-annotation}/
    - Kept within the repo for easier discovery and cleanup
    - Automatically adds .worktrees to .gitignore
 """
@@ -270,7 +270,7 @@ def _resolve_worktree_base(repo_path: Path, base: str) -> str:
 def create_local_worktree(
     repo_path: Path,
     worker_name: str,
-    bead_id: Optional[str] = None,
+    issue_id: Optional[str] = None,
     annotation: Optional[str] = None,
     branch: Optional[str] = None,
     base: Optional[str] = None,
@@ -279,7 +279,7 @@ def create_local_worktree(
     Create a git worktree in the repo's .worktrees/ directory.
 
     Creates a new worktree at:
-        {repo}/.worktrees/{bead_id}-{annotation}/  (if bead_id provided)
+        {repo}/.worktrees/{issue_id}-{annotation}/  (if issue_id provided)
         {repo}/.worktrees/{worker_name}-{uuid}-{annotation}/  (otherwise)
 
     The branch name matches the worktree directory name for consistency unless
@@ -288,14 +288,14 @@ def create_local_worktree(
 
     If a generated worktree path or branch already exists, appends an
     incrementing suffix (-1, -2, etc.) until an available name is found.
-    This allows multiple workers to work on the same bead in parallel.
+    This allows multiple workers to work on the same issue in parallel.
     When an explicit branch is provided, pre-existing branches are treated
     as an error.
 
     Args:
         repo_path: Path to the main repository
         worker_name: Name of the worker (used in fallback naming)
-        bead_id: Optional bead issue ID (e.g., "cic-abc123")
+        issue_id: Optional issue tracker ID (e.g., "cic-abc123")
         annotation: Optional annotation for the worktree
         branch: Optional branch name to create for the worktree
         base: Optional base ref/branch for the new branch
@@ -307,19 +307,19 @@ def create_local_worktree(
         WorktreeError: If the git worktree command fails
 
     Example:
-        # With bead ID
+        # With issue ID
         path = create_local_worktree(
             repo_path=Path("/path/to/repo"),
             worker_name="Groucho",
-            bead_id="cic-abc",
+            issue_id="cic-abc",
             annotation="Add local worktrees"
         )
         # Returns: Path("/path/to/repo/.worktrees/cic-abc-add-local-worktrees")
 
-        # If called again with same bead/annotation:
+        # If called again with same issue/annotation:
         # Returns: Path("/path/to/repo/.worktrees/cic-abc-add-local-worktrees-1")
 
-        # Without bead ID
+        # Without issue ID
         path = create_local_worktree(
             repo_path=Path("/path/to/repo"),
             worker_name="Groucho",
@@ -330,12 +330,12 @@ def create_local_worktree(
     repo_path = Path(repo_path).resolve()
 
     # Build the worktree directory name
-    if bead_id:
-        # Bead-based naming: {bead_id}-{annotation}
+    if issue_id:
+        # Issue-based naming: {issue_id}-{annotation}
         if annotation:
-            dir_name = f"{bead_id}-{short_slug(annotation)}"
+            dir_name = f"{issue_id}-{short_slug(annotation)}"
         else:
-            dir_name = bead_id
+            dir_name = issue_id
     else:
         # Fallback naming: {worker_name}-{uuid}-{annotation}
         short_uuid = uuid.uuid4().hex[:8]
