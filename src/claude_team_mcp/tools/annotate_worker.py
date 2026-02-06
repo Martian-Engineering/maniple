@@ -30,10 +30,20 @@ def register_tools(mcp: FastMCP) -> None:
         Coordinators use this to track what task each worker is assigned to.
         These annotations appear in list_workers output.
 
+        ⚠️ **IMPORTANT**: This updates metadata only and does NOT send any message
+        to the worker. The worker will not be notified. Use `message_workers` to
+        send actual instructions to workers.
+
+        Use this to:
+        - Update your tracking notes after spawning
+        - Track what phase of work a worker is in
+        - Add context visible in list_workers output
+
         Args:
             session_id: The session to annotate.
                 Accepts internal IDs, terminal IDs, or worker names.
-            annotation: Note about what this worker is working on
+            annotation: Note about what this worker is working on (coordinator
+                tracking only - worker does not receive this)
 
         Returns:
             Confirmation that the annotation was saved

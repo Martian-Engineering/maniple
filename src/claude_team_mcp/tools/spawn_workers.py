@@ -116,10 +116,11 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 - base: Base ref/branch for the new branch
             name: Optional worker name override. Leaving this empty allows us to auto-pick names
                 from themed sets (Beatles, Marx Brothers, etc.) which aids visual identification.
-            annotation: Optional task description. Shown on badge second line, used in
-                branch names, and set as worker annotation. If using a bead, it's
-                recommended to use the bead title as the annotation for clarity.
-                Truncated to 30 chars in badge.
+            annotation: Optional task label for coordinator tracking. NOT sent to worker.
+                Used for: badge display (2nd line), branch names, and list_workers output.
+                This is metadata for YOUR reference, not task instructions for the worker.
+                If using a bead, it's recommended to use the bead title as the annotation
+                for clarity. Truncated to 30 chars in badge.
             bead: Optional beads issue ID. If provided, this IS the worker's assignment.
                 The worker receives beads workflow instructions (mark in_progress, close,
                 commit with issue reference). Used for badge first line and branch naming.
@@ -130,6 +131,10 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 struggle with most commands (writes, shell, etc.).
 
         **Worker Assignment (how workers know what to do):**
+
+        ⚠️ **IMPORTANT**: Tasks are delivered via `bead` and/or `prompt` parameters ONLY.
+        The `annotation` parameter is never sent to workers - it's just metadata for
+        coordinator tracking (badges, branches, list output).
 
         The worker's task is determined by `bead` and/or `prompt`:
 
