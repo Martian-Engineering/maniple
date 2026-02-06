@@ -107,6 +107,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             agent_type: Which agent CLI to use (default "claude").
                 - "claude": Claude Code CLI (Stop hook idle detection)
                 - "codex": OpenAI Codex CLI (JSONL streaming idle detection)
+
+                ⚠️ **IMPORTANT**: Do not specify this field unless explicitly requested by the user.
+                The default agent type is used unless an override is required.
             use_worktree: Whether to create an isolated worktree (default True).
                 - True: Creates worktree at <repo>/.worktrees/<bead>-<annotation>
                   or <repo>/.worktrees/<name>-<uuid>-<annotation>

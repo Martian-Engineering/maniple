@@ -97,6 +97,37 @@ annotate_worker(
 
 This updates your tracking info but does **not** notify the worker.
 
+## Best Practices
+
+### Don't Specify `agent_type` Unless Needed
+
+The `agent_type` parameter defaults to `"claude"` and should **not** be specified unless the user explicitly requests it.
+
+```python
+# ❌ AVOID: Unnecessary agent_type specification
+spawn_workers(workers=[{
+    "project_path": "auto",
+    "agent_type": "claude",  # Don't specify if using default!
+    "bead": "cic-123"
+}])
+
+# ✅ CORRECT: Let it use the default
+spawn_workers(workers=[{
+    "project_path": "auto",
+    "bead": "cic-123"
+}])
+
+# ✅ CORRECT: Only specify when explicitly requested
+# User: "Spawn a Codex worker to review this code"
+spawn_workers(workers=[{
+    "project_path": "auto",
+    "agent_type": "codex",  # OK - user explicitly requested Codex
+    "prompt": "Review auth.py for vulnerabilities"
+}])
+```
+
+**Why?** The default behavior is intentional and covers most use cases. Only override when the user has a specific reason to use a different agent type.
+
 ## See Also
 
 - [Full documentation](./coordinator-annotation.md) - Complete explanation with code references

@@ -225,3 +225,55 @@ This tool is for **updating** coordinator tracking metadata after spawn. It does
 | `message_workers()` | Send message after spawn | ✅ Yes |
 
 **Key Takeaway:** If you want a worker to know about something, use `bead`, `prompt`, or `message_workers()`. The `annotation` field is only for your own tracking and visual identification.
+
+## Best Practices
+
+### 1. Don't Specify `agent_type` Unless Explicitly Requested
+
+The `agent_type` parameter defaults to `"claude"` and should **not** be specified unless the user explicitly requests a different agent type.
+
+**Why?** The default behavior is intentional and covers most use cases. Unnecessarily specifying `agent_type` adds noise to the configuration and may override intended defaults.
+
+**Examples:**
+
+```python
+# ❌ AVOID: Unnecessary agent_type specification
+spawn_workers(workers=[{
+    "project_path": "auto",
+    "agent_type": "claude",  # Redundant - this is already the default!
+    "bead": "cic-123"
+}])
+
+# ✅ CORRECT: Use the default
+spawn_workers(workers=[{
+    "project_path": "auto",
+    "bead": "cic-123"
+}])
+
+# ✅ CORRECT: Only specify when user explicitly requests it
+# Example: User says "Spawn a Codex worker for this task"
+spawn_workers(workers=[{
+    "project_path": "auto",
+    "agent_type": "codex",  # OK - user explicitly requested Codex
+    "prompt": "Review the authentication module for vulnerabilities"
+}])
+```
+
+### 2. Use `annotation` for Tracking, Not Task Delivery
+
+Always remember: `annotation` is for **your** reference, not **their** instructions.
+
+```python
+# ✅ GOOD: annotation helps you track, bead delivers task
+spawn_workers(workers=[{
+    "project_path": "auto",
+    "bead": "cic-123",
+    "annotation": "Auth bug - login flow"  # Your note for tracking
+}])
+
+# ❌ BAD: annotation alone won't deliver the task
+spawn_workers(workers=[{
+    "project_path": "auto",
+    "annotation": "Fix the authentication bug"  # Worker never receives this!
+}])
+```
