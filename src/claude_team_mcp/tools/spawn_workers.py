@@ -42,11 +42,11 @@ class WorkerConfig(TypedDict, total=False):
     """Configuration for a single worker."""
 
     project_path: Required[str]  # Required: Path to repo, or "auto" to use env var
-    agent_type: str  # Optional: "claude" (default) or "codex"
+    agent_type: str  # Optional: "claude" (default) or "codex". Don't specify unless user requests.
     name: str  # Optional: Worker name override. None = auto-pick from themed sets.
-    annotation: str  # Optional: Task description (badge, branch, worker annotation)
-    bead: str  # Optional: Beads issue ID (for badge, branch naming)
-    prompt: str  # Optional: Custom prompt (None = standard worker prompt)
+    annotation: str  # Optional: Tracking label (NOT sent to worker). For badges/branches only.
+    bead: str  # Optional: Issue ID - THIS IS the worker's assignment if provided
+    prompt: str  # Optional: Custom instructions - THIS IS the worker's task if provided
     skip_permissions: bool  # Optional: Default False
     use_worktree: bool  # Optional: Create isolated worktree (default True)
     worktree: WorktreeConfig  # Optional: Worktree settings (branch/base)
