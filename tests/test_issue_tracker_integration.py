@@ -29,7 +29,7 @@ class TestTrackerDetectionWithWorkerPrompts:
         prompt = generate_worker_prompt(
             "test-session",
             "TestWorker",
-            bead=issue_id,
+            issue_id=issue_id,
             project_path=str(project_path),
         )
 
@@ -59,7 +59,7 @@ class TestTrackerDetectionWithWorkerPrompts:
         prompt = generate_worker_prompt(
             "test-session",
             "TestWorker",
-            bead=issue_id,
+            issue_id=issue_id,
             project_path=str(project_path),
         )
 
@@ -92,7 +92,7 @@ class TestTrackerDetectionWithWorkerPrompts:
         prompt = generate_worker_prompt(
             "test-session",
             "TestWorker",
-            bead=issue_id,
+            issue_id=issue_id,
             project_path=str(project_path),
         )
 
@@ -119,7 +119,7 @@ class TestTrackerDetectionWithWorkerPrompts:
         prompt = generate_worker_prompt(
             "test-session",
             "TestWorker",
-            bead=issue_id,
+            issue_id=issue_id,
             project_path=str(project_path),
         )
 
@@ -142,7 +142,7 @@ class TestTrackerDetectionWithWorkerPrompts:
         prompt = generate_worker_prompt(
             "test-session",
             "TestWorker",
-            bead=issue_id,
+            issue_id=issue_id,
             project_path=None,
         )
 
@@ -168,7 +168,7 @@ class TestCommandTemplateFormatting:
         prompt = generate_worker_prompt(
             "test",
             "Worker",
-            bead="cic-test",
+            issue_id="cic-test",
             project_path=str(project_path),
         )
 
@@ -185,7 +185,7 @@ class TestCommandTemplateFormatting:
         prompt = generate_worker_prompt(
             "test",
             "Worker",
-            bead="cic-test",
+            issue_id="cic-test",
             project_path=str(project_path),
         )
 
@@ -202,7 +202,7 @@ class TestCommandTemplateFormatting:
         prompt = generate_worker_prompt(
             "test",
             "Worker",
-            bead="cic-show-test",
+            issue_id="cic-show-test",
             project_path=str(project_path),
         )
 
@@ -219,7 +219,7 @@ class TestCommandTemplateFormatting:
         prompt = generate_worker_prompt(
             "test",
             "Worker",
-            bead="cic-show-test",
+            issue_id="cic-show-test",
             project_path=str(project_path),
         )
 
@@ -241,7 +241,7 @@ class TestCodexAgentTrackerIntegration:
             "test",
             "CodexWorker",
             agent_type="codex",
-            bead="cic-123",
+            issue_id="cic-123",
             project_path=str(project_path),
         )
 
@@ -263,7 +263,7 @@ class TestCodexAgentTrackerIntegration:
             "test",
             "CodexWorker",
             agent_type="codex",
-            bead="cic-456",
+            issue_id="cic-456",
             project_path=str(project_path),
         )
 
@@ -288,7 +288,7 @@ class TestTrackerWorkflowSteps:
         prompt = generate_worker_prompt(
             "test",
             "Worker",
-            bead="cic-123",
+            issue_id="cic-123",
             project_path=str(project_path),
         )
 
@@ -336,7 +336,7 @@ class TestTrackerWorkflowSteps:
         prompt = generate_worker_prompt(
             "test",
             "Worker",
-            bead="cic-123",
+            issue_id="cic-123",
             project_path=str(project_path),
         )
 
@@ -366,7 +366,7 @@ class TestTrackerCommitInstructions:
         prompt = generate_worker_prompt(
             "test",
             "Worker",
-            bead="cic-commit",
+            issue_id="cic-commit",
             project_path=str(project_path),
         )
 
@@ -382,7 +382,7 @@ class TestTrackerCommitInstructions:
         prompt = generate_worker_prompt(
             "test",
             "Worker",
-            bead="cic-commit",
+            issue_id="cic-commit",
             project_path=str(project_path),
         )
 

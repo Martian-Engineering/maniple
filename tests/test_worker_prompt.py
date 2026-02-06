@@ -42,7 +42,7 @@ class TestAssignmentCases:
         issue_id = "cic-123"
         prompt = generate_worker_prompt(
             "test", "Worker",
-            bead=issue_id,
+            issue_id=issue_id,
             project_path=str(project_path)
         )
         assert f"Your assignment is `{issue_id}`" in prompt
@@ -56,7 +56,7 @@ class TestAssignmentCases:
         issue_id = "cic-456"
         prompt = generate_worker_prompt(
             "test", "Worker",
-            bead=issue_id,
+            issue_id=issue_id,
             custom_prompt="Focus on the edge cases"
         )
         assert f"`{issue_id}`" in prompt
@@ -98,7 +98,7 @@ class TestIssueTrackerWorkflow:
         issue_id = "cic-abc"
         prompt = generate_worker_prompt(
             "test", "Worker",
-            bead=issue_id,
+            issue_id=issue_id,
             project_path=str(project_path)
         )
         assert f"update {issue_id}" in prompt
@@ -115,7 +115,7 @@ class TestIssueTrackerWorkflow:
         issue_id = "cic-abc"
         prompt = generate_worker_prompt(
             "test", "Worker",
-            bead=issue_id,
+            issue_id=issue_id,
             project_path=str(project_path)
         )
         assert f'git commit -m "{issue_id}:' in prompt
@@ -202,14 +202,14 @@ class TestWorktreeMode:
 
     def test_worker_prompt_with_issue_has_commit_in_workflow(self):
         """Worker prompt with issue has commit as part of tracker workflow."""
-        prompt = generate_worker_prompt("test", "Worker", bead="cic-123")
+        prompt = generate_worker_prompt("test", "Worker", issue_id="cic-123")
         # Commit is in the tracker workflow, not separate
         assert "git commit" in prompt
         assert "cic-123" in prompt
 
     def test_worktree_with_issue_no_separate_commit_section(self):
         """With issue, commit is in tracker workflow - no separate commit section."""
-        prompt = generate_worker_prompt("test", "Worker", use_worktree=True, bead="cic-123")
+        prompt = generate_worker_prompt("test", "Worker", use_worktree=True, issue_id="cic-123")
         # Should have tracker workflow with commit
         assert 'git commit -m "cic-123:' in prompt
         # Should NOT have separate "Commit when done" section
@@ -271,13 +271,13 @@ class TestCodexWorkerPrompt:
         codex_prompt = generate_worker_prompt(
             "test", "Worker",
             agent_type="codex",
-            bead=issue_id,
+            issue_id=issue_id,
             project_path=str(project_path)
         )
         claude_prompt = generate_worker_prompt(
             "test", "Worker",
             agent_type="claude",
-            bead=issue_id,
+            issue_id=issue_id,
             project_path=str(project_path)
         )
         for prompt in (codex_prompt, claude_prompt):
@@ -288,7 +288,7 @@ class TestCodexWorkerPrompt:
     def test_codex_with_issue_only(self):
         """Codex with issue only should show assignment."""
         issue_id = "cic-456"
-        prompt = generate_worker_prompt("test", "Worker", agent_type="codex", bead=issue_id)
+        prompt = generate_worker_prompt("test", "Worker", agent_type="codex", issue_id=issue_id)
         assert f"Your assignment is `{issue_id}`" in prompt
         assert "workflow" in prompt
         assert "Mark in progress" in prompt

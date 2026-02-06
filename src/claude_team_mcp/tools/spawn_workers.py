@@ -732,7 +732,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                             "JSONL correlation unavailable"
                         )
 
-            # Send worker prompts - always use generate_worker_prompt with bead/custom_prompt
+            # Send worker prompts - always use generate_worker_prompt with issue_id/custom_prompt
             workers_awaiting_task: list[str] = []  # Workers with no bead and no prompt
             for i, managed in enumerate(managed_sessions):
                 worker_config = workers[i]
@@ -754,7 +754,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     resolved_names[i],
                     agent_type=managed.agent_type,
                     use_worktree=use_worktree,
-                    bead=bead,
+                    issue_id=bead,
                     project_path=tracker_path,
                     custom_prompt=custom_prompt,
                 )
