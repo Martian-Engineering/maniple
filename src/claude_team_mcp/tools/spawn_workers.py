@@ -42,11 +42,11 @@ class WorkerConfig(TypedDict, total=False):
     """Configuration for a single worker."""
 
     project_path: Required[str]  # Required: Path to repo, or "auto" to use env var
-    agent_type: str  # Optional: "claude" (default) or "codex"
+    agent_type: str  # Optional: "claude" (default) or "codex". Don't specify unless user requests.
     name: str  # Optional: Worker name override. None = auto-pick from themed sets.
-    annotation: str  # Optional: Task description (badge, branch, worker annotation)
-    issue_id: str  # Optional: Issue tracker issue ID (for badge, branch naming)
-    prompt: str  # Optional: Custom prompt (None = standard worker prompt)
+    annotation: str  # Optional: Tracking label (NOT sent to worker). For badges/branches only.
+    issue_id: str  # Optional: Issue ID - THIS IS the worker's assignment if provided
+    prompt: str  # Optional: Custom instructions - THIS IS the worker's task if provided
     skip_permissions: bool  # Optional: Default False
     use_worktree: bool  # Optional: Create isolated worktree (default True)
     worktree: WorktreeConfig  # Optional: Worktree settings (branch/base)
@@ -107,6 +107,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             agent_type: Which agent CLI to use (default "claude").
                 - "claude": Claude Code CLI (Stop hook idle detection)
                 - "codex": OpenAI Codex CLI (JSONL streaming idle detection)
+
+                ⚠️ **IMPORTANT**: Do not specify this field unless explicitly requested by the user.
+                The default agent type is used unless an override is required.
             use_worktree: Whether to create an isolated worktree (default True).
                 - True: Creates worktree at <repo>/.worktrees/<issue_id>-<annotation>
                   or <repo>/.worktrees/<name>-<uuid>-<annotation>
@@ -116,10 +119,11 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 - base: Base ref/branch for the new branch
             name: Optional worker name override. Leaving this empty allows us to auto-pick names
                 from themed sets (Beatles, Marx Brothers, etc.) which aids visual identification.
-            annotation: Optional task description. Shown on badge second line, used in
-                branch names, and set as worker annotation. If using an issue id, it's
-                recommended to use the issue title as the annotation for clarity.
-                Truncated to 30 chars in badge.
+            annotation: Optional task label for coordinator tracking. NOT sent to worker.
+                Used for: badge display (2nd line), branch names, and list_workers output.
+                This is metadata for YOUR reference, not task instructions for the worker.
+                If using an issue_id, it's recommended to use the issue title as the
+                annotation for clarity. Truncated to 30 chars in badge.
             issue_id: Optional issue tracker issue ID. If provided, this IS the worker's assignment.
                 The worker receives issue tracker workflow instructions (mark in_progress, close,
                 commit with issue reference). Used for badge first line and branch naming.
@@ -130,6 +134,10 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 struggle with most commands (writes, shell, etc.).
 
         **Worker Assignment (how workers know what to do):**
+
+        ⚠️ **IMPORTANT**: Tasks are delivered via `issue_id` and/or `prompt` parameters ONLY.
+        The `annotation` parameter is never sent to workers - it's just metadata for
+        coordinator tracking (badges, branches, list output).
 
         The worker's task is determined by `issue_id` and/or `prompt`:
 
