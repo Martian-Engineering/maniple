@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-02-05
+
+### Fixed
+- **Codex worker log discovery**: `read_worker_logs` no longer returns wrong session data (e.g. coordinator's own logs) for Codex workers. Removed blind `find_codex_session_file()` fallback that grabbed the most recent Codex JSONL globally regardless of session ownership.
+- **Codex JSONL path caching**: Codex workers now cache their JSONL path at spawn time (parity with Claude workers), via new `await_codex_marker_in_jsonl()` polling.
+- **Discovery window**: Increased `max_age_seconds` from 600 (10 min) to 86400 (24h) for Codex session file scanning — workers can run for hours.
+- **RecoveredSession crashes**: Fixed `discover_workers`, `adopt_worker`, and `spawn_workers` crashing with `'RecoveredSession' object has no attribute 'terminal_session'` when recovered sessions exist in the registry.
+
 ## [0.9.1] - 2026-02-04
 
 ### Fixed
