@@ -12,6 +12,7 @@ from collections.abc import Callable, Mapping
 
 from . import config as config_module
 from .config import ClaudeTeamConfig, ConfigError, parse_config
+from .utils.env_vars import get_env_with_fallback
 
 _ALLOWED_AGENT_TYPES = {"claude", "codex"}
 _ALLOWED_LAYOUTS = {"auto", "new"}
@@ -99,40 +100,68 @@ def _resolve_config_path(config_path: Path | None) -> Path:
 
 def _apply_env_overrides(data: dict, env: Mapping[str, str]) -> None:
     # Apply env overrides using the same precedence logic as runtime helpers.
-    command_override = env.get("CLAUDE_TEAM_COMMAND")
+    command_override = get_env_with_fallback(
+        "MANIPLE_COMMAND",
+        "CLAUDE_TEAM_COMMAND",
+        env=env,
+    )
     if command_override:
         data["commands"]["claude"] = command_override
 
-    codex_override = env.get("CLAUDE_TEAM_CODEX_COMMAND")
+    codex_override = get_env_with_fallback(
+        "MANIPLE_CODEX_COMMAND",
+        "CLAUDE_TEAM_CODEX_COMMAND",
+        env=env,
+    )
     if codex_override:
         data["commands"]["codex"] = codex_override
 
     # Terminal backend is a direct override (mirrors select_backend_id).
-    backend_override = env.get("CLAUDE_TEAM_TERMINAL_BACKEND")
+    backend_override = get_env_with_fallback(
+        "MANIPLE_TERMINAL_BACKEND",
+        "CLAUDE_TEAM_TERMINAL_BACKEND",
+        env=env,
+    )
     if backend_override:
         data["terminal"]["backend"] = backend_override.strip().lower()
 
     # Issue tracker override mirrors detect_issue_tracker validation.
-    tracker_override = env.get("CLAUDE_TEAM_ISSUE_TRACKER")
+    tracker_override = get_env_with_fallback(
+        "MANIPLE_ISSUE_TRACKER",
+        "CLAUDE_TEAM_ISSUE_TRACKER",
+        env=env,
+    )
     if tracker_override:
         normalized = tracker_override.strip().lower()
         if normalized in _ALLOWED_ISSUE_TRACKERS:
             data["issue_tracker"]["override"] = normalized
 
     # Events overrides use integer parsing with graceful fallback.
-    max_size_override = env.get("CLAUDE_TEAM_EVENTS_MAX_SIZE_MB")
+    max_size_override = get_env_with_fallback(
+        "MANIPLE_EVENTS_MAX_SIZE_MB",
+        "CLAUDE_TEAM_EVENTS_MAX_SIZE_MB",
+        env=env,
+    )
     if max_size_override:
         parsed = _parse_int_override(max_size_override)
         if parsed is not None:
             data["events"]["max_size_mb"] = parsed
 
-    recent_hours_override = env.get("CLAUDE_TEAM_EVENTS_RECENT_HOURS")
+    recent_hours_override = get_env_with_fallback(
+        "MANIPLE_EVENTS_RECENT_HOURS",
+        "CLAUDE_TEAM_EVENTS_RECENT_HOURS",
+        env=env,
+    )
     if recent_hours_override:
         parsed = _parse_int_override(recent_hours_override)
         if parsed is not None:
             data["events"]["recent_hours"] = parsed
 
-    stale_threshold_override = env.get("CLAUDE_TEAM_STALE_THRESHOLD_MINUTES")
+    stale_threshold_override = get_env_with_fallback(
+        "MANIPLE_STALE_THRESHOLD_MINUTES",
+        "CLAUDE_TEAM_STALE_THRESHOLD_MINUTES",
+        env=env,
+    )
     if stale_threshold_override:
         parsed = _parse_int_override(stale_threshold_override)
         if parsed is not None:

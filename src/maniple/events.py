@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 from maniple_mcp.config import ConfigError, EventsConfig, load_config
+from maniple_mcp.utils.env_vars import get_int_env_with_fallback
 
 try:
     import fcntl
@@ -34,17 +35,6 @@ EventType = Literal[
 ]
 
 
-def _int_env(name: str, default: int) -> int:
-    # Parse integer environment overrides with a safe fallback.
-    value = os.environ.get(name)
-    if value is None or value == "":
-        return default
-    try:
-        return int(value)
-    except ValueError:
-        return default
-
-
 def _load_rotation_config() -> EventsConfig:
     # Resolve rotation defaults from config, applying env overrides.
     try:
@@ -56,8 +46,16 @@ def _load_rotation_config() -> EventsConfig:
         )
         events_config = EventsConfig()
     return EventsConfig(
-        max_size_mb=_int_env("CLAUDE_TEAM_EVENTS_MAX_SIZE_MB", events_config.max_size_mb),
-        recent_hours=_int_env("CLAUDE_TEAM_EVENTS_RECENT_HOURS", events_config.recent_hours),
+        max_size_mb=get_int_env_with_fallback(
+            "MANIPLE_EVENTS_MAX_SIZE_MB",
+            "CLAUDE_TEAM_EVENTS_MAX_SIZE_MB",
+            default=events_config.max_size_mb,
+        ),
+        recent_hours=get_int_env_with_fallback(
+            "MANIPLE_EVENTS_RECENT_HOURS",
+            "CLAUDE_TEAM_EVENTS_RECENT_HOURS",
+            default=events_config.recent_hours,
+        ),
     )
 
 
