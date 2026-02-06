@@ -1,4 +1,4 @@
-# Claude Team MCP Server
+# Maniple MCP Server
 
 An MCP server that enables a "manager" Claude Code session to spawn and orchestrate multiple "worker" Claude Code sessions via iTerm2.
 

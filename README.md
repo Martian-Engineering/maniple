@@ -1,23 +1,23 @@
-# Claude Team MCP Server
+# Maniple MCP Server
 
 An MCP server that allows one Claude Code session to spawn and manage a team of other Claude Code (or Codex) sessions via terminal backends (tmux or iTerm2).
 
 ## Introduction
 
-`claude-team` is an MCP server and a set of slash commands for allowing Claude Code to orchestrate a "team" of other Claude Code sessions. It uses terminal backends (tmux or iTerm2) to spawn new terminal sessions and run Claude Code within them.
+`maniple` is an MCP server and a set of slash commands for allowing Claude Code to orchestrate a "team" of other Claude Code sessions. It uses terminal backends (tmux or iTerm2) to spawn new terminal sessions and run Claude Code within them.
 
 ### Why?
 
 - **Parallelism:** Many development tasks can be logically parallelized, but managing that parallelism is difficult for humans with limited attention spans. Claude, meanwhile, is very effective at it.
 - **Context management:** Offloading implementation to a worker gives the implementing agent a fresh context window (smarter), and keeps the manager's context free of implementation details.
 - **Background work:** Sometimes you want to have Claude Code go research something or answer a question without blocking the main thread of work.
-- **Visibility:** `claude-team` spawns real Claude Code sessions. You can watch them, interrupt and take control, or close them out.
+- **Visibility:** `maniple` spawns real Claude Code sessions. You can watch them, interrupt and take control, or close them out.
 
 But, *why not just use Claude Code sub-agents*, you ask? They're opaque -- they go off and do things and you, the user, cannot effectively monitor their work, interject, or continue a conversation with them. Using a full Claude Code session obviates this problem.
 
 ### Terminal Backends
 
-`claude-team` supports two terminal backends:
+`maniple` supports two terminal backends:
 
 | Backend | Platform | Status |
 |---------|----------|--------|
@@ -25,13 +25,13 @@ But, *why not just use Claude Code sub-agents*, you ask? They're opaque -- they 
 | **iTerm2** | macOS only | Fully supported. Requires Python API enabled. |
 
 Backend selection order:
-1. `CLAUDE_TEAM_TERMINAL_BACKEND` environment variable (`tmux` or `iterm`)
+1. `MANIPLE_TERMINAL_BACKEND` environment variable (`tmux` or `iterm`)
 2. Config file setting (`terminal.backend`)
 3. Auto-detect: if `TMUX` env var is set, use tmux; otherwise iTerm2
 
 ### Git Worktrees: Isolated Branches per Worker
 
-A key feature of `claude-team` is **git worktree support**. When spawning workers with `use_worktree: true` (the default), each worker gets:
+A key feature of `maniple` is **git worktree support**. When spawning workers with `use_worktree: true` (the default), each worker gets:
 
 - **Its own working directory** - A git worktree at `{repo}/.worktrees/{name}/`
 - **Its own branch** - Automatically created from the current HEAD
@@ -60,7 +60,7 @@ Workers can run either Claude Code or OpenAI Codex. Set `agent_type: "codex"` in
 - **Visual Identity**: Each worker gets a unique tab color and themed name (Marx Brothers, Beatles, etc.)
 - **Session Recovery**: Discover and adopt orphaned sessions after MCP server restarts
 - **HTTP Mode**: Run as a persistent service with streamable-http transport
-- **Config File**: Centralized configuration at `~/.claude-team/config.json`
+- **Config File**: Centralized configuration at `~/.maniple/config.json`
 
 ## Requirements
 
@@ -76,10 +76,10 @@ Workers can run either Claude Code or OpenAI Codex. Set `agent_type: "codex"` in
 
 ```bash
 # Add the Martian Engineering marketplace
-/plugin marketplace add Martian-Engineering/claude-team
+/plugin marketplace add Martian-Engineering/maniple
 
 # Install the plugin
-/plugin install claude-team@martian-engineering
+/plugin install maniple@martian-engineering
 ```
 
 This automatically configures the MCP server - no manual setup needed.
@@ -87,14 +87,14 @@ This automatically configures the MCP server - no manual setup needed.
 ### From PyPI
 
 ```bash
-uvx --from claude-team-mcp@latest claude-team
+uvx --from maniple@latest maniple
 ```
 
 ### From Source
 
 ```bash
-git clone https://github.com/Martian-Engineering/claude-team.git
-cd claude-team
+git clone https://github.com/Martian-Engineering/maniple.git
+cd maniple
 uv sync
 ```
 
@@ -109,9 +109,9 @@ Add to your Claude Code MCP settings. You can configure this at:
 ```json
 {
   "mcpServers": {
-    "claude-team": {
+    "maniple": {
       "command": "uvx",
-      "args": ["--from", "claude-team-mcp@latest", "claude-team"]
+      "args": ["--from", "maniple@latest", "maniple"]
     }
   }
 }
@@ -122,9 +122,9 @@ Add to your Claude Code MCP settings. You can configure this at:
 ```json
 {
   "mcpServers": {
-    "claude-team": {
+    "maniple": {
       "command": "uv",
-      "args": ["run", "--directory", "/path/to/claude-team", "python", "-m", "claude_team_mcp"]
+      "args": ["run", "--directory", "/path/to/maniple", "python", "-m", "maniple_mcp"]
     }
   }
 }
@@ -132,15 +132,15 @@ Add to your Claude Code MCP settings. You can configure this at:
 
 ### Project-level with auto project path
 
-For project-scoped `.mcp.json` files, use `CLAUDE_TEAM_PROJECT_DIR` so workers inherit the project path:
+For project-scoped `.mcp.json` files, use `MANIPLE_PROJECT_DIR` so workers inherit the project path:
 
 ```json
 {
   "mcpServers": {
-    "claude-team": {
+    "maniple": {
       "command": "uvx",
-      "args": ["--from", "claude-team-mcp@latest", "claude-team"],
-      "env": { "CLAUDE_TEAM_PROJECT_DIR": "${PWD}" }
+      "args": ["--from", "maniple@latest", "maniple"],
+      "env": { "MANIPLE_PROJECT_DIR": "${PWD}" }
     }
   }
 }
@@ -150,15 +150,20 @@ After adding the configuration, restart Claude Code for it to take effect.
 
 ## Config File
 
-`claude-team` reads configuration from `~/.claude-team/config.json`. Manage it with the CLI:
+`maniple` reads configuration from `~/.maniple/config.json`. Manage it with the CLI:
 
 ```bash
-claude-team config init          # Create default config
-claude-team config init --force  # Overwrite existing config
-claude-team config show          # Show effective config (file + env overrides)
-claude-team config get <key>     # Get value by dotted path (e.g. defaults.layout)
-claude-team config set <key> <value>  # Set and persist a value
+maniple config init          # Create default config
+maniple config init --force  # Overwrite existing config
+maniple config show          # Show effective config (file + env overrides)
+maniple config get <key>     # Get value by dotted path (e.g. defaults.layout)
+maniple config set <key> <value>  # Set and persist a value
 ```
+
+### Migration Notes (from `claude-team`)
+
+- Config directory: `~/.claude-team/` is auto-migrated to `~/.maniple/` on first run.
+- Environment variables: `MANIPLE_*` takes precedence; `CLAUDE_TEAM_*` is supported as a fallback and may emit a deprecation warning to stderr.
 
 ### Config Schema
 
@@ -205,10 +210,10 @@ claude-team config set <key> <value>  # Set and persist a value
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAUDE_TEAM_TERMINAL_BACKEND` | (auto-detect) | Force terminal backend: `tmux` or `iterm`. Highest precedence. |
-| `CLAUDE_TEAM_PROJECT_DIR` | (none) | Enables `"project_path": "auto"` in worker configs. |
-| `CLAUDE_TEAM_COMMAND` | `claude` | Override the CLI command for Claude Code workers. |
-| `CLAUDE_TEAM_CODEX_COMMAND` | `codex` | Override the CLI command for Codex workers. |
+| `MANIPLE_TERMINAL_BACKEND` | (auto-detect) | Force terminal backend: `tmux` or `iterm`. Highest precedence. |
+| `MANIPLE_PROJECT_DIR` | (none) | Enables `"project_path": "auto"` in worker configs. |
+| `MANIPLE_COMMAND` | `claude` | Override the CLI command for Claude Code workers. |
+| `MANIPLE_CODEX_COMMAND` | `codex` | Override the CLI command for Codex workers. |
 
 ## MCP Tools
 
@@ -243,7 +248,7 @@ claude-team config set <key> <value>  # Set and persist a value
 
 | Tool | Description |
 |------|-------------|
-| `list_worktrees` | List git worktrees created by claude-team for a repository. Supports orphan cleanup. |
+| `list_worktrees` | List git worktrees created by maniple for a repository. Supports orphan cleanup. |
 | `issue_tracker_help` | Quick reference for the detected issue tracker (Beads or Pebbles). |
 
 ### Worker Identification
@@ -261,7 +266,7 @@ All tools accept any of these formats.
 
 ```
 WorkerConfig fields:
-  project_path: str         - Required. Explicit path or "auto" (uses CLAUDE_TEAM_PROJECT_DIR)
+  project_path: str         - Required. Explicit path or "auto" (uses MANIPLE_PROJECT_DIR)
   agent_type: str           - "claude" (default) or "codex"
   name: str                 - Optional worker name override (auto-picked from themed sets if omitted)
   annotation: str           - Task description (shown in badge, used in branch names)
@@ -325,11 +330,11 @@ Returns:
 
 ## HTTP Server Mode
 
-Run `claude-team` as a persistent HTTP service instead of stdio:
+Run `maniple` as a persistent HTTP service instead of stdio:
 
 ```bash
-claude-team --http              # Default port 8766
-claude-team --http --port 9000  # Custom port
+maniple --http              # Default port 8766
+maniple --http --port 9000  # Custom port
 ```
 
 HTTP mode enables:
@@ -359,7 +364,7 @@ make install-commands
 
 ## Issue Tracker Support
 
-`claude-team` supports both Pebbles (`pb`) and Beads (`bd --no-db`).
+`maniple` supports both Pebbles (`pb`) and Beads (`bd --no-db`).
 The tracker is auto-detected by marker directories in the project root:
 
 - `.pebbles` -> Pebbles
@@ -436,7 +441,7 @@ Use the manager to coordinate between workers:
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                Manager Claude Code Session                       │
-│                (has claude-team MCP server)                       │
+│                (has maniple MCP server)                          │
 ├──────────────────────────────────────────────────────────────────┤
 │                         MCP Tools                                │
 │  spawn_workers | message_workers | wait_idle_workers | etc.      │
@@ -473,10 +478,10 @@ uv sync --group dev
 uv run pytest
 
 # Run the server directly (for debugging)
-uv run python -m claude_team_mcp
+uv run python -m maniple_mcp
 
 # Run in HTTP mode
-uv run python -m claude_team_mcp --http
+uv run python -m maniple_mcp --http
 
 # Install slash commands
 make install-commands
@@ -524,7 +529,7 @@ After a new version is published to PyPI, you may need to force-refresh the cach
 
 ```bash
 uv cache clean --force
-uv tool install --force --refresh claude-team-mcp
+uv tool install --force --refresh maniple
 ```
 
 This is necessary because `uvx` aggressively caches tool environments.

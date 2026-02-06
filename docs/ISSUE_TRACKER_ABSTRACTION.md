@@ -47,7 +47,7 @@ Create a small issue tracker abstraction layer that provides:
     - `supports` (capabilities: search, blocked, dep_types)
   - `detect_issue_tracker(project_path: str) -> IssueTrackerBackend`:
     - Auto-detect via marker dirs in repo root or main repo (worktree-aware).
-    - Optional override via env `CLAUDE_TEAM_ISSUE_TRACKER=beads|pebbles`.
+    - Optional override via env `MANIPLE_ISSUE_TRACKER=beads|pebbles`.
     - If both `.beads` and `.pebbles` exist, log and pick deterministic behavior (prefer override).
   - `get_worktree_issue_tracker_dir(project_path: str) -> dict | None`:
     - Returns `{env_var: path}` for the tracker in the main repo.
@@ -74,7 +74,7 @@ it from help text or provide the closest alternative.
 - Use the current `git rev-parse --git-common-dir` approach to locate the main repo.
 - Look for `.pebbles` or `.beads` in the main repo root.
 - If both exist:
-  - Prefer `CLAUDE_TEAM_ISSUE_TRACKER` env var.
+  - Prefer `MANIPLE_ISSUE_TRACKER` env var.
   - Otherwise log a warning and choose a default (recommend `.pebbles`).
 - If neither exists:
   - Return `None` and avoid appending tracker instructions.
