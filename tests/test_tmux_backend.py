@@ -70,6 +70,22 @@ async def test_list_sessions_parses_panes(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_list_sessions_includes_legacy_prefix(monkeypatch):
+    backend = TmuxBackend()
+    legacy_session = "claude-team-legacy-project"
+
+    async def fake_run(args):
+        assert args[:2] == ["list-panes", "-a"]
+        return f"{legacy_session}\t@1\tworker-1\t0\t0\t%1\n"
+
+    monkeypatch.setattr(backend, "_run_tmux", fake_run)
+
+    sessions = await backend.list_sessions()
+    assert len(sessions) == 1
+    assert sessions[0].metadata["session_name"] == legacy_session
+
+
+@pytest.mark.asyncio
 async def test_create_session_uses_tmux_commands(monkeypatch):
     backend = TmuxBackend()
     calls = []
@@ -153,6 +169,23 @@ async def test_find_available_window_prefers_active_pane(monkeypatch):
     assert window_index == "0"
     assert session.native_id == "%2"
     assert session.metadata["pane_index"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_find_available_window_includes_legacy_prefix(monkeypatch):
+    backend = TmuxBackend()
+    legacy_session = "claude-team-legacy-project"
+
+    async def fake_run(args):
+        assert args[:2] == ["list-panes", "-a"]
+        return f"{legacy_session}\t@1\t0\t0\t1\t%1\n"
+
+    monkeypatch.setattr(backend, "_run_tmux", fake_run)
+
+    result = await backend.find_available_window(max_panes=4, managed_session_ids=None)
+    assert result is not None
+    session_name, _, _ = result
+    assert session_name == legacy_session
 
 
 @pytest.mark.asyncio

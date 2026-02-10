@@ -41,13 +41,14 @@ This branch already includes a large portion of the rename/migration work (via m
 
 There are still several places where the system is branded/implemented as "claude-team" even though the package/CLI is now "maniple". The biggest risk area for reliability is session discovery/adoption, especially for tmux.
 
-### 1. JSONL Marker Prefixes Still Use `<!claude-team-...!>`
+### 1. JSONL Marker Prefix Migration (Dual Support Required)
 
-- `src/maniple_mcp/session_state.py` defines marker prefixes as:
-  - `<!claude-team-session:...!>`
-  - `<!claude-team-iterm:...!>`
-  - `<!claude-team-tmux:...!>`
-  - `<!claude-team-project:...!>`
+- New sessions should emit `<!maniple-...!>` markers:
+  - `<!maniple-session:...!>`
+  - `<!maniple-iterm:...!>`
+  - `<!maniple-tmux:...!>`
+  - `<!maniple-project:...!>`
+- During the migration window, discovery/adoption should accept both `<!maniple-...!>` and legacy `<!claude-team-...!>` markers when scanning JSONL.
 
 `discover_workers` / `adopt_worker` rely on these markers (via `find_jsonl_by_iterm_id()` / `find_jsonl_by_tmux_id()`).
 
@@ -55,7 +56,7 @@ If we switch worker prompts to emit `<!maniple-...!>` markers, we must update th
 
 ### 2. tmux Session Filtering Blocks Migration Adoption
 
-- The tmux backend only considers tmux sessions whose `session_name` starts with `maniple-`.
+- The tmux backend must consider both `maniple-*` and legacy `claude-team-*` tmux session prefixes during the rename transition.
 
 If a user upgrades while existing workers are still running under the old tmux session prefix (likely `claude-team-...`), `discover_workers` will not see them at all, even if the JSONL contains valid markers.
 

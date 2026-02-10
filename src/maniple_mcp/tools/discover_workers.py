@@ -40,10 +40,10 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
 
         For each terminal session, searches JSONL files in ~/.claude/projects/ and
         ~/.codex/sessions/ for matching terminal session markers. Sessions spawned
-        by claude-team write their terminal IDs into the JSONL
-        (e.g., <!claude-team-iterm:UUID!> or <!claude-team-tmux:%1!>), enabling
+        by maniple (formerly claude-team) write their terminal IDs into the JSONL
+        (e.g., <!maniple-iterm:UUID!>, <!maniple-tmux:%1!>, or legacy <!claude-team-...!>), enabling
         reliable detection and recovery after MCP server restarts.
-        For tmux, only panes in claude-team-managed sessions are scanned.
+        For tmux, only panes in maniple/claude-team-managed tmux sessions are scanned.
 
         Only JSONL files modified within max_age seconds are checked. If a session
         was started more than max_age seconds ago and hasn't had recent activity,

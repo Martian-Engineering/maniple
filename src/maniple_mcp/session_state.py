@@ -198,26 +198,45 @@ def get_project_dir(project_path: str) -> Path:
 # Session Markers for JSONL Correlation
 # =============================================================================
 
-# Marker format for correlating iTerm sessions with JSONL files
-MARKER_PREFIX = "<!claude-team-session:"
+# Marker format for correlating terminal sessions with JSONL files.
+#
+# During the claude-team -> maniple rename, we emit `<!maniple-...!>` markers for
+# new sessions while continuing to accept legacy `<!claude-team-...!>` markers
+# when scanning JSONL files for discovery/adoption.
+MARKER_PREFIX = "<!maniple-session:"
+LEGACY_MARKER_PREFIX = "<!claude-team-session:"
 MARKER_SUFFIX = "!>"
+SESSION_MARKER_PREFIXES = (MARKER_PREFIX, LEGACY_MARKER_PREFIX)
 
 # iTerm-specific marker for session discovery/recovery
 # When running in iTerm, we emit both markers so that orphaned sessions
 # can be matched back to their JSONL files even after MCP server restart.
 # Future terminal support (e.g., Zed) will use their own marker prefix.
-ITERM_MARKER_PREFIX = "<!claude-team-iterm:"
+ITERM_MARKER_PREFIX = "<!maniple-iterm:"
+LEGACY_ITERM_MARKER_PREFIX = "<!claude-team-iterm:"
 ITERM_MARKER_SUFFIX = "!>"
+ITERM_MARKER_PREFIXES = (ITERM_MARKER_PREFIX, LEGACY_ITERM_MARKER_PREFIX)
 
 # Tmux-specific marker for session discovery/recovery
 # Tmux pane ids can change across restarts, so we log the pane id in JSONL
 # to recover sessions that were started by claude-team.
-TMUX_MARKER_PREFIX = "<!claude-team-tmux:"
+TMUX_MARKER_PREFIX = "<!maniple-tmux:"
+LEGACY_TMUX_MARKER_PREFIX = "<!claude-team-tmux:"
 TMUX_MARKER_SUFFIX = "!>"
+TMUX_MARKER_PREFIXES = (TMUX_MARKER_PREFIX, LEGACY_TMUX_MARKER_PREFIX)
 
 # Project path marker for Codex session recovery
-PROJECT_MARKER_PREFIX = "<!claude-team-project:"
+PROJECT_MARKER_PREFIX = "<!maniple-project:"
+LEGACY_PROJECT_MARKER_PREFIX = "<!claude-team-project:"
 PROJECT_MARKER_SUFFIX = "!>"
+PROJECT_MARKER_PREFIXES = (PROJECT_MARKER_PREFIX, LEGACY_PROJECT_MARKER_PREFIX)
+
+_ALL_MARKER_PREFIXES = (
+    *SESSION_MARKER_PREFIXES,
+    *ITERM_MARKER_PREFIXES,
+    *TMUX_MARKER_PREFIXES,
+    *PROJECT_MARKER_PREFIXES,
+)
 
 
 def generate_marker_message(
@@ -272,6 +291,34 @@ def generate_marker_message(
     )
 
 
+def _extract_marker_value(
+    text: str,
+    *,
+    prefixes: tuple[str, ...],
+    suffix: str,
+) -> Optional[str]:
+    """Return the first marker value found for any of the given prefixes."""
+    best_start: int | None = None
+    best_prefix: str | None = None
+
+    for prefix in prefixes:
+        start = text.find(prefix)
+        if start == -1:
+            continue
+        if best_start is None or start < best_start:
+            best_start = start
+            best_prefix = prefix
+
+    if best_start is None or best_prefix is None:
+        return None
+
+    value_start = best_start + len(best_prefix)
+    value_end = text.find(suffix, value_start)
+    if value_end == -1:
+        return None
+    return text[value_start:value_end]
+
+
 def extract_marker_session_id(text: str) -> Optional[str]:
     """
     Extract a session ID from marker text if present.
@@ -282,14 +329,11 @@ def extract_marker_session_id(text: str) -> Optional[str]:
     Returns:
         The session ID from the marker, or None if no marker found
     """
-    start = text.find(MARKER_PREFIX)
-    if start == -1:
-        return None
-    start += len(MARKER_PREFIX)
-    end = text.find(MARKER_SUFFIX, start)
-    if end == -1:
-        return None
-    return text[start:end]
+    return _extract_marker_value(
+        text,
+        prefixes=SESSION_MARKER_PREFIXES,
+        suffix=MARKER_SUFFIX,
+    )
 
 
 def extract_iterm_session_id(text: str) -> Optional[str]:
@@ -302,14 +346,11 @@ def extract_iterm_session_id(text: str) -> Optional[str]:
     Returns:
         The iTerm session ID from the marker, or None if no marker found
     """
-    start = text.find(ITERM_MARKER_PREFIX)
-    if start == -1:
-        return None
-    start += len(ITERM_MARKER_PREFIX)
-    end = text.find(ITERM_MARKER_SUFFIX, start)
-    if end == -1:
-        return None
-    return text[start:end]
+    return _extract_marker_value(
+        text,
+        prefixes=ITERM_MARKER_PREFIXES,
+        suffix=ITERM_MARKER_SUFFIX,
+    )
 
 
 def extract_project_path(text: str) -> Optional[str]:
@@ -322,14 +363,11 @@ def extract_project_path(text: str) -> Optional[str]:
     Returns:
         The project path from the marker, or None if no marker found
     """
-    start = text.find(PROJECT_MARKER_PREFIX)
-    if start == -1:
-        return None
-    start += len(PROJECT_MARKER_PREFIX)
-    end = text.find(PROJECT_MARKER_SUFFIX, start)
-    if end == -1:
-        return None
-    return text[start:end]
+    return _extract_marker_value(
+        text,
+        prefixes=PROJECT_MARKER_PREFIXES,
+        suffix=PROJECT_MARKER_SUFFIX,
+    )
 
 
 def extract_tmux_pane_id(text: str) -> Optional[str]:
@@ -342,14 +380,11 @@ def extract_tmux_pane_id(text: str) -> Optional[str]:
     Returns:
         The tmux pane ID from the marker, or None if no marker found
     """
-    start = text.find(TMUX_MARKER_PREFIX)
-    if start == -1:
-        return None
-    start += len(TMUX_MARKER_PREFIX)
-    end = text.find(TMUX_MARKER_SUFFIX, start)
-    if end == -1:
-        return None
-    return text[start:end]
+    return _extract_marker_value(
+        text,
+        prefixes=TMUX_MARKER_PREFIXES,
+        suffix=TMUX_MARKER_SUFFIX,
+    )
 
 
 def find_jsonl_by_marker(
@@ -375,7 +410,9 @@ def find_jsonl_by_marker(
     if not project_dir.exists():
         return None
 
-    marker = f"{MARKER_PREFIX}{session_id}{MARKER_SUFFIX}"
+    markers = tuple(
+        f"{prefix}{session_id}{MARKER_SUFFIX}" for prefix in SESSION_MARKER_PREFIXES
+    )
     now = time.time()
 
     # Check recent JSONL files
@@ -398,7 +435,7 @@ def find_jsonl_by_marker(
                     fp.seek(file_size - read_size)
                 content = fp.read()
 
-            if marker in content:
+            if any(marker in content for marker in markers):
                 return f.stem
         except Exception:
             continue
@@ -411,7 +448,7 @@ class ItermSessionMatch:
     """Result of matching an iTerm session ID to a JSONL file."""
 
     iterm_session_id: str
-    internal_session_id: str  # Our claude-team session ID
+    internal_session_id: str  # Our internal (maniple) session ID
     jsonl_path: Path
     project_path: str  # Recovered from directory slug
 
@@ -421,7 +458,7 @@ class TmuxSessionMatch:
     """Result of matching a tmux pane ID to a JSONL file."""
 
     tmux_pane_id: str
-    internal_session_id: str  # Our claude-team session ID
+    internal_session_id: str  # Our internal (maniple) session ID
     jsonl_path: Path
     project_path: str  # Recovered from directory slug
 
@@ -492,12 +529,7 @@ def _scan_codex_markers(
         with open(jsonl_path, "r") as fp:
             # Scan line-by-line so we can short-circuit as soon as markers are found.
             for line in fp:
-                if (
-                    MARKER_PREFIX not in line
-                    and ITERM_MARKER_PREFIX not in line
-                    and TMUX_MARKER_PREFIX not in line
-                    and PROJECT_MARKER_PREFIX not in line
-                ):
+                if not any(prefix in line for prefix in _ALL_MARKER_PREFIXES):
                     continue
 
                 # Extract markers directly from the JSON line string (no full JSON parse).
@@ -630,7 +662,10 @@ def find_jsonl_by_iterm_id(
     Returns:
         ItermSessionMatch with full recovery info, or None if not found
     """
-    iterm_marker = f"{ITERM_MARKER_PREFIX}{iterm_session_id}{ITERM_MARKER_SUFFIX}"
+    iterm_markers = tuple(
+        f"{prefix}{iterm_session_id}{ITERM_MARKER_SUFFIX}"
+        for prefix in ITERM_MARKER_PREFIXES
+    )
     now = time.time()
 
     # Scan all project directories
@@ -680,7 +715,7 @@ def find_jsonl_by_iterm_id(
                             continue
 
                         # Check for iTerm marker in message content
-                        if iterm_marker not in content:
+                        if not any(marker in content for marker in iterm_markers):
                             continue
 
                         # Extract internal session ID from the same content
@@ -727,7 +762,10 @@ def find_jsonl_by_tmux_id(
     Returns:
         TmuxSessionMatch with full recovery info, or None if not found
     """
-    tmux_marker = f"{TMUX_MARKER_PREFIX}{tmux_pane_id}{TMUX_MARKER_SUFFIX}"
+    tmux_markers = tuple(
+        f"{prefix}{tmux_pane_id}{TMUX_MARKER_SUFFIX}"
+        for prefix in TMUX_MARKER_PREFIXES
+    )
     now = time.time()
 
     # Scan all project directories
@@ -777,7 +815,7 @@ def find_jsonl_by_tmux_id(
                             continue
 
                         # Check for tmux marker in message content
-                        if tmux_marker not in content:
+                        if not any(marker in content for marker in tmux_markers):
                             continue
 
                         # Extract internal session ID from the same content

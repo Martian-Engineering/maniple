@@ -41,8 +41,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         Adopt an existing terminal Claude Code or Codex session into the MCP registry.
 
         Takes a terminal session ID (from discover_workers) and registers it
-        for management. Only works for sessions originally spawned by claude-team
-        (which have markers in their JSONL for reliable correlation).
+        for management. Only works for sessions originally spawned by maniple
+        (or legacy claude-team) which have markers in their JSONL for reliable correlation.
 
         Args:
             iterm_session_id: The iTerm2 session ID (from discover_workers)
@@ -120,8 +120,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 )
                 if not codex_match:
                     return error_response(
-                        "Session not found or not spawned by claude-team",
-                        hint="adopt_worker only works for sessions originally spawned by claude-team. "
+                        "Session not found or not spawned by maniple",
+                        hint="adopt_worker only works for sessions originally spawned by maniple (or legacy claude-team). "
                         "External sessions cannot be reliably correlated to their JSONL files.",
                         iterm_session_id=target_id,
                     )
@@ -136,8 +136,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 )
                 if not codex_match:
                     return error_response(
-                        "Session not found or not spawned by claude-team",
-                        hint="adopt_worker only works for sessions originally spawned by claude-team. "
+                        "Session not found or not spawned by maniple",
+                        hint="adopt_worker only works for sessions originally spawned by maniple (or legacy claude-team). "
                         "External sessions cannot be reliably correlated to their JSONL files.",
                         tmux_pane_id=target_id,
                     )

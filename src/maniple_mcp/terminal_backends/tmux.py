@@ -45,9 +45,12 @@ ISSUE_ID_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z0-9]*-[A-Za-z0-9]*\d[A-Za-z0-9]
 SHELL_READY_MARKER = "MANIPLE_READY_7f3a9c"
 CODEX_PRE_ENTER_DELAY = 0.5
 TMUX_SESSION_PREFIX = "maniple"
+LEGACY_TMUX_SESSION_PREFIX = "claude-team"
 TMUX_SESSION_SLUG_MAX = 32
 TMUX_SESSION_FALLBACK = "project"
 TMUX_SESSION_PREFIXED = f"{TMUX_SESSION_PREFIX}-"
+LEGACY_TMUX_SESSION_PREFIXED = f"{LEGACY_TMUX_SESSION_PREFIX}-"
+MANAGED_TMUX_SESSION_PREFIXES = (TMUX_SESSION_PREFIXED, LEGACY_TMUX_SESSION_PREFIXED)
 
 LAYOUT_PANE_NAMES = {
     "single": ["main"],
@@ -101,9 +104,9 @@ def tmux_session_name_for_project(project_path: str | None) -> str:
     return f"{TMUX_SESSION_PREFIXED}{slug}"
 
 
-# Determine whether a tmux session is managed by maniple.
+# Determine whether a tmux session is managed by maniple (or legacy claude-team).
 def _is_managed_session_name(session_name: str) -> bool:
-    return session_name.startswith(TMUX_SESSION_PREFIXED)
+    return session_name.startswith(MANAGED_TMUX_SESSION_PREFIXES)
 
 
 class TmuxBackend(TerminalBackend):
@@ -340,7 +343,7 @@ class TmuxBackend(TerminalBackend):
         return panes
 
     async def list_sessions(self) -> list[TerminalSession]:
-        """List all tmux panes in maniple-managed sessions."""
+        """List all tmux panes in maniple-managed sessions (including legacy prefixes)."""
         try:
             output = await self._run_tmux(
                 [

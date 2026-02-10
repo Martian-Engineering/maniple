@@ -364,3 +364,10 @@
 {"type":"dep_add","timestamp":"2026-02-10T01:27:36.117302Z","issue_id":"cic-ee5","payload":{"dep_type":"blocks","depends_on":"cic-f49"}}
 {"type":"dep_add","timestamp":"2026-02-10T01:27:36.242424Z","issue_id":"cic-f49","payload":{"dep_type":"blocks","depends_on":"cic-7f3"}}
 {"type":"dep_add","timestamp":"2026-02-10T01:27:36.367837Z","issue_id":"cic-f49","payload":{"dep_type":"blocks","depends_on":"cic-5e8"}}
+{"type":"status_update","timestamp":"2026-02-10T01:32:27.602545Z","issue_id":"cic-7f3","payload":{"status":"in_progress"}}
+{"type":"status_update","timestamp":"2026-02-10T01:36:33.292841Z","issue_id":"cic-5e8","payload":{"status":"in_progress"}}
+{"type":"status_update","timestamp":"2026-02-10T01:38:12.190852Z","issue_id":"cic-f49","payload":{"status":"in_progress"}}
+{"type":"close","timestamp":"2026-02-10T01:39:01.971939Z","issue_id":"cic-7f3","payload":{}}
+{"type":"close","timestamp":"2026-02-10T01:39:09.243977Z","issue_id":"cic-5e8","payload":{}}
+{"type":"close","timestamp":"2026-02-10T01:39:12.129512Z","issue_id":"cic-f49","payload":{}}
+{"type":"close","timestamp":"2026-02-10T01:39:15.706973Z","issue_id":"cic-ee5","payload":{}}
