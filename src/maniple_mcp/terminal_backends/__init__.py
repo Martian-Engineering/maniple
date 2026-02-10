@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import dataclass
 from typing import Mapping
 
 from ..config import ClaudeTeamConfig, ConfigError, load_config
@@ -15,11 +16,19 @@ from ..utils.env_vars import get_env_with_fallback
 logger = logging.getLogger("maniple")
 
 
-def select_backend_id(
+@dataclass(frozen=True)
+class BackendSelection:
+    """Represents the chosen terminal backend and whether it was explicitly configured."""
+
+    backend_id: str
+    explicit: bool
+
+
+def select_backend(
     env: Mapping[str, str] | None = None,
     config: ClaudeTeamConfig | None = None,
-) -> str:
-    """Select a terminal backend id based on environment and config."""
+) -> BackendSelection:
+    """Select a terminal backend based on environment and config."""
     environ = os.environ if env is None else env
     configured = get_env_with_fallback(
         "MANIPLE_TERMINAL_BACKEND",
@@ -27,7 +36,7 @@ def select_backend_id(
         env=environ,
     )
     if configured:
-        return configured.strip().lower()
+        return BackendSelection(configured.strip().lower(), True)
     if config is None:
         try:
             config = load_config()
@@ -38,10 +47,18 @@ def select_backend_id(
             config = None
     configured = config.terminal.backend if config else None
     if configured:
-        return configured.strip().lower()
+        return BackendSelection(configured.strip().lower(), True)
     if environ.get("TMUX"):
-        return "tmux"
-    return "iterm"
+        return BackendSelection("tmux", False)
+    return BackendSelection("iterm", False)
+
+
+def select_backend_id(
+    env: Mapping[str, str] | None = None,
+    config: ClaudeTeamConfig | None = None,
+) -> str:
+    """Select a terminal backend id based on environment and config."""
+    return select_backend(env=env, config=config).backend_id
 
 
 __all__ = [
@@ -50,5 +67,7 @@ __all__ = [
     "ItermBackend",
     "TmuxBackend",
     "MAX_PANES_PER_TAB",
+    "BackendSelection",
+    "select_backend",
     "select_backend_id",
 ]

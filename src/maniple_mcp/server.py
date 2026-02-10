@@ -8,6 +8,7 @@ Allows a "manager" Claude Code session to spawn and coordinate multiple
 
 import functools
 import logging
+import shutil
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -20,7 +21,7 @@ from maniple.poller import WorkerPoller
 
 from .logging_setup import configure_logging
 from .registry import RecoveryReport, SessionRegistry
-from .terminal_backends import ItermBackend, TerminalBackend, TmuxBackend, select_backend_id
+from .terminal_backends import ItermBackend, TerminalBackend, TmuxBackend, select_backend
 from .tools import register_all_tools
 from .utils import error_response, HINTS
 
@@ -234,7 +235,8 @@ async def app_lifespan(
     """
     logger.info("Maniple MCP Server starting...")
 
-    backend_id = select_backend_id()
+    selection = select_backend()
+    backend_id = selection.backend_id
     logger.info("Selecting terminal backend: %s", backend_id)
 
     if backend_id == "tmux":
@@ -245,25 +247,37 @@ async def app_lifespan(
             from iterm2.app import async_get_app
             from iterm2.connection import Connection
         except ImportError as e:
-            logger.error(
-                "iterm2 package not found. Install with: uv add iterm2\n"
-                "Also enable: iTerm2 → Preferences → General → Magic → Enable Python API"
-            )
-            raise RuntimeError("iterm2 package required") from e
+            if not selection.explicit and shutil.which("tmux"):
+                logger.warning("iTerm2 backend unavailable (%s); falling back to tmux", e)
+                backend = TmuxBackend()
+            else:
+                logger.error(
+                    "iterm2 package not found. Install with: uv add iterm2\n"
+                    "Also enable: iTerm2 → Preferences → General → Magic → Enable Python API"
+                )
+                raise RuntimeError("iterm2 package required") from e
+        else:
+            # Connect to iTerm2
+            logger.info("Connecting to iTerm2...")
+            try:
+                connection = await Connection.async_create()
+                app = await async_get_app(connection)
+                if app is None:
+                    raise RuntimeError("Could not get iTerm2 app")
+                logger.info("Connected to iTerm2 successfully")
+            except Exception as e:
+                if not selection.explicit and shutil.which("tmux"):
+                    logger.warning(
+                        "Failed to connect to iTerm2 (%s); falling back to tmux", e
+                    )
+                    backend = TmuxBackend()
+                else:
+                    logger.error(f"Failed to connect to iTerm2: {e}")
+                    logger.error("Make sure iTerm2 is running and Python API is enabled")
+                    raise RuntimeError("Could not connect to iTerm2") from e
+            else:
+                backend = ItermBackend(connection, app)
 
-        # Connect to iTerm2
-        logger.info("Connecting to iTerm2...")
-        try:
-            connection = await Connection.async_create()
-            app = await async_get_app(connection)
-            if app is None:
-                raise RuntimeError("Could not get iTerm2 app")
-            logger.info("Connected to iTerm2 successfully")
-        except Exception as e:
-            logger.error(f"Failed to connect to iTerm2: {e}")
-            logger.error("Make sure iTerm2 is running and Python API is enabled")
-            raise RuntimeError("Could not connect to iTerm2") from e
-        backend = ItermBackend(connection, app)
     else:
         raise RuntimeError(f"Unknown terminal backend: {backend_id}")
 
