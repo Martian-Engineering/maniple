@@ -21,6 +21,20 @@ If you get "pytest not found" or similar errors, run `uv sync` first to install 
 
 **DO NOT use:** `pytest`, `python -m pytest`, or `python3 -m pytest` — these will fail.
 
+## Backend Parity Policy (tmux + iTerm)
+
+Any feature or bugfix that touches terminal backend code **MUST** support **both** backends:
+- tmux backend
+- iTerm backend
+
+"Touches terminal backend code" includes (but is not limited to): tmux/iTerm backend implementations, backend selection/routing, adoption/discovery flows, session ID formats/parsing, and any tools or utilities that interact with terminal sessions.
+
+Changes that touch terminal backend code **MUST** include one of:
+- Tests covering **both** backends where applicable, or
+- An explicit, documented exception (in the PR description) that includes:
+  - Rationale for why parity is not feasible right now
+  - A follow-up issue to restore parity (Pebbles or GitHub issue link)
+
 ## Project Structure
 
 ```
@@ -130,8 +144,18 @@ uv run --group dev pytest
 uv run python -m claude_team_mcp
 ```
 
+## Pull Requests
+
+Use this checklist in PR descriptions:
+
+```markdown
+## PR Checklist
+- [ ] Backend parity: tmux + iterm
+- [ ] Tests cover both backends (or exception + follow-up issue link)
+- [ ] `uv run pytest` passes
+```
+
 ## Requirements
 - macOS with iTerm2 (Python API enabled)
 - Python 3.11+
 - uv package manager
-
