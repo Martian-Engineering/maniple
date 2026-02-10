@@ -752,8 +752,9 @@ def find_jsonl_by_tmux_id(
     that contain the tmux-specific marker. This enables session recovery
     after MCP server restart.
 
-    Only looks at root user messages (type="user", parentUuid=null) and
-    extracts markers from the message.content field for reliability.
+    Extracts markers from user messages (type="user") in message.content.
+    Some clients emit marker messages with a non-null parentUuid, so we do
+    not require a root message.
 
     Args:
         tmux_pane_id: The tmux pane ID to search for
@@ -789,7 +790,7 @@ def find_jsonl_by_tmux_id(
             except OSError:
                 continue
 
-            # Parse JSONL looking for root user message with our markers
+            # Parse JSONL looking for a user message with our markers
             try:
                 with open(f, "r") as fp:
                     for line in fp:
@@ -802,10 +803,8 @@ def find_jsonl_by_tmux_id(
                         except json.JSONDecodeError:
                             continue
 
-                        # Only look at root user messages (our marker message)
+                        # Only look at user messages (our marker message)
                         if entry.get("type") != "user":
-                            continue
-                        if entry.get("parentUuid") is not None:
                             continue
 
                         # Extract message content

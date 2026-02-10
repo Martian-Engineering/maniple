@@ -164,6 +164,31 @@ class TestFindJsonlByItermId:
         assert match.project_path == str(real_project_path)
         assert match.jsonl_path == jsonl_path
 
+    def test_accepts_legacy_marker_prefixes(self, tmp_path, monkeypatch):
+        projects_dir = tmp_path / "projects"
+        project_dir = projects_dir / "fake-project"
+        project_dir.mkdir(parents=True)
+
+        jsonl_path = project_dir / "session-1.jsonl"
+        content = "<!claude-team-session:internal-123!>\n<!claude-team-iterm:ITERM-1!>\n"
+        entry = {"type": "user", "parentUuid": None, "message": {"content": content}}
+        jsonl_path.write_text(json.dumps(entry) + "\n")
+
+        real_project_path = tmp_path / "real-project"
+        real_project_path.mkdir()
+
+        monkeypatch.setattr(session_state, "CLAUDE_PROJECTS_DIR", projects_dir)
+        monkeypatch.setattr(
+            session_state, "unslugify_path", lambda slug: str(real_project_path)
+        )
+
+        match = find_jsonl_by_iterm_id("ITERM-1", max_age_seconds=3600)
+        assert match is not None
+        assert match.iterm_session_id == "ITERM-1"
+        assert match.internal_session_id == "internal-123"
+        assert match.project_path == str(real_project_path)
+        assert match.jsonl_path == jsonl_path
+
 
 class TestFindJsonlByTmuxId:
     """Tests for find_jsonl_by_tmux_id scanning legacy and new markers."""
@@ -217,14 +242,15 @@ class TestFindJsonlByTmuxId:
         assert match.internal_session_id == "internal-123"
         assert match.project_path == str(real_project_path)
         assert match.jsonl_path == jsonl_path
-    def test_accepts_legacy_marker_prefixes(self, tmp_path, monkeypatch):
+
+    def test_finds_marker_with_non_null_parent_uuid(self, tmp_path, monkeypatch):
         projects_dir = tmp_path / "projects"
         project_dir = projects_dir / "fake-project"
         project_dir.mkdir(parents=True)
 
         jsonl_path = project_dir / "session-1.jsonl"
-        content = "<!claude-team-session:internal-123!>\n<!claude-team-iterm:ITERM-1!>\n"
-        entry = {"type": "user", "parentUuid": None, "message": {"content": content}}
+        content = "<!maniple-session:internal-123!>\n<!maniple-tmux:%1!>\n"
+        entry = {"type": "user", "parentUuid": "parent-uuid", "message": {"content": content}}
         jsonl_path.write_text(json.dumps(entry) + "\n")
 
         real_project_path = tmp_path / "real-project"
@@ -235,9 +261,9 @@ class TestFindJsonlByTmuxId:
             session_state, "unslugify_path", lambda slug: str(real_project_path)
         )
 
-        match = find_jsonl_by_iterm_id("ITERM-1", max_age_seconds=3600)
+        match = find_jsonl_by_tmux_id("%1", max_age_seconds=3600)
         assert match is not None
-        assert match.iterm_session_id == "ITERM-1"
+        assert match.tmux_pane_id == "%1"
         assert match.internal_session_id == "internal-123"
         assert match.project_path == str(real_project_path)
         assert match.jsonl_path == jsonl_path
