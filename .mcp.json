@@ -2,7 +2,7 @@
   "mcpServers": {
     "maniple": {
       "command": "uvx",
-      "args": ["--from", "maniple@latest", "maniple"]
+      "args": ["--from", "maniple-mcp@latest", "maniple"]
     }
   }
 }

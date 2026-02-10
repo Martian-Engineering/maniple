@@ -98,7 +98,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                   "mcpServers": {
                     "maniple": {
                       "command": "uvx",
-                      "args": ["--from", "maniple@latest", "maniple"],
+                      "args": ["--from", "maniple-mcp@latest", "maniple"],
                       "env": {"MANIPLE_PROJECT_DIR": "${PWD}"}
                     }
                   }

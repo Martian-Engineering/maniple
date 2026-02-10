@@ -87,7 +87,7 @@ This automatically configures the MCP server - no manual setup needed.
 ### From PyPI
 
 ```bash
-uvx --from maniple@latest maniple
+uvx --from maniple-mcp@latest maniple
 ```
 
 ### From Source
@@ -111,7 +111,7 @@ Add to your Claude Code MCP settings. You can configure this at:
   "mcpServers": {
     "maniple": {
       "command": "uvx",
-      "args": ["--from", "maniple@latest", "maniple"]
+      "args": ["--from", "maniple-mcp@latest", "maniple"]
     }
   }
 }
@@ -139,7 +139,7 @@ For project-scoped `.mcp.json` files, use `MANIPLE_PROJECT_DIR` so workers inher
   "mcpServers": {
     "maniple": {
       "command": "uvx",
-      "args": ["--from", "maniple@latest", "maniple"],
+      "args": ["--from", "maniple-mcp@latest", "maniple"],
       "env": { "MANIPLE_PROJECT_DIR": "${PWD}" }
     }
   }
