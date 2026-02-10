@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to claude-team will be documented in this file.
+All notable changes to maniple will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `RecoveryReport` with counts of added/skipped/closed sessions
   - Eager recovery at boot + lazy fallback in `list_workers`
 - **`worker_events` MCP tool**: Query the event log programmatically with timestamp filters, summaries, stuck worker detection, and project filtering. Replaces shell-script parsing of `events.jsonl`.
-- **`stale_threshold_minutes` config**: Configurable via `~/.claude-team/config.json` (`events.stale_threshold_minutes`, default: 10). `poll_worker_changes` reads from config when param not passed, tool param overrides.
+- **`stale_threshold_minutes` config**: Configurable via `~/.maniple/config.json` (`events.stale_threshold_minutes`, default: 10). `poll_worker_changes` reads from config when param not passed, tool param overrides.
 - **`source` field in `list_workers`**: Distinguishes `"registry"` (live) vs `"event_log"` (recovered) workers.
 - 98 new tests across 6 test files for recovery, worker_events, config, and poll_worker_changes.
 
@@ -48,23 +48,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.8.2] - 2026-02-02
 
 ### Fixed
-- **tmux session naming**: Worktree paths no longer create separate tmux sessions per worker. Removed hash from session names — format is now `claude-team-{slug}` (e.g. `claude-team-pagedrop-infra`). All workers for the same project share one tmux session with separate windows.
+- **tmux session naming**: Worktree paths no longer create separate tmux sessions per worker. Removed hash from session names — format is now `maniple-{slug}` (e.g. `maniple-pagedrop-infra`). All workers for the same project share one tmux session with separate windows.
 
 ## [0.8.0] - 2026-01-30
 
 ### Added
-- **System-wide config file** (`~/.claude-team/config.json`): Centralized configuration replacing environment variables
+- **System-wide config file** (`~/.maniple/config.json`): Centralized configuration replacing environment variables
   - Typed dataclasses with JSON validation
   - Version field for future migrations
   - Precedence: env var → config file → built-in default
-- **Config CLI**: `claude-team config init|show|get|set` commands
-- **Per-project tmux sessions**: Each project gets its own tmux session (`claude-team-<slug>-<hash>`) instead of a single shared session
+- **Config CLI**: `maniple config init|show|get|set` commands
+- **Per-project tmux sessions**: Each project gets its own tmux session (`maniple-<slug>-<hash>`) instead of a single shared session
   - Easier local monitoring — `tmux ls` shows projects separately
   - Discovery scans all tmux panes and filters by managed prefix
 
 ### Fixed
 - Worktree branch/directory names capped at 30 chars to avoid filesystem limits
-- Test isolation from user config file (tests no longer affected by `~/.claude-team/config.json`)
+- Test isolation from user config file (tests no longer affected by `~/.maniple/config.json`)
 
 ### Changed
 - Tmux `list_sessions` and discovery now scan all sessions with prefix filter instead of targeting a single session
@@ -75,7 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tmux terminal backend**: Run workers in tmux sessions instead of iTerm2
 - Terminal backend abstraction layer (`TerminalBackend` protocol)
 - Backend auto-detection: uses tmux if `$TMUX` is set, otherwise iTerm
-- `CLAUDE_TEAM_TERMINAL_BACKEND` env var for explicit backend selection
+- `MANIPLE_TERMINAL_BACKEND` env var for explicit backend selection
 - One tmux window per worker with descriptive naming (`<name> | <project> [<issue>]`)
 - Tmux discovery and adoption of orphaned worker sessions
 - Codex discovery/adopt fallbacks for tmux
@@ -117,13 +117,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Codex support**: spawn, message, and monitor Codex workers
 - Multi-agent CLI abstraction layer
-- `CLAUDE_TEAM_CODEX_COMMAND` env var for custom Codex binary
+- `MANIPLE_CODEX_COMMAND` env var for custom Codex binary
 - Codex JSONL schema and parsing
 - Codex idle detection
 - Star Trek duos to worker name sets
 
 ### Fixed
-- Don't require `claude-team` iTerm2 profile to exist
+- Don't require `maniple` iTerm2 profile to exist
 - Codex ready patterns for v0.80.0
 - Dynamic delay for Codex based on prompt length
 - `read_worker_logs` now works for Codex sessions
@@ -136,7 +136,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.1] - 2026-01-06
 
 ### Added
-- `CLAUDE_TEAM_COMMAND` env var support for custom Claude binaries (e.g., Happy)
+- `MANIPLE_COMMAND` env var support for custom Claude binaries (e.g., Happy)
 
 ## [0.3.0] - 2026-01-05
 
@@ -167,18 +167,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Worker monitoring and log reading
 - Basic MCP server implementation
 
-[Unreleased]: https://github.com/Martian-Engineering/claude-team/compare/v0.9.0...HEAD
-[0.9.0]: https://github.com/Martian-Engineering/claude-team/compare/v0.8.2...v0.9.0
-[0.8.2]: https://github.com/Martian-Engineering/claude-team/compare/v0.8.0...v0.8.2
-[0.8.0]: https://github.com/Martian-Engineering/claude-team/compare/v0.7.0...v0.8.0
-[0.7.0]: https://github.com/Martian-Engineering/claude-team/compare/v0.6.1...v0.7.0
-[0.6.1]: https://github.com/Martian-Engineering/claude-team/compare/v0.6.0...v0.6.1
-[0.6.0]: https://github.com/Martian-Engineering/claude-team/compare/v0.5.0...v0.6.0
-[0.5.0]: https://github.com/Martian-Engineering/claude-team/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/Martian-Engineering/claude-team/compare/v0.3.2...v0.4.0
-[0.3.2]: https://github.com/Martian-Engineering/claude-team/compare/v0.3.1...v0.3.2
-[0.3.1]: https://github.com/Martian-Engineering/claude-team/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/Martian-Engineering/claude-team/compare/v0.2.1...v0.3.0
-[0.2.1]: https://github.com/Martian-Engineering/claude-team/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/Martian-Engineering/claude-team/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/Martian-Engineering/claude-team/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Martian-Engineering/maniple/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/Martian-Engineering/maniple/compare/v0.8.2...v0.9.0
+[0.8.2]: https://github.com/Martian-Engineering/maniple/compare/v0.8.0...v0.8.2
+[0.8.0]: https://github.com/Martian-Engineering/maniple/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/Martian-Engineering/maniple/compare/v0.6.1...v0.7.0
+[0.6.1]: https://github.com/Martian-Engineering/maniple/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/Martian-Engineering/maniple/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/Martian-Engineering/maniple/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/Martian-Engineering/maniple/compare/v0.3.2...v0.4.0
+[0.3.2]: https://github.com/Martian-Engineering/maniple/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/Martian-Engineering/maniple/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/Martian-Engineering/maniple/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/Martian-Engineering/maniple/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/Martian-Engineering/maniple/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/Martian-Engineering/maniple/releases/tag/v0.1.0

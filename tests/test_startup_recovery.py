@@ -5,9 +5,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from claude_team.events import WorkerEvent
-from claude_team_mcp import server as server_module
-from claude_team_mcp.registry import RecoveryReport, SessionRegistry
+from maniple.events import WorkerEvent
+from maniple_mcp import server as server_module
+from maniple_mcp.registry import RecoveryReport, SessionRegistry
 
 
 def _isoformat_zulu(value: datetime) -> str:

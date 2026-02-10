@@ -1,4 +1,4 @@
-"""Tests for claude_team.idle_detection module."""
+"""Tests for maniple.idle_detection module."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from claude_team.idle_detection import (
+from maniple.idle_detection import (
     Worker,
     check_file_idle,
     detect_worker_idle,
@@ -162,7 +162,7 @@ class TestDetectWorkerIdleCodex:
             stdout = "S"
 
         monkeypatch.setattr(
-            "claude_team.idle_detection.subprocess.run",
+            "maniple.idle_detection.subprocess.run",
             lambda *_args, **_kwargs: Result(),
         )
 

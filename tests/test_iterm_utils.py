@@ -5,13 +5,13 @@ from unittest.mock import patch
 
 import pytest
 
-from claude_team_mcp.iterm_utils import build_stop_hook_settings_file
+from maniple_mcp.iterm_utils import build_stop_hook_settings_file
 
 
 class TestClaudeCommandBuilding:
     """Tests for Claude command building logic in start_claude_in_session.
 
-    These tests verify the --settings flag behavior based on CLAUDE_TEAM_COMMAND.
+    These tests verify the --settings flag behavior based on MANIPLE_COMMAND.
     The actual start_claude_in_session function is async and requires iTerm2,
     so we test the command building logic by examining the key conditions.
     """
@@ -20,10 +20,10 @@ class TestClaudeCommandBuilding:
         """Default 'claude' command should get --settings flag for idle detection."""
         # Simulate the logic from start_claude_in_session
         with patch.dict(os.environ, {}, clear=False):
-            # Remove CLAUDE_TEAM_COMMAND if present
-            os.environ.pop("CLAUDE_TEAM_COMMAND", None)
+            # Remove MANIPLE_COMMAND if present
+            os.environ.pop("MANIPLE_COMMAND", None)
 
-            claude_cmd = os.environ.get("CLAUDE_TEAM_COMMAND", "claude")
+            claude_cmd = os.environ.get("MANIPLE_COMMAND", "claude")
             is_default_claude_command = claude_cmd == "claude"
 
             assert claude_cmd == "claude"
@@ -44,8 +44,8 @@ class TestClaudeCommandBuilding:
         Custom commands have their own session tracking mechanisms.
         Adding --settings conflicts with them (e.g., Happy's SessionStart hook).
         """
-        with patch.dict(os.environ, {"CLAUDE_TEAM_COMMAND": "happy"}):
-            claude_cmd = os.environ.get("CLAUDE_TEAM_COMMAND", "claude")
+        with patch.dict(os.environ, {"MANIPLE_COMMAND": "happy"}):
+            claude_cmd = os.environ.get("MANIPLE_COMMAND", "claude")
             is_default_claude_command = claude_cmd == "claude"
 
             assert claude_cmd == "happy"
@@ -61,8 +61,8 @@ class TestClaudeCommandBuilding:
 
     def test_custom_command_with_path_skips_settings(self):
         """Custom commands specified as paths should also skip --settings."""
-        with patch.dict(os.environ, {"CLAUDE_TEAM_COMMAND": "/usr/local/bin/happy"}):
-            claude_cmd = os.environ.get("CLAUDE_TEAM_COMMAND", "claude")
+        with patch.dict(os.environ, {"MANIPLE_COMMAND": "/usr/local/bin/happy"}):
+            claude_cmd = os.environ.get("MANIPLE_COMMAND", "claude")
             is_default_claude_command = claude_cmd == "claude"
 
             assert claude_cmd == "/usr/local/bin/happy"
@@ -79,8 +79,8 @@ class TestClaudeCommandBuilding:
         """--dangerously-skip-permissions should be added regardless of command."""
         # Test with default claude
         with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("CLAUDE_TEAM_COMMAND", None)
-            claude_cmd = os.environ.get("CLAUDE_TEAM_COMMAND", "claude")
+            os.environ.pop("MANIPLE_COMMAND", None)
+            claude_cmd = os.environ.get("MANIPLE_COMMAND", "claude")
 
             dangerously_skip_permissions = True
             if dangerously_skip_permissions:
@@ -89,8 +89,8 @@ class TestClaudeCommandBuilding:
             assert "--dangerously-skip-permissions" in claude_cmd
 
         # Test with custom command
-        with patch.dict(os.environ, {"CLAUDE_TEAM_COMMAND": "happy"}):
-            claude_cmd = os.environ.get("CLAUDE_TEAM_COMMAND", "claude")
+        with patch.dict(os.environ, {"MANIPLE_COMMAND": "happy"}):
+            claude_cmd = os.environ.get("MANIPLE_COMMAND", "claude")
 
             dangerously_skip_permissions = True
             if dangerously_skip_permissions:

@@ -10,18 +10,18 @@
   },
   "plugins": [
     {
-      "name": "claude-team",
+      "name": "maniple",
       "source": {
         "source": "github",
-        "repo": "Martian-Engineering/claude-team"
+        "repo": "Martian-Engineering/maniple"
       },
       "description": "MCP server for spawning and orchestrating multiple Claude Code sessions via iTerm2",
       "version": "0.10.0",
       "author": {
         "name": "Josh Lehman"
       },
-      "homepage": "https://github.com/Martian-Engineering/claude-team",
-      "repository": "https://github.com/Martian-Engineering/claude-team",
+      "homepage": "https://github.com/Martian-Engineering/maniple",
+      "repository": "https://github.com/Martian-Engineering/maniple",
       "license": "MIT",
       "keywords": [
         "mcp",

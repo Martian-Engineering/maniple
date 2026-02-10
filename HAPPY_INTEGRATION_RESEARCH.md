@@ -2,16 +2,16 @@
 
 ## Problem Statement
 
-When `CLAUDE_TEAM_COMMAND=happy` is set, sessions spawn and work in iTerm2 but Happy mobile shows them as empty. Running `happy` directly from terminal works fine.
+When `MANIPLE_COMMAND=happy` is set, sessions spawn and work in iTerm2 but Happy mobile shows them as empty. Running `happy` directly from terminal works fine.
 
 ## Root Cause: `--settings` Flag Conflict
 
-### How claude-team spawns sessions
+### How maniple spawns sessions
 
 In `src/claude_team_mcp/iterm_utils.py:545-552`:
 
 ```python
-claude_cmd = os.environ.get("CLAUDE_TEAM_COMMAND", "claude")
+claude_cmd = os.environ.get("MANIPLE_COMMAND", "claude")
 if dangerously_skip_permissions:
     claude_cmd += " --dangerously-skip-permissions"
 if stop_hook_marker_id:
@@ -21,10 +21,10 @@ if stop_hook_marker_id:
 
 This creates a command like:
 ```
-happy --dangerously-skip-permissions --settings ~/.claude/claude-team-settings/worker-xxx.json
+happy --dangerously-skip-permissions --settings ~/.claude/maniple-settings/worker-xxx.json
 ```
 
-**Claude-team's settings file** (`~/.claude/claude-team-settings/worker-xxx.json`):
+**Maniple's settings file** (`~/.claude/maniple-settings/worker-xxx.json`):
 ```json
 {
   "hooks": {
@@ -44,7 +44,7 @@ When Happy receives `--settings <file>`, it treats it as an unknown arg and pass
 
 ```javascript
 if (opts.claudeArgs) {
-  args.push(...opts.claudeArgs);  // Includes claude-team's --settings
+  args.push(...opts.claudeArgs);  // Includes maniple's --settings
 }
 args.push("--settings", opts.hookSettingsPath);  // Happy's own --settings
 ```
@@ -68,11 +68,11 @@ args.push("--settings", opts.hookSettingsPath);  // Happy's own --settings
 
 Claude receives TWO `--settings` flags:
 ```
-claude ... --settings <claude-team-file> --settings <happy-file>
+claude ... --settings <maniple-file> --settings <happy-file>
 ```
 
 Claude likely only uses the **first** `--settings` file (standard CLI behavior), meaning:
-- Claude has the **Stop hook** (claude-team's) - for idle detection
+- Claude has the **Stop hook** (maniple's) - for idle detection
 - Claude does **NOT** have the **SessionStart hook** (Happy's) - for session tracking
 
 ### Why Happy mobile shows empty sessions
@@ -100,10 +100,10 @@ Without the SessionStart hook firing, Happy never learns the Claude session ID, 
 
 ### Option A: Don't add `--settings` when using Happy
 
-When `CLAUDE_TEAM_COMMAND=happy`, skip adding the `--settings` flag entirely:
+When `MANIPLE_COMMAND=happy`, skip adding the `--settings` flag entirely:
 
 ```python
-claude_cmd = os.environ.get("CLAUDE_TEAM_COMMAND", "claude")
+claude_cmd = os.environ.get("MANIPLE_COMMAND", "claude")
 if dangerously_skip_permissions:
     claude_cmd += " --dangerously-skip-permissions"
 
@@ -113,7 +113,7 @@ if stop_hook_marker_id and claude_cmd == "claude":
     claude_cmd += f" --settings {settings_file}"
 ```
 
-**Tradeoff:** Loses idle detection for Happy-spawned workers. Claude-team would need an alternative mechanism.
+**Tradeoff:** Loses idle detection for Happy-spawned workers. Maniple would need an alternative mechanism.
 
 ### Option B: Merge hooks into one settings file
 
@@ -145,7 +145,7 @@ def build_merged_settings_file(marker_id: str, happy_port: int) -> str:
 
 ### Option C: Coordinate with Happy's hook mechanism
 
-Have claude-team discover Happy's hook port and integrate with it, or use Happy's daemon API directly for session tracking.
+Have maniple discover Happy's hook port and integrate with it, or use Happy's daemon API directly for session tracking.
 
 **Tradeoff:** Complex integration, tight coupling with Happy internals.
 
@@ -176,8 +176,8 @@ args.push("--settings", mergedSettings);
 
 To verify the root cause:
 1. Run `happy` directly from terminal - check that SessionStart hook fires (session shows in mobile)
-2. Run via claude-team with `CLAUDE_TEAM_COMMAND=happy` - SessionStart hook should NOT fire
-3. Temporarily remove claude-team's `--settings` flag and respawn - session should appear in mobile
+2. Run via maniple with `MANIPLE_COMMAND=happy` - SessionStart hook should NOT fire
+3. Temporarily remove maniple's `--settings` flag and respawn - session should appear in mobile
 
 ## Additional Notes
 

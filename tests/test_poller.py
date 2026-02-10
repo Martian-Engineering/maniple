@@ -1,6 +1,6 @@
 """Tests for worker poller snapshot diffing."""
 
-from claude_team.poller import _build_snapshot, _build_transition_events
+from maniple.poller import _build_snapshot, _build_transition_events
 
 
 class _FakeSession:

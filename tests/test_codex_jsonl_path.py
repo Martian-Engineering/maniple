@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from claude_team_mcp.registry import (
+from maniple_mcp.registry import (
     ManagedSession,
     RecoveredSession,
     SessionStatus,
@@ -38,7 +38,7 @@ class TestCodexGetJsonlPathNoBlindFallback:
             session.codex_jsonl_path = codex_jsonl_path
         return session
 
-    @patch("claude_team_mcp.registry.find_codex_session_by_internal_id")
+    @patch("maniple_mcp.registry.find_codex_session_by_internal_id")
     def test_returns_none_when_discovery_fails(self, mock_find):
         """get_jsonl_path returns None when marker discovery fails, not a random file."""
         mock_find.return_value = None
@@ -50,7 +50,7 @@ class TestCodexGetJsonlPathNoBlindFallback:
         # Verify it used generous max_age
         mock_find.assert_called_once_with("test-abc1", max_age_seconds=86400)
 
-    @patch("claude_team_mcp.registry.find_codex_session_by_internal_id")
+    @patch("maniple_mcp.registry.find_codex_session_by_internal_id")
     def test_uses_cached_path_when_available(self, mock_find):
         """get_jsonl_path returns cached codex_jsonl_path without re-discovery."""
         cached_path = Path("/tmp/test-codex-session.jsonl")
@@ -67,7 +67,7 @@ class TestCodexGetJsonlPathNoBlindFallback:
         finally:
             cached_path.unlink(missing_ok=True)
 
-    @patch("claude_team_mcp.registry.find_codex_session_by_internal_id")
+    @patch("maniple_mcp.registry.find_codex_session_by_internal_id")
     def test_falls_through_when_cached_path_missing(self, mock_find):
         """get_jsonl_path tries re-discovery when cached file no longer exists."""
         mock_find.return_value = None
@@ -80,7 +80,7 @@ class TestCodexGetJsonlPathNoBlindFallback:
         # Should try marker-based discovery when cached path doesn't exist
         mock_find.assert_called_once()
 
-    @patch("claude_team_mcp.registry.find_codex_session_by_internal_id")
+    @patch("maniple_mcp.registry.find_codex_session_by_internal_id")
     def test_caches_path_on_successful_discovery(self, mock_find):
         """get_jsonl_path caches the path when marker discovery succeeds."""
         mock_match = MagicMock()
@@ -94,7 +94,7 @@ class TestCodexGetJsonlPathNoBlindFallback:
         assert result == Path("/tmp/discovered-codex.jsonl")
         assert session.codex_jsonl_path == Path("/tmp/discovered-codex.jsonl")
 
-    @patch("claude_team_mcp.registry.find_codex_session_by_internal_id")
+    @patch("maniple_mcp.registry.find_codex_session_by_internal_id")
     def test_uses_86400_max_age_for_rediscovery(self, mock_find):
         """get_jsonl_path uses 24h max_age (not 600s) for marker discovery."""
         mock_find.return_value = None
@@ -118,7 +118,7 @@ class TestCodexIsIdleNoBlindFallback:
             agent_type="codex",
         )
 
-    @patch("claude_team_mcp.registry.find_codex_session_by_internal_id")
+    @patch("maniple_mcp.registry.find_codex_session_by_internal_id")
     def test_returns_false_when_no_session_file(self, mock_find):
         """is_idle returns False (not True from wrong file) when discovery fails."""
         mock_find.return_value = None
@@ -128,8 +128,8 @@ class TestCodexIsIdleNoBlindFallback:
 
         assert result is False
 
-    @patch("claude_team_mcp.idle_detection.is_codex_idle")
-    @patch("claude_team_mcp.registry.find_codex_session_by_internal_id")
+    @patch("maniple_mcp.idle_detection.is_codex_idle")
+    @patch("maniple_mcp.registry.find_codex_session_by_internal_id")
     def test_uses_correct_session_file(self, mock_find, mock_is_idle):
         """is_idle uses the cached/discovered path, not a random recent file."""
         mock_find.return_value = None
@@ -257,7 +257,7 @@ class TestRecoverFromEventsCodexJsonlPath:
 
     def test_codex_jsonl_path_recovered_from_snapshot(self):
         """codex_jsonl_path in worker snapshot data populates RecoveredSession."""
-        from claude_team_mcp.registry import SessionRegistry
+        from maniple_mcp.registry import SessionRegistry
 
         registry = SessionRegistry()
 

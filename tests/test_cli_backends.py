@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 import pytest
 
-from claude_team_mcp import config as config_module
-from claude_team_mcp.cli_backends import (
+from maniple_mcp import config as config_module
+from maniple_mcp.cli_backends import (
     AgentCLI,
     ClaudeCLI,
     CodexCLI,
@@ -52,16 +52,31 @@ class TestClaudeCLI:
     def test_command_default(self):
         """Default command should be 'claude'."""
         with patch.dict(os.environ, {}, clear=True):
-            # Clear CLAUDE_TEAM_COMMAND if set
+            os.environ.pop("MANIPLE_COMMAND", None)
             os.environ.pop("CLAUDE_TEAM_COMMAND", None)
             cli = ClaudeCLI()
             assert cli.command() == "claude"
 
     def test_command_from_env(self):
-        """Command should respect CLAUDE_TEAM_COMMAND env var."""
+        """Command should respect MANIPLE_COMMAND env var."""
+        with patch.dict(os.environ, {"MANIPLE_COMMAND": "happy"}):
+            cli = ClaudeCLI()
+            assert cli.command() == "happy"
+
+    def test_command_from_deprecated_env(self):
+        """Command should fall back to deprecated CLAUDE_TEAM_COMMAND env var."""
         with patch.dict(os.environ, {"CLAUDE_TEAM_COMMAND": "happy"}):
             cli = ClaudeCLI()
             assert cli.command() == "happy"
+
+    def test_command_env_precedence(self):
+        """MANIPLE_COMMAND should take precedence over CLAUDE_TEAM_COMMAND."""
+        with patch.dict(
+            os.environ,
+            {"MANIPLE_COMMAND": "new", "CLAUDE_TEAM_COMMAND": "old"},
+        ):
+            cli = ClaudeCLI()
+            assert cli.command() == "new"
 
     def test_command_from_config(self, config_path):
         """Command should use config when env var is unset."""
@@ -70,6 +85,7 @@ class TestClaudeCLI:
             "commands": {"claude": "/from/config"},
         }))
         with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("MANIPLE_COMMAND", None)
             os.environ.pop("CLAUDE_TEAM_COMMAND", None)
             cli = ClaudeCLI()
             assert cli.command() == "/from/config"
@@ -80,7 +96,7 @@ class TestClaudeCLI:
             "version": 1,
             "commands": {"claude": "/from/config"},
         }))
-        with patch.dict(os.environ, {"CLAUDE_TEAM_COMMAND": "from-env"}):
+        with patch.dict(os.environ, {"MANIPLE_COMMAND": "from-env"}):
             cli = ClaudeCLI()
             assert cli.command() == "from-env"
 
@@ -99,6 +115,7 @@ class TestClaudeCLI:
     def test_build_args_settings_file_default_command(self):
         """Should add --settings flag for default claude command."""
         with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("MANIPLE_COMMAND", None)
             os.environ.pop("CLAUDE_TEAM_COMMAND", None)
             cli = ClaudeCLI()
             args = cli.build_args(settings_file="/path/to/settings.json")
@@ -107,7 +124,7 @@ class TestClaudeCLI:
 
     def test_build_args_settings_file_skipped_for_custom_command(self):
         """Should NOT add --settings flag for custom commands like 'happy'."""
-        with patch.dict(os.environ, {"CLAUDE_TEAM_COMMAND": "happy"}):
+        with patch.dict(os.environ, {"MANIPLE_COMMAND": "happy"}):
             cli = ClaudeCLI()
             args = cli.build_args(settings_file="/path/to/settings.json")
             assert "--settings" not in args
@@ -132,19 +149,21 @@ class TestClaudeCLI:
     def test_supports_settings_file_default_command(self):
         """Should support settings file for default claude command."""
         with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("MANIPLE_COMMAND", None)
             os.environ.pop("CLAUDE_TEAM_COMMAND", None)
             cli = ClaudeCLI()
             assert cli.supports_settings_file() is True
 
     def test_supports_settings_file_custom_command(self):
         """Should NOT support settings file for custom commands."""
-        with patch.dict(os.environ, {"CLAUDE_TEAM_COMMAND": "happy"}):
+        with patch.dict(os.environ, {"MANIPLE_COMMAND": "happy"}):
             cli = ClaudeCLI()
             assert cli.supports_settings_file() is False
 
     def test_build_full_command_simple(self):
         """build_full_command should combine command and args."""
         with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("MANIPLE_COMMAND", None)
             os.environ.pop("CLAUDE_TEAM_COMMAND", None)
             cli = ClaudeCLI()
             cmd = cli.build_full_command(dangerously_skip_permissions=True)
@@ -153,6 +172,7 @@ class TestClaudeCLI:
     def test_build_full_command_with_env_vars(self):
         """build_full_command should prepend env vars."""
         with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("MANIPLE_COMMAND", None)
             os.environ.pop("CLAUDE_TEAM_COMMAND", None)
             cli = ClaudeCLI()
             cmd = cli.build_full_command(env_vars={"FOO": "bar", "BAZ": "qux"})
@@ -172,16 +192,31 @@ class TestCodexCLI:
     def test_command_default(self):
         """Default command should be 'codex'."""
         with patch.dict(os.environ, {}, clear=True):
-            # Clear CLAUDE_TEAM_CODEX_COMMAND if set
+            os.environ.pop("MANIPLE_CODEX_COMMAND", None)
             os.environ.pop("CLAUDE_TEAM_CODEX_COMMAND", None)
             cli = CodexCLI()
             assert cli.command() == "codex"
 
     def test_command_from_env(self):
-        """Command should respect CLAUDE_TEAM_CODEX_COMMAND env var."""
+        """Command should respect MANIPLE_CODEX_COMMAND env var."""
+        with patch.dict(os.environ, {"MANIPLE_CODEX_COMMAND": "happy codex"}):
+            cli = CodexCLI()
+            assert cli.command() == "happy codex"
+
+    def test_command_from_deprecated_env(self):
+        """Command should fall back to deprecated CLAUDE_TEAM_CODEX_COMMAND env var."""
         with patch.dict(os.environ, {"CLAUDE_TEAM_CODEX_COMMAND": "happy codex"}):
             cli = CodexCLI()
             assert cli.command() == "happy codex"
+
+    def test_command_env_precedence(self):
+        """MANIPLE_CODEX_COMMAND should take precedence over CLAUDE_TEAM_CODEX_COMMAND."""
+        with patch.dict(
+            os.environ,
+            {"MANIPLE_CODEX_COMMAND": "new", "CLAUDE_TEAM_CODEX_COMMAND": "old"},
+        ):
+            cli = CodexCLI()
+            assert cli.command() == "new"
 
     def test_command_from_config(self, config_path):
         """Command should use config when env var is unset."""
@@ -190,6 +225,7 @@ class TestCodexCLI:
             "commands": {"codex": "/from/config"},
         }))
         with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("MANIPLE_CODEX_COMMAND", None)
             os.environ.pop("CLAUDE_TEAM_CODEX_COMMAND", None)
             cli = CodexCLI()
             assert cli.command() == "/from/config"
@@ -200,7 +236,7 @@ class TestCodexCLI:
             "version": 1,
             "commands": {"codex": "/from/config"},
         }))
-        with patch.dict(os.environ, {"CLAUDE_TEAM_CODEX_COMMAND": "from-env"}):
+        with patch.dict(os.environ, {"MANIPLE_CODEX_COMMAND": "from-env"}):
             cli = CodexCLI()
             assert cli.command() == "from-env"
 
@@ -242,6 +278,7 @@ class TestCodexCLI:
     def test_build_full_command_simple(self):
         """build_full_command should return just 'codex' for defaults."""
         with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("MANIPLE_CODEX_COMMAND", None)
             os.environ.pop("CLAUDE_TEAM_CODEX_COMMAND", None)
             cli = CodexCLI()
             cmd = cli.build_full_command()
@@ -250,14 +287,15 @@ class TestCodexCLI:
     def test_build_full_command_with_bypass_approvals(self):
         """build_full_command should add --dangerously-bypass-approvals-and-sandbox."""
         with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("MANIPLE_CODEX_COMMAND", None)
             os.environ.pop("CLAUDE_TEAM_CODEX_COMMAND", None)
             cli = CodexCLI()
             cmd = cli.build_full_command(dangerously_skip_permissions=True)
             assert cmd == "codex --dangerously-bypass-approvals-and-sandbox"
 
     def test_build_full_command_with_env_var(self):
-        """build_full_command should use CLAUDE_TEAM_CODEX_COMMAND."""
-        with patch.dict(os.environ, {"CLAUDE_TEAM_CODEX_COMMAND": "happy codex"}):
+        """build_full_command should use MANIPLE_CODEX_COMMAND."""
+        with patch.dict(os.environ, {"MANIPLE_CODEX_COMMAND": "happy codex"}):
             cli = CodexCLI()
             cmd = cli.build_full_command(dangerously_skip_permissions=True)
             assert cmd == "happy codex --dangerously-bypass-approvals-and-sandbox"

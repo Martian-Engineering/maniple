@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from claude_team.events import WorkerEvent
-from claude_team_mcp.tools import worker_events as worker_events_module
+from maniple.events import WorkerEvent
+from maniple_mcp.tools import worker_events as worker_events_module
 
 
 def _isoformat_zulu(value: datetime) -> str:

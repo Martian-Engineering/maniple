@@ -4,8 +4,8 @@ import subprocess
 
 import pytest
 
-from claude_team_mcp.terminal_backends.base import TerminalSession
-from claude_team_mcp.terminal_backends.tmux import TmuxBackend, tmux_session_name_for_project
+from maniple_mcp.terminal_backends.base import TerminalSession
+from maniple_mcp.terminal_backends.tmux import TmuxBackend, tmux_session_name_for_project
 
 
 # subprocess is still needed for tests that mock tmux CalledProcessError
@@ -67,6 +67,22 @@ async def test_list_sessions_parses_panes(monkeypatch):
     assert sessions[0].metadata["session_name"] == session_one
     assert sessions[0].metadata["window_name"] == "worker-1"
     assert sessions[1].metadata["pane_index"] == "2"
+
+
+@pytest.mark.asyncio
+async def test_list_sessions_includes_legacy_prefix(monkeypatch):
+    backend = TmuxBackend()
+    legacy_session = "claude-team-legacy-project"
+
+    async def fake_run(args):
+        assert args[:2] == ["list-panes", "-a"]
+        return f"{legacy_session}\t@1\tworker-1\t0\t0\t%1\n"
+
+    monkeypatch.setattr(backend, "_run_tmux", fake_run)
+
+    sessions = await backend.list_sessions()
+    assert len(sessions) == 1
+    assert sessions[0].metadata["session_name"] == legacy_session
 
 
 @pytest.mark.asyncio
@@ -156,6 +172,23 @@ async def test_find_available_window_prefers_active_pane(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_find_available_window_includes_legacy_prefix(monkeypatch):
+    backend = TmuxBackend()
+    legacy_session = "claude-team-legacy-project"
+
+    async def fake_run(args):
+        assert args[:2] == ["list-panes", "-a"]
+        return f"{legacy_session}\t@1\t0\t0\t1\t%1\n"
+
+    monkeypatch.setattr(backend, "_run_tmux", fake_run)
+
+    result = await backend.find_available_window(max_panes=4, managed_session_ids=None)
+    assert result is not None
+    session_name, _, _ = result
+    assert session_name == legacy_session
+
+
+@pytest.mark.asyncio
 async def test_find_available_window_respects_managed_filter(monkeypatch):
     backend = TmuxBackend()
     session_one = tmux_session_name_for_project("/Users/test/alpha")
@@ -203,9 +236,9 @@ async def test_find_available_window_returns_none_when_full(monkeypatch):
 
 
 def test_tmux_session_name_format():
-    """Test that session names follow the format claude-team-{slug}."""
+    """Test that session names follow the format maniple-{slug}."""
     session = tmux_session_name_for_project("/Users/test/my-project")
-    assert session == "claude-team-my-project"
+    assert session == "maniple-my-project"
 
 
 def test_tmux_session_name_same_for_worktree_and_main():
@@ -217,10 +250,10 @@ def test_tmux_session_name_same_for_worktree_and_main():
     main_session = tmux_session_name_for_project(main_repo_path)
 
     assert worktree_session == main_session
-    assert worktree_session == "claude-team-claude-team"
+    assert worktree_session == "maniple-claude-team"
 
 
 def test_tmux_session_name_fallback_for_none():
     """Test that None project path produces fallback session name."""
     session = tmux_session_name_for_project(None)
-    assert session == "claude-team-project"
+    assert session == "maniple-project"

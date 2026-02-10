@@ -2,7 +2,7 @@
 
 import pytest
 
-from claude_team_mcp.worker_prompt import (
+from maniple_mcp.worker_prompt import (
     AgentType,
     generate_worker_prompt,
     get_coordinator_guidance,
