@@ -70,8 +70,8 @@ def _event_project(event: WorkerEvent) -> str | None:
     return None
 
 
-# Extract a bead/issue reference from event data.
-def _event_bead(event: WorkerEvent) -> str | None:
+# Extract an issue reference from event data.
+def _event_issue_id(event: WorkerEvent) -> str | None:
     data = event.data or {}
     for key in ("bead", "issue", "issue_id"):
         value = data.get(key)
@@ -198,7 +198,7 @@ def register_tools(mcp: FastMCP) -> None:
             elif event.type == "worker_closed":
                 completed.append({
                     "name": _event_name(event),
-                    "bead": _event_bead(event),
+                    "issue_id": _event_issue_id(event),
                     "duration_min": _duration_minutes(event, started_at),
                 })
 
