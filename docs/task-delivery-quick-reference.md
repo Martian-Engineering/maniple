@@ -13,19 +13,20 @@ spawn_workers(workers=[{
 
 **✅ CORRECT:**
 ```python
-# Use bead, prompt, or message_workers to send tasks
+# Use issue_id, prompt, or message_workers to send tasks
 spawn_workers(workers=[{
     "project_path": "auto",
-    "bead": "cic-123",  # Worker gets: "Your assignment is cic-123"
+    "issue_id": "cic-123",  # Worker gets: "Your assignment is cic-123"
     "annotation": "Auth bug"  # Optional: for your tracking only
 }])
 ```
+Older examples may still show `bead`; use `issue_id` in current worker configs.
 
 ## Quick Comparison
 
 | What You Want | Use This | Example |
 |---------------|----------|---------|
-| Assign tracked issue | `bead` parameter | `"bead": "cic-123"` |
+| Assign tracked issue | `issue_id` parameter | `"issue_id": "cic-123"` |
 | Give custom instructions | `prompt` parameter | `"prompt": "Review auth.py for XSS"` |
 | Send task after spawn | `message_workers()` | `message_workers(session_ids=["Groucho"], ...)` |
 | Track what worker is doing | `annotation` parameter | `"annotation": "Auth work"` (for badges only) |
@@ -36,7 +37,7 @@ spawn_workers(workers=[{
 ```python
 spawn_workers(workers=[{
     "project_path": "auto",
-    "bead": "cic-123",           # ✅ Worker receives this
+    "issue_id": "cic-123",           # ✅ Worker receives this
     "annotation": "Fix auth"     # ℹ️ Just for badges/branches
 }])
 ```
@@ -55,7 +56,7 @@ Worker sees: "The coordinator assigned you the following task: Audit the auth mo
 ```python
 spawn_workers(workers=[{
     "project_path": "auto",
-    "bead": "cic-123",           # ✅ Worker receives this
+    "issue_id": "cic-123",           # ✅ Worker receives this
     "prompt": "Focus on OAuth2 flow",  # ✅ Worker receives this too
     "annotation": "Auth - OAuth"      # ℹ️ Just for badges
 }])
@@ -108,13 +109,13 @@ The `agent_type` parameter defaults to `"claude"` and should **not** be specifie
 spawn_workers(workers=[{
     "project_path": "auto",
     "agent_type": "claude",  # Don't specify if using default!
-    "bead": "cic-123"
+    "issue_id": "cic-123"
 }])
 
 # ✅ CORRECT: Let it use the default
 spawn_workers(workers=[{
     "project_path": "auto",
-    "bead": "cic-123"
+    "issue_id": "cic-123"
 }])
 
 # ✅ CORRECT: Only specify when explicitly requested

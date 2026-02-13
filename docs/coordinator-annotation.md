@@ -24,27 +24,27 @@ The `annotation` field in `WorkerConfig` (which becomes `coordinator_annotation`
 spawn_workers(
     workers=[{
         "project_path": "auto",
-        "bead": "cic-123",
+        "issue_id": "cic-123",
         "annotation": "Fix authentication bug"  # <-- Badge/branch name only!
     }]
 )
 ```
 
-The worker will **NOT** receive "Fix authentication bug" as their task. They only see what's in the `bead` or `prompt` parameters.
+The worker will **NOT** receive "Fix authentication bug" as their task. They only see what's in the `issue_id` or `prompt` parameters.
 
 ## How to Actually Deliver Tasks to Workers
 
-There are **three correct ways** to deliver tasks to workers:
+There are **four correct ways** to deliver tasks to workers:
 
-### Method 1: Using `bead` Parameter (Recommended for tracked work)
+### Method 1: Using `issue_id` Parameter (Recommended for tracked work)
 
-When you provide a `bead` (issue tracker ID), the worker receives a prompt telling them their assignment:
+When you provide an `issue_id` (issue tracker ID), the worker receives a prompt telling them their assignment:
 
 ```python
 spawn_workers(
     workers=[{
         "project_path": "auto",
-        "bead": "cic-123",              # <-- Worker receives this as their assignment
+        "issue_id": "cic-123",              # <-- Worker receives this as their assignment
         "annotation": "Fix auth bug"    # <-- Optional: for badges/tracking only
     }]
 )
@@ -91,7 +91,7 @@ Get to work!
 
 ### Method 3: Using `message_workers()` After Spawn
 
-When you spawn without `bead` or `prompt`, the worker spawns idle and you must immediately send them a task:
+When you spawn without `issue_id` or `prompt`, the worker spawns idle and you must immediately send them a task:
 
 ```python
 # Spawn idle worker
@@ -113,7 +113,7 @@ Alright, you're all set. The coordinator will send your first task shortly.
 
 Then your message arrives as their actual task.
 
-⚠️ **Warning:** If you spawn without `bead`/`prompt`, you'll get a warning in the response:
+⚠️ **Warning:** If you spawn without `issue_id`/`prompt`, you'll get a warning in the response:
 ```json
 {
     "workers_awaiting_task": ["Groucho"],
@@ -121,7 +121,7 @@ Then your message arrives as their actual task.
 }
 ```
 
-### Method 4: Combining `bead` + `prompt` (For additional context)
+### Method 4: Combining `issue_id` + `prompt` (For additional context)
 
 You can combine both to give issue-tracked work with extra context:
 
@@ -129,7 +129,7 @@ You can combine both to give issue-tracked work with extra context:
 spawn_workers(
     workers=[{
         "project_path": "auto",
-        "bead": "cic-123",
+        "issue_id": "cic-123",
         "prompt": "Focus on the login endpoint. Check both password and OAuth flows.",
         "annotation": "Auth bug - login"  # Optional: for tracking
     }]
@@ -165,7 +165,7 @@ worker_prompt = generate_worker_prompt(
     resolved_names[i],
     agent_type=managed.agent_type,
     use_worktree=use_worktree,
-    bead=bead,                      # <-- Task parameter 1
+    issue_id=issue_id,                      # <-- Task parameter 1
     project_path=tracker_path,
     custom_prompt=custom_prompt,    # <-- Task parameter 2
 )
@@ -182,12 +182,12 @@ await backend.send_prompt_for_agent(
 **Prompt generation logic (lines 83-241):**
 
 The `generate_worker_prompt()` function creates the actual message the worker receives based on:
-- `bead`: Issue tracker ID (if provided)
+- `issue_id`: Issue tracker ID (if provided)
 - `custom_prompt`: Custom instructions (if provided)
 
 The closing section has 4 cases:
-1. `bead` only → "Your assignment is `<bead>`"
-2. `bead` + `custom_prompt` → Assignment + custom instructions
+1. `issue_id` only → "Your assignment is `<issue_id>`"
+2. `issue_id` + `custom_prompt` → Assignment + custom instructions
 3. `custom_prompt` only → Custom instructions
 4. Neither → "The coordinator will send your first task shortly"
 
@@ -220,11 +220,11 @@ This tool is for **updating** coordinator tracking metadata after spawn. It does
 | Field/Parameter | Purpose | Sent to Worker? |
 |----------------|---------|-----------------|
 | `annotation` | Badge text, branch names, coordinator tracking | ❌ No |
-| `bead` | Issue tracker ID - worker's assignment | ✅ Yes |
+| `issue_id` | Issue tracker ID - worker's assignment | ✅ Yes |
 | `prompt` | Custom instructions - worker's task | ✅ Yes |
 | `message_workers()` | Send message after spawn | ✅ Yes |
 
-**Key Takeaway:** If you want a worker to know about something, use `bead`, `prompt`, or `message_workers()`. The `annotation` field is only for your own tracking and visual identification.
+**Key Takeaway:** If you want a worker to know about something, use `issue_id`, `prompt`, or `message_workers()`. The `annotation` field is only for your own tracking and visual identification.
 
 ## Best Practices
 
@@ -241,13 +241,13 @@ The `agent_type` parameter defaults to `"claude"` and should **not** be specifie
 spawn_workers(workers=[{
     "project_path": "auto",
     "agent_type": "claude",  # Redundant - this is already the default!
-    "bead": "cic-123"
+    "issue_id": "cic-123"
 }])
 
 # ✅ CORRECT: Use the default
 spawn_workers(workers=[{
     "project_path": "auto",
-    "bead": "cic-123"
+    "issue_id": "cic-123"
 }])
 
 # ✅ CORRECT: Only specify when user explicitly requests it
@@ -264,10 +264,10 @@ spawn_workers(workers=[{
 Always remember: `annotation` is for **your** reference, not **their** instructions.
 
 ```python
-# ✅ GOOD: annotation helps you track, bead delivers task
+# ✅ GOOD: annotation helps you track, issue_id delivers task
 spawn_workers(workers=[{
     "project_path": "auto",
-    "bead": "cic-123",
+    "issue_id": "cic-123",
     "annotation": "Auth bug - login flow"  # Your note for tracking
 }])
 

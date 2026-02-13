@@ -44,7 +44,7 @@ spawn_workers(workers=[
 **Key fields:**
 - `project_path`: Path to the repository (required)
 - `agent_type`: `"claude"` (default) or `"codex"` for OpenAI Codex CLI. **This field should not be specified unless explicitly requested by the user.** The default agent type is used unless override is required.
-- `issue_id`: The issue ID (Beads or Pebbles; shown on badge, used in branch naming)
+- `issue_id`: The issue ID (Beads or Pebbles; shown on badge, used in branch naming). Older examples may show `bead`.
 - `annotation`: Short task description (use the issue title for clarity)
 - `skip_permissions`: Set `True` — without this, workers can only read files
 - `use_worktree`: Set `False` to skip worktree creation (default `True`)
@@ -63,14 +63,14 @@ should branch FROM that feature branch so they have prerequisite commits:
 spawn_workers(workers=[
     {
         "project_path": "/path/to/repo",
-        "bead": "cic-101",
+        "issue_id": "cic-101",
         "annotation": "Add login endpoint",
         "worktree": {"base": "cic-100/auth-epic"},
         "skip_permissions": True,
     },
     {
         "project_path": "/path/to/repo",
-        "bead": "cic-102",
+        "issue_id": "cic-102",
         "annotation": "Add signup endpoint",
         "worktree": {"base": "cic-100/auth-epic"},
         "skip_permissions": True,

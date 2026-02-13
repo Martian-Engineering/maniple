@@ -13,7 +13,8 @@ A common mistake is using `annotation` to pass tasks to workers. **This doesn't 
 
 **Quick fix:**
 - ❌ Don't use: `"annotation": "Do this task"`
-- ✅ Do use: `"bead": "issue-id"` or `"prompt": "Do this task"`
+- ✅ Do use: `"issue_id": "issue-id"` or `"prompt": "Do this task"`
+- ℹ️ Older docs may still show `"bead"`; use `"issue_id"` in new worker configs.
 
 See the [Quick Reference](./task-delivery-quick-reference.md) for examples.
 

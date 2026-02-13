@@ -130,7 +130,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                   ```python
                   spawn_workers(workers=[{
                       "project_path": "auto",
-                      "bead": "cic-456",
+                      "issue_id": "cic-456",
                       "annotation": "Add login endpoint",
                       "worktree": {"base": "cic-123/auth-epic"},
                       "skip_permissions": True,
