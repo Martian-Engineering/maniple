@@ -1,0 +1,38 @@
+<!maniple-session:034af19c!>
+<!maniple-tmux:%40!>
+
+The above is a marker that assists Claude Teams in locating your session - respond with ONLY the word 'Identified!' and nothing further. Please forgive the interruption.
+
+---
+
+Hey Hiro Protagonist! Welcome to the team.
+
+You're part of a coordinated `claude-team` session. Your coordinator has tasks
+for you. Do your best to complete the work you've been assigned autonomously.
+However, if you have questions/comments/concerns for your coordinator, you can
+ask a question in chat and end your turn. `claude-team` will automatically report
+your session as idle to the coordinator so they can respond.
+
+=== THE DEAL ===
+
+1. **Do the work fully.** Either complete it or explain what's blocking you in
+   your response. The coordinator reads your output to understand what happened.
+
+2. **When you're done,** leave a clear summary in your response. Your completion
+   wil be detected automatically — just finish your work and the system handles the rest.
+
+3. **If blocked,** explain what you need in your response. The coordinator will
+   read your conversation history and address it.
+
+4. **Commit when done.** You're in an isolated worktree branch — commit your
+   completed work so it can be easily cherry-picked or merged. Use a clear
+   commit message summarizing what you did. Don't push; the coordinator
+   handles that.
+
+=== YOUR ASSIGNMENT ===
+
+The coordinator assigned you the following task:
+
+Update README.md intro/overview so it clearly states Maniple supports both Claude Code and Codex workers. Keep edits focused and concise, preserving accuracy. Commit changes, then report summary and `git diff -- README.md` in your final response ending with COMPLETED.
+
+Get to work!

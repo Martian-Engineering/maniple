@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "23efaa3ef31a",
+  "session_id": "fa3973f6-465e-4cbf-8d38-2fe34cfcf47c",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-13T19:42:52.161062Z",
+  "branch": "hiro-protagonist-f90b1cf9-refresh-readme-intro-to-clearl",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md"
+  ],
+  "agent": "Claude Code",
+  "transcript_identifier_at_start": "59badc2a-b1ff-4be3-a4bd-1094022e982a",
+  "token_usage": {
+    "input_tokens": 15,
+    "cache_creation_tokens": 75345,
+    "cache_read_tokens": 342497,
+    "output_tokens": 502,
+    "api_call_count": 11
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-13T19:42:52.152193Z",
+    "agent_lines": 2,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 2,
+    "agent_percentage": 100
+  }
+}
