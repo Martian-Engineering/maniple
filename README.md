@@ -4,14 +4,14 @@ An MCP server that allows one Claude Code session to spawn and manage a team of 
 
 ## Introduction
 
-`maniple` is an MCP server and a set of slash commands for allowing Claude Code to orchestrate a "team" of other Claude Code sessions. It uses terminal backends (tmux or iTerm2) to spawn new terminal sessions and run Claude Code within them.
+`maniple` is an MCP server and a set of slash commands for allowing Claude Code to orchestrate a "team" of other Claude Code or Codex sessions. It uses terminal backends (tmux or iTerm2) to spawn new terminal sessions and run Claude Code or Codex within them.
 
 ### Why?
 
 - **Parallelism:** Many development tasks can be logically parallelized, but managing that parallelism is difficult for humans with limited attention spans. Claude, meanwhile, is very effective at it.
 - **Context management:** Offloading implementation to a worker gives the implementing agent a fresh context window (smarter), and keeps the manager's context free of implementation details.
 - **Background work:** Sometimes you want to have Claude Code go research something or answer a question without blocking the main thread of work.
-- **Visibility:** `maniple` spawns real Claude Code sessions. You can watch them, interrupt and take control, or close them out.
+- **Visibility:** `maniple` spawns real Claude Code or Codex sessions. You can watch them, interrupt and take control, or close them out.
 
 But, *why not just use Claude Code sub-agents*, you ask? They're opaque -- they go off and do things and you, the user, cannot effectively monitor their work, interject, or continue a conversation with them. Using a full Claude Code session obviates this problem.
 
