@@ -22,8 +22,7 @@ def register_tools(mcp: FastMCP) -> None:
     async def annotate_worker(
         ctx: Context[ServerSession, "AppContext"],
         session_id: str,
-        badge: str | None = None,
-        annotation: str | None = None,
+        badge: str,
     ) -> dict:
         """
         Add a coordinator badge to a worker.
@@ -45,29 +44,26 @@ def register_tools(mcp: FastMCP) -> None:
                 Accepts internal IDs, terminal IDs, or worker names.
             badge: Note about what this worker is working on (coordinator
                 tracking only - worker does not receive this)
-            annotation: Deprecated alias for badge (badge takes precedence)
 
         Returns:
             Confirmation that the badge was saved
         """
         app_ctx = ctx.request_context.lifespan_context
         registry = app_ctx.registry
-        resolved_badge = badge if badge is not None else annotation
-        if not resolved_badge:
-            return error_response("Either 'badge' or 'annotation' is required")
+        if not badge:
+            return error_response("'badge' is required")
 
         # Look up session (accepts internal ID, terminal ID, or name)
         session = get_session_or_error(registry, session_id)
         if isinstance(session, dict):
             return session  # Error response
 
-        session.coordinator_badge = resolved_badge
+        session.coordinator_badge = badge
         session.update_activity()
 
         return {
             "success": True,
             "session_id": session_id,
-            "badge": resolved_badge,
-            "annotation": resolved_badge,
+            "badge": badge,
             "message": "Badge saved",
         }

@@ -30,7 +30,7 @@ The `bead` parameter name is specific to the Beads/Pebbles issue tracker, but cl
 
 ### Documentation Files
 
-- `docs/coordinator-annotation.md` - 18 references to "bead"
+- `docs/coordinator-badge.md` - 18 references to "bead"
 - `docs/task-delivery-quick-reference.md` - 12 references to "bead"
 - `docs/README.md` - 1 reference to "bead"
 - `commands/spawn-workers.md` - Multiple references
@@ -173,7 +173,7 @@ The `spawn_workers` tool's `WorkerConfig` TypedDict has `bead` as a public field
 
 ### Phase 4: Documentation
 
-11. **docs/coordinator-annotation.md**
+11. **docs/coordinator-badge.md**
     - Replace all "bead" → "issue_id" or "issue ID"
     - Update code examples
 
@@ -243,7 +243,7 @@ The `spawn_workers` tool's `WorkerConfig` TypedDict has `bead` as a public field
 
 ### Documentation Changes
 
-- [ ] `docs/coordinator-annotation.md`
+- [ ] `docs/coordinator-badge.md`
 - [ ] `docs/task-delivery-quick-reference.md`
 - [ ] `docs/README.md`
 - [ ] `commands/spawn-workers.md`

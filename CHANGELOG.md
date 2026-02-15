@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Removed `annotation` compatibility layer**: Worker metadata is now badge-only. Removed deprecated `annotation` params/aliases and `coordinator_annotation` output fields across tools, session metadata, recovery, tests, and docs.
+
 ## [0.11.2]
 
 - Fix Linux/non-macOS startup: if iTerm backend is selected implicitly but iTerm init fails, fall back to tmux when available.

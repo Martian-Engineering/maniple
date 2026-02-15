@@ -156,7 +156,7 @@ class RecoveredSession:
 
     # Optional fields that may be present in snapshots
     claude_session_id: Optional[str] = None
-    coordinator_annotation: Optional[str] = None
+    coordinator_badge: Optional[str] = None
     worktree_path: Optional[str] = None
     main_repo_path: Optional[str] = None
     codex_jsonl_path: Optional[str] = None
@@ -195,7 +195,6 @@ class RecoveredSession:
             "created_at": self.created_at.isoformat(),
             "last_activity": self.last_activity.isoformat(),
             "coordinator_badge": self.coordinator_badge,
-            "coordinator_annotation": self.coordinator_badge,
             "worktree_path": self.worktree_path,
             "main_repo_path": self.main_repo_path,
             "agent_type": self.agent_type,
@@ -206,11 +205,6 @@ class RecoveredSession:
             "recovered_at": self.recovered_at.isoformat(),
             "last_event_ts": self.last_event_ts.isoformat(),
         }
-
-    @property
-    def coordinator_badge(self) -> Optional[str]:
-        """Preferred name for coordinator tracking text."""
-        return self.coordinator_annotation
 
     def is_idle(self) -> bool:
         """
@@ -243,8 +237,8 @@ class ManagedSession:
     created_at: datetime = field(default_factory=datetime.now)
     last_activity: datetime = field(default_factory=datetime.now)
 
-    # Coordinator badges and worktree tracking
-    coordinator_annotation: Optional[str] = None  # Deprecated internal storage for badge text
+    # Coordinator badge and worktree tracking
+    coordinator_badge: Optional[str] = None  # Notes from coordinator about assignment
     worktree_path: Optional[Path] = None  # Path to worker's git worktree if any
     main_repo_path: Optional[Path] = None  # Path to main git repo (for worktree cleanup)
 
@@ -282,7 +276,6 @@ class ManagedSession:
             "created_at": self.created_at.isoformat(),
             "last_activity": self.last_activity.isoformat(),
             "coordinator_badge": self.coordinator_badge,
-            "coordinator_annotation": self.coordinator_badge,
             "worktree_path": str(self.worktree_path) if self.worktree_path else None,
             "main_repo_path": str(self.main_repo_path) if self.main_repo_path else None,
             "agent_type": self.agent_type,
@@ -291,16 +284,6 @@ class ManagedSession:
             "source": "registry",
         }
         return result
-
-    @property
-    def coordinator_badge(self) -> Optional[str]:
-        """Preferred name for coordinator tracking text."""
-        return self.coordinator_annotation
-
-    @coordinator_badge.setter
-    def coordinator_badge(self, value: Optional[str]) -> None:
-        """Backward-compatible setter that stores badge text in legacy field."""
-        self.coordinator_annotation = value
 
     def update_activity(self) -> None:
         """Update the last_activity timestamp."""
@@ -956,11 +939,7 @@ class SessionRegistry:
             recovered_at=recovered_at,
             last_event_ts=last_event_ts,
             claude_session_id=data.get("claude_session_id"),
-            coordinator_annotation=(
-                data.get("coordinator_badge")
-                if data.get("coordinator_badge") is not None
-                else data.get("coordinator_annotation")
-            ),
+            coordinator_badge=data.get("coordinator_badge"),
             worktree_path=data.get("worktree_path"),
             main_repo_path=data.get("main_repo_path"),
             codex_jsonl_path=data.get("codex_jsonl_path"),

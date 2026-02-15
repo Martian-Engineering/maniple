@@ -138,7 +138,6 @@ class TmuxBackend(TerminalBackend):
         project_path: str | None = None,
         issue_id: str | None = None,
         coordinator_badge: str | None = None,
-        coordinator_annotation: str | None = None,
         profile: str | None = None,
         profile_customizations: Any | None = None,
     ) -> TerminalSession:
@@ -148,12 +147,7 @@ class TmuxBackend(TerminalBackend):
 
         base_name = name or self._generate_window_name()
         project_name = project_name_from_path(project_path)
-        resolved_badge = (
-            coordinator_badge
-            if coordinator_badge is not None
-            else coordinator_annotation
-        )
-        resolved_issue_id = self._resolve_issue_id(issue_id, resolved_badge)
+        resolved_issue_id = self._resolve_issue_id(issue_id, coordinator_badge)
         window_name = self._format_window_name(base_name, project_name, resolved_issue_id)
         session_name = tmux_session_name_for_project(project_path)
 

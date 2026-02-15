@@ -45,20 +45,11 @@ class WorkerConfig(TypedDict, total=False):
     agent_type: str  # Optional: "claude" (default) or "codex". Don't specify unless user requests.
     name: str  # Optional: Worker name override. None = auto-pick from themed sets.
     badge: str  # Optional: Tracking label (NOT sent to worker). For badges/branches only.
-    annotation: str  # Deprecated alias for badge (badge takes precedence).
     issue_id: str  # Optional: Issue ID - THIS IS the worker's assignment if provided
     prompt: str  # Optional: Custom instructions - THIS IS the worker's task if provided
     skip_permissions: bool  # Optional: Default False
     use_worktree: bool  # Optional: Create isolated worktree (default True)
     worktree: WorktreeConfig  # Optional: Worktree settings (branch/base)
-
-
-def _worker_badge(worker: WorkerConfig) -> str | None:
-    """Resolve worker badge text, preferring badge over deprecated annotation."""
-    badge = worker.get("badge")
-    if badge is not None:
-        return badge
-    return worker.get("annotation")
 
 
 def register_tools(mcp: FastMCP, ensure_connection) -> None:
@@ -154,7 +145,6 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 This is metadata for YOUR reference, not task instructions for the worker.
                 If using an issue_id, it's recommended to use the issue title as the
                 badge for clarity. Truncated to 30 chars in badge.
-            annotation: Deprecated alias for badge (badge takes precedence).
             issue_id: Optional issue tracker issue ID. If provided, this IS the worker's assignment.
                 The worker receives issue tracker workflow instructions (mark in_progress, close,
                 commit with issue reference). Used for badge first line and branch naming.
@@ -312,7 +302,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 worktree_branch = None
                 worktree_base = None
                 issue_id = w.get("issue_id")
-                badge = _worker_badge(w)
+                badge = w.get("badge")
 
                 if worktree_config is not None:
                     if isinstance(worktree_config, dict):
@@ -406,7 +396,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     customization = LocalWriteOnlyProfile()
 
                     issue_id = w.get("issue_id")
-                    badge = _worker_badge(w)
+                    badge = w.get("badge")
                     agent_type = agent_types[i]
 
                     # Tab title
@@ -441,7 +431,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                             name=resolved_names[i],
                             project_path=resolved_paths[i],
                             issue_id=workers[i].get("issue_id"),
-                            coordinator_badge=_worker_badge(workers[i]),
+                            coordinator_badge=workers[i].get("badge"),
                         )
                     )
             elif layout == "auto":
@@ -707,7 +697,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     session_id=session_ids[i],
                 )
                 # Set badge text from worker config (if provided)
-                managed.coordinator_badge = _worker_badge(workers[i])
+                managed.coordinator_badge = workers[i].get("badge")
                 # Set agent type
                 managed.agent_type = agent_types[i]
                 # Store worktree info if applicable

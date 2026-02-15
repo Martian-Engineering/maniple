@@ -155,7 +155,7 @@ Get to work!
 **Where badge text is stored:**
 ```python
 # Set badge from worker config (if provided)
-managed.coordinator_badge = workers[i].get("badge") or workers[i].get("annotation")
+managed.coordinator_badge = workers[i].get("badge")
 ```
 
 **Where tasks are actually sent (lines 735-775):**
@@ -225,7 +225,6 @@ This tool is for **updating** coordinator tracking metadata after spawn. It does
 | `message_workers()` | Send message after spawn | ✅ Yes |
 
 **Key Takeaway:** If you want a worker to know about something, use `issue_id`, `prompt`, or `message_workers()`. The `badge` field is only for your own tracking and visual identification.
-Backward compatibility: `annotation` is still accepted as an alias for `badge`.
 
 ## Best Practices
 

@@ -273,8 +273,6 @@ def create_local_worktree(
     badge: Optional[str] = None,
     branch: Optional[str] = None,
     base: Optional[str] = None,
-    *,
-    annotation: Optional[str] = None,
 ) -> Path:
     """
     Create a git worktree in the repo's .worktrees/ directory.
@@ -300,7 +298,6 @@ def create_local_worktree(
         badge: Optional badge text for the worktree name
         branch: Optional branch name to create for the worktree
         base: Optional base ref/branch for the new branch
-        annotation: Deprecated alias for badge (badge takes precedence)
 
     Returns:
         Path to the created worktree
@@ -330,21 +327,20 @@ def create_local_worktree(
         # Returns: Path("/path/to/repo/.worktrees/groucho-a1b2c3d4-fix-bug")
     """
     repo_path = Path(repo_path).resolve()
-    resolved_badge = badge if badge is not None else annotation
 
     # Build the worktree directory name
     if issue_id:
         # Issue-based naming: {issue_id}-{badge}
-        if resolved_badge:
-            dir_name = f"{issue_id}-{short_slug(resolved_badge)}"
+        if badge:
+            dir_name = f"{issue_id}-{short_slug(badge)}"
         else:
             dir_name = issue_id
     else:
         # Fallback naming: {worker_name}-{uuid}-{badge}
         short_uuid = uuid.uuid4().hex[:8]
         name_slug = slugify(worker_name)
-        if resolved_badge:
-            dir_name = f"{name_slug}-{short_uuid}-{short_slug(resolved_badge)}"
+        if badge:
+            dir_name = f"{name_slug}-{short_uuid}-{short_slug(badge)}"
         else:
             dir_name = f"{name_slug}-{short_uuid}"
 

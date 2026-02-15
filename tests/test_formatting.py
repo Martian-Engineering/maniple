@@ -21,11 +21,6 @@ class TestFormatSessionTitle:
         result = format_session_title("worker-3", badge="refactor auth")
         assert result == "[worker-3] refactor auth"
 
-    def test_title_with_annotation_alias_only(self):
-        """Legacy annotation alias should still be accepted."""
-        result = format_session_title("worker-3", annotation="refactor auth")
-        assert result == "[worker-3] refactor auth"
-
     def test_title_with_session_name_only(self):
         """Test with just session name."""
         result = format_session_title("worker-4")
@@ -55,16 +50,6 @@ class TestFormatBadgeText:
         """Test multi-line badge with name and badge text (no issue ID)."""
         result = format_badge_text("Groucho", badge="quick task")
         assert result == "Groucho\nquick task"
-
-    def test_badge_with_annotation_alias(self):
-        """Legacy annotation alias should still be accepted."""
-        result = format_badge_text("Groucho", annotation="quick task")
-        assert result == "Groucho\nquick task"
-
-    def test_badge_prefers_badge_over_annotation_alias(self):
-        """When both are provided, badge should take precedence."""
-        result = format_badge_text("Groucho", badge="new", annotation="old")
-        assert result == "Groucho\nnew"
 
     def test_badge_with_issue_id_only(self):
         """Test single-line badge with just issue ID."""
@@ -140,13 +125,6 @@ class TestFormatBadgeText:
         result = format_badge_text("Groucho", badge=badge)
         lines = result.split("\n")
         assert len(lines[1]) == 30
-
-    def test_badge_max_annotation_length_alias(self):
-        """Legacy max_annotation_length alias should still be accepted."""
-        badge = "a" * 35
-        result = format_badge_text("Groucho", badge=badge, max_annotation_length=20)
-        lines = result.split("\n")
-        assert len(lines[1]) == 20
 
     def test_badge_first_line_not_truncated(self):
         """Test that first line (issue_id/name) is never truncated."""

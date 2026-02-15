@@ -21,7 +21,6 @@ spawn_workers(workers=[{
 }])
 ```
 Older examples may still show `bead`; use `issue_id` in current worker configs.
-`annotation` is still accepted as a deprecated alias for `badge`.
 
 ## Quick Comparison
 
@@ -132,5 +131,5 @@ spawn_workers(workers=[{
 
 ## See Also
 
-- [Full documentation](./coordinator-annotation.md) - Complete explanation with code references
+- [Full documentation](./coordinator-badge.md) - Complete explanation with code references
 - `spawn_workers` tool docstring - API reference with all parameters

@@ -30,7 +30,6 @@ class FakeBackend:
         project_path: str | None = None,
         issue_id: str | None = None,
         coordinator_badge: str | None = None,
-        coordinator_annotation: str | None = None,
         profile: str | None = None,
         profile_customizations: object | None = None,
     ) -> TerminalSession:
@@ -39,7 +38,6 @@ class FakeBackend:
             "project_path": project_path,
             "issue_id": issue_id,
             "coordinator_badge": coordinator_badge,
-            "coordinator_annotation": coordinator_annotation,
         })
         session = TerminalSession(
             backend_id=self.backend_id,
@@ -240,8 +238,8 @@ async def test_spawn_workers_invalid_config_falls_back(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_spawn_workers_prefers_badge_over_annotation(tmp_path, monkeypatch):
-    """spawn_workers should use badge when both badge and annotation are provided."""
+async def test_spawn_workers_sets_badge_metadata(tmp_path, monkeypatch):
+    """spawn_workers should forward badge metadata to sessions."""
     config = default_config()
     config.defaults = DefaultsConfig(
         agent_type="claude",
@@ -290,12 +288,9 @@ async def test_spawn_workers_prefers_badge_over_annotation(tmp_path, monkeypatch
             "project_path": str(repo_path),
             "name": "Worker1",
             "badge": "Preferred badge",
-            "annotation": "Legacy annotation",
         }],
     }, context=ctx)
 
     session = result["sessions"]["Worker1"]
     assert session["coordinator_badge"] == "Preferred badge"
-    assert session["coordinator_annotation"] == "Preferred badge"
     assert backend.create_calls[0]["coordinator_badge"] == "Preferred badge"
-    assert backend.create_calls[0]["coordinator_annotation"] is None

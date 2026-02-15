@@ -270,7 +270,6 @@ WorkerConfig fields:
   agent_type: str           - "claude" (default) or "codex"
   name: str                 - Optional worker name override (auto-picked from themed sets if omitted)
   badge: str                - Task description (shown in badge, used in branch names)
-  annotation: str           - Deprecated alias for `badge` (badge takes precedence)
   issue_id: str             - Issue tracker ID (for badge, branch naming, and workflow instructions)
   prompt: str               - Additional instructions (combined with standard worker prompt)
   skip_permissions: bool    - Start with --dangerously-skip-permissions
