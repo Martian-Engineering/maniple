@@ -71,7 +71,7 @@ echo "$WORKERS_JSON" | jq -r '.workers[] | @base64' | while read -r worker_b64; 
   name=$(echo "$worker" | jq -r '.name // "unnamed"')
   session_id=$(echo "$worker" | jq -r '.session_id // "?"' | cut -c1-8)
   main_repo=$(echo "$worker" | jq -r '.main_repo_path // .project_path // "unknown"' | xargs basename)
-  annotation=$(echo "$worker" | jq -r '.coordinator_annotation // .bead // "No description"')
+  badge=$(echo "$worker" | jq -r '.coordinator_badge // .coordinator_annotation // .bead // "No description"')
   msg_count=$(echo "$worker" | jq -r '.message_count // 0')
   is_idle=$(echo "$worker" | jq -r '.is_idle // false')
   agent_type=$(echo "$worker" | jq -r '.agent_type // "claude"')
@@ -99,7 +99,7 @@ echo "$WORKERS_JSON" | jq -r '.workers[] | @base64' | while read -r worker_b64; 
 
   echo "$name [$agent_type] ($session_id)"
   echo "  repo: $main_repo"
-  echo "  note: $annotation"
+  echo "  note: $badge"
   echo "  msgs: $msg_count, status: $status"
   echo ""
 done

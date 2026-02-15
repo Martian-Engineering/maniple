@@ -89,6 +89,7 @@ class ItermBackend(TerminalBackend):
         *,
         project_path: str | None = None,
         issue_id: str | None = None,
+        coordinator_badge: str | None = None,
         coordinator_annotation: str | None = None,
         profile: str | None = None,
         profile_customizations: "ItermLocalWriteOnlyProfile" | None = None,

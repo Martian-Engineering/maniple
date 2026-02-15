@@ -1,16 +1,16 @@
-# Coordinator Annotation vs Task Delivery
+# Coordinator Badge vs Task Delivery
 
 ## Overview
 
-This document clarifies the distinction between `coordinator_annotation` (metadata) and actual task delivery mechanisms in claude-team.
+This document clarifies the distinction between `coordinator_badge` (metadata) and actual task delivery mechanisms in claude-team.
 
 ## The Problem
 
-Coordinators were mistakenly using `annotation` in spawn configurations to pass task information to workers. However, **annotations are never sent to workers** - they're purely metadata for the coordinator's tracking.
+Coordinators were mistakenly using `badge` in spawn configurations to pass task information to workers. However, **badges are never sent to workers** - they're purely metadata for the coordinator's tracking.
 
-## What `coordinator_annotation` Actually Does
+## What `coordinator_badge` Actually Does
 
-The `annotation` field in `WorkerConfig` (which becomes `coordinator_annotation` on the `ManagedSession` object) is used for:
+The `badge` field in `WorkerConfig` (which becomes `coordinator_badge` on the `ManagedSession` object) is used for:
 
 1. **iTerm badge display** - Shows on the worker's terminal badge (2nd line)
 2. **Git branch naming** - Used in worktree branch names (e.g., `Groucho-abc123-fix-auth-bug`)
@@ -20,12 +20,12 @@ The `annotation` field in `WorkerConfig` (which becomes `coordinator_annotation`
 ### Example Usage
 
 ```python
-# annotation is for coordinator's tracking only
+# badge is for coordinator tracking only
 spawn_workers(
     workers=[{
         "project_path": "auto",
         "issue_id": "cic-123",
-        "annotation": "Fix authentication bug"  # <-- Badge/branch name only!
+        "badge": "Fix authentication bug"  # <-- Badge/branch name only!
     }]
 )
 ```
@@ -45,7 +45,7 @@ spawn_workers(
     workers=[{
         "project_path": "auto",
         "issue_id": "cic-123",              # <-- Worker receives this as their assignment
-        "annotation": "Fix auth bug"    # <-- Optional: for badges/tracking only
+        "badge": "Fix auth bug"    # <-- Optional: for badges/tracking only
     }]
 )
 ```
@@ -131,7 +131,7 @@ spawn_workers(
         "project_path": "auto",
         "issue_id": "cic-123",
         "prompt": "Focus on the login endpoint. Check both password and OAuth flows.",
-        "annotation": "Auth bug - login"  # Optional: for tracking
+        "badge": "Auth bug - login"  # Optional: for tracking
     }]
 )
 ```
@@ -152,10 +152,10 @@ Get to work!
 
 ### spawn_workers.py
 
-**Where annotation is stored (lines 668, 402):**
+**Where badge text is stored:**
 ```python
-# Set annotation from worker config (if provided)
-managed.coordinator_annotation = workers[i].get("annotation")
+# Set badge from worker config (if provided)
+managed.coordinator_badge = workers[i].get("badge") or workers[i].get("annotation")
 ```
 
 **Where tasks are actually sent (lines 735-775):**
@@ -191,7 +191,7 @@ The closing section has 4 cases:
 3. `custom_prompt` only → Custom instructions
 4. Neither → "The coordinator will send your first task shortly"
 
-**Note:** `annotation` is NOT a parameter to `generate_worker_prompt()` and is never included in the worker prompt.
+**Note:** `badge` is NOT a parameter to `generate_worker_prompt()` and is never included in the worker prompt.
 
 ### annotate_worker.py
 
@@ -201,15 +201,15 @@ The closing section has 4 cases:
 async def annotate_worker(
     ctx: Context[ServerSession, "AppContext"],
     session_id: str,
-    annotation: str,
+    badge: str,
 ) -> dict:
     """
-    Add a coordinator annotation to a worker.
+    Add a coordinator badge to a worker.
 
     Coordinators use this to track what task each worker is assigned to.
-    These annotations appear in list_workers output.
+    These badges appear in list_workers output.
     """
-    session.coordinator_annotation = annotation  # <-- Just metadata!
+    session.coordinator_badge = badge  # <-- Just metadata!
     # ... returns confirmation
 ```
 
@@ -219,12 +219,13 @@ This tool is for **updating** coordinator tracking metadata after spawn. It does
 
 | Field/Parameter | Purpose | Sent to Worker? |
 |----------------|---------|-----------------|
-| `annotation` | Badge text, branch names, coordinator tracking | ❌ No |
+| `badge` | Badge text, branch names, coordinator tracking | ❌ No |
 | `issue_id` | Issue tracker ID - worker's assignment | ✅ Yes |
 | `prompt` | Custom instructions - worker's task | ✅ Yes |
 | `message_workers()` | Send message after spawn | ✅ Yes |
 
-**Key Takeaway:** If you want a worker to know about something, use `issue_id`, `prompt`, or `message_workers()`. The `annotation` field is only for your own tracking and visual identification.
+**Key Takeaway:** If you want a worker to know about something, use `issue_id`, `prompt`, or `message_workers()`. The `badge` field is only for your own tracking and visual identification.
+Backward compatibility: `annotation` is still accepted as an alias for `badge`.
 
 ## Best Practices
 
@@ -259,21 +260,21 @@ spawn_workers(workers=[{
 }])
 ```
 
-### 2. Use `annotation` for Tracking, Not Task Delivery
+### 2. Use `badge` for Tracking, Not Task Delivery
 
-Always remember: `annotation` is for **your** reference, not **their** instructions.
+Always remember: `badge` is for **your** reference, not **their** instructions.
 
 ```python
-# ✅ GOOD: annotation helps you track, issue_id delivers task
+# ✅ GOOD: badge helps you track, issue_id delivers task
 spawn_workers(workers=[{
     "project_path": "auto",
     "issue_id": "cic-123",
-    "annotation": "Auth bug - login flow"  # Your note for tracking
+    "badge": "Auth bug - login flow"  # Your note for tracking
 }])
 
-# ❌ BAD: annotation alone won't deliver the task
+# ❌ BAD: badge alone won't deliver the task
 spawn_workers(workers=[{
     "project_path": "auto",
-    "annotation": "Fix the authentication bug"  # Worker never receives this!
+    "badge": "Fix the authentication bug"  # Worker never receives this!
 }])
 ```

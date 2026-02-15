@@ -12,7 +12,7 @@ from mcp.server.session import ServerSession
 if TYPE_CHECKING:
     from ..server import AppContext
 
-from ..utils import get_session_or_error
+from ..utils import error_response, get_session_or_error
 
 
 def register_tools(mcp: FastMCP) -> None:
@@ -22,13 +22,14 @@ def register_tools(mcp: FastMCP) -> None:
     async def annotate_worker(
         ctx: Context[ServerSession, "AppContext"],
         session_id: str,
-        annotation: str,
+        badge: str | None = None,
+        annotation: str | None = None,
     ) -> dict:
         """
-        Add a coordinator annotation to a worker.
+        Add a coordinator badge to a worker.
 
         Coordinators use this to track what task each worker is assigned to.
-        These annotations appear in list_workers output.
+        These badges appear in list_workers output.
 
         ⚠️ **IMPORTANT**: This updates metadata only and does NOT send any message
         to the worker. The worker will not be notified. Use `message_workers` to
@@ -42,26 +43,31 @@ def register_tools(mcp: FastMCP) -> None:
         Args:
             session_id: The session to annotate.
                 Accepts internal IDs, terminal IDs, or worker names.
-            annotation: Note about what this worker is working on (coordinator
+            badge: Note about what this worker is working on (coordinator
                 tracking only - worker does not receive this)
+            annotation: Deprecated alias for badge (badge takes precedence)
 
         Returns:
-            Confirmation that the annotation was saved
+            Confirmation that the badge was saved
         """
         app_ctx = ctx.request_context.lifespan_context
         registry = app_ctx.registry
+        resolved_badge = badge if badge is not None else annotation
+        if not resolved_badge:
+            return error_response("Either 'badge' or 'annotation' is required")
 
         # Look up session (accepts internal ID, terminal ID, or name)
         session = get_session_or_error(registry, session_id)
         if isinstance(session, dict):
             return session  # Error response
 
-        session.coordinator_annotation = annotation
+        session.coordinator_badge = resolved_badge
         session.update_activity()
 
         return {
             "success": True,
             "session_id": session_id,
-            "annotation": annotation,
-            "message": "Annotation saved",
+            "badge": resolved_badge,
+            "annotation": resolved_badge,
+            "message": "Badge saved",
         }

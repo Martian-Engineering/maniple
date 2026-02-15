@@ -13,7 +13,7 @@ Two worktree strategies are supported:
    - No .gitignore modifications needed
 
 2. Local worktrees (preferred):
-   {repo}/.worktrees/{issue-annotation}/ or {name-uuid-annotation}/
+   {repo}/.worktrees/{issue-badge}/ or {name-uuid-badge}/
    - Kept within the repo for easier discovery and cleanup
    - Automatically adds .worktrees to .gitignore
 """
@@ -270,16 +270,18 @@ def create_local_worktree(
     repo_path: Path,
     worker_name: str,
     issue_id: Optional[str] = None,
-    annotation: Optional[str] = None,
+    badge: Optional[str] = None,
     branch: Optional[str] = None,
     base: Optional[str] = None,
+    *,
+    annotation: Optional[str] = None,
 ) -> Path:
     """
     Create a git worktree in the repo's .worktrees/ directory.
 
     Creates a new worktree at:
-        {repo}/.worktrees/{issue_id}-{annotation}/  (if issue_id provided)
-        {repo}/.worktrees/{worker_name}-{uuid}-{annotation}/  (otherwise)
+        {repo}/.worktrees/{issue_id}-{badge}/  (if issue_id provided)
+        {repo}/.worktrees/{worker_name}-{uuid}-{badge}/  (otherwise)
 
     The branch name matches the worktree directory name for consistency unless
     an explicit branch is provided.
@@ -295,9 +297,10 @@ def create_local_worktree(
         repo_path: Path to the main repository
         worker_name: Name of the worker (used in fallback naming)
         issue_id: Optional issue tracker ID (e.g., "cic-abc123")
-        annotation: Optional annotation for the worktree
+        badge: Optional badge text for the worktree name
         branch: Optional branch name to create for the worktree
         base: Optional base ref/branch for the new branch
+        annotation: Deprecated alias for badge (badge takes precedence)
 
     Returns:
         Path to the created worktree
@@ -311,36 +314,37 @@ def create_local_worktree(
             repo_path=Path("/path/to/repo"),
             worker_name="Groucho",
             issue_id="cic-abc",
-            annotation="Add local worktrees"
+            badge="Add local worktrees"
         )
         # Returns: Path("/path/to/repo/.worktrees/cic-abc-add-local-worktrees")
 
-        # If called again with same issue/annotation:
+        # If called again with same issue/badge:
         # Returns: Path("/path/to/repo/.worktrees/cic-abc-add-local-worktrees-1")
 
         # Without issue ID
         path = create_local_worktree(
             repo_path=Path("/path/to/repo"),
             worker_name="Groucho",
-            annotation="Fix bug"
+            badge="Fix bug"
         )
         # Returns: Path("/path/to/repo/.worktrees/groucho-a1b2c3d4-fix-bug")
     """
     repo_path = Path(repo_path).resolve()
+    resolved_badge = badge if badge is not None else annotation
 
     # Build the worktree directory name
     if issue_id:
-        # Issue-based naming: {issue_id}-{annotation}
-        if annotation:
-            dir_name = f"{issue_id}-{short_slug(annotation)}"
+        # Issue-based naming: {issue_id}-{badge}
+        if resolved_badge:
+            dir_name = f"{issue_id}-{short_slug(resolved_badge)}"
         else:
             dir_name = issue_id
     else:
-        # Fallback naming: {worker_name}-{uuid}-{annotation}
+        # Fallback naming: {worker_name}-{uuid}-{badge}
         short_uuid = uuid.uuid4().hex[:8]
         name_slug = slugify(worker_name)
-        if annotation:
-            dir_name = f"{name_slug}-{short_uuid}-{short_slug(annotation)}"
+        if resolved_badge:
+            dir_name = f"{name_slug}-{short_uuid}-{short_slug(resolved_badge)}"
         else:
             dir_name = f"{name_slug}-{short_uuid}"
 

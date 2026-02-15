@@ -137,6 +137,7 @@ class TmuxBackend(TerminalBackend):
         *,
         project_path: str | None = None,
         issue_id: str | None = None,
+        coordinator_badge: str | None = None,
         coordinator_annotation: str | None = None,
         profile: str | None = None,
         profile_customizations: Any | None = None,
@@ -147,7 +148,12 @@ class TmuxBackend(TerminalBackend):
 
         base_name = name or self._generate_window_name()
         project_name = project_name_from_path(project_path)
-        resolved_issue_id = self._resolve_issue_id(issue_id, coordinator_annotation)
+        resolved_badge = (
+            coordinator_badge
+            if coordinator_badge is not None
+            else coordinator_annotation
+        )
+        resolved_issue_id = self._resolve_issue_id(issue_id, resolved_badge)
         window_name = self._format_window_name(base_name, project_name, resolved_issue_id)
         session_name = tmux_session_name_for_project(project_path)
 
@@ -626,17 +632,17 @@ class TmuxBackend(TerminalBackend):
 
         return False
 
-    # Resolve an issue id from explicit input or a coordinator annotation.
+    # Resolve an issue id from explicit input or coordinator badge text.
     def _resolve_issue_id(
         self,
         issue_id: str | None,
-        coordinator_annotation: str | None,
+        coordinator_badge: str | None,
     ) -> str | None:
         if issue_id:
             return issue_id
-        if not coordinator_annotation:
+        if not coordinator_badge:
             return None
-        match = ISSUE_ID_PATTERN.search(coordinator_annotation)
+        match = ISSUE_ID_PATTERN.search(coordinator_badge)
         if not match:
             return None
         return match.group(0)

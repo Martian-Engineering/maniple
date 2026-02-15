@@ -65,6 +65,7 @@ class TestRecoveredSessionConstruction:
         )
 
         assert session.claude_session_id == "session-uuid-123"
+        assert session.coordinator_badge == "Working on auth refactor"
         assert session.coordinator_annotation == "Working on auth refactor"
         assert session.worktree_path == "/Users/test/project2/.worktrees/feature-branch"
         assert session.main_repo_path == "/Users/test/project2"
@@ -125,6 +126,7 @@ class TestRecoveredSessionToDict:
         assert d["agent_type"] == "claude"
         assert d["status"] == "ready"
         assert d["claude_session_id"] == "session-uuid"
+        assert d["coordinator_badge"] == "Test annotation"
         assert d["coordinator_annotation"] == "Test annotation"
         assert d["worktree_path"] == "/path/to/worktree"
         assert d["main_repo_path"] == "/path/to/repo"

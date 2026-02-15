@@ -101,7 +101,7 @@ class TestRecoverFromEventsSnapshotOnly:
                     "agent_type": "codex",
                     "terminal_id": "tmux:%1",
                     "claude_session_id": "uuid-123",
-                    "coordinator_annotation": "Working on auth",
+                    "coordinator_badge": "Working on auth",
                     "worktree_path": "/worktree/path",
                     "main_repo_path": "/main/repo",
                 },
@@ -121,9 +121,33 @@ class TestRecoverFromEventsSnapshotOnly:
         assert session.agent_type == "codex"
         assert session.terminal_id == TerminalId("tmux", "%1")
         assert session.claude_session_id == "uuid-123"
+        assert session.coordinator_badge == "Working on auth"
         assert session.coordinator_annotation == "Working on auth"
         assert session.worktree_path == "/worktree/path"
         assert session.main_repo_path == "/main/repo"
+
+    def test_recovery_accepts_legacy_coordinator_annotation_key(self):
+        """Legacy snapshots using coordinator_annotation should still recover."""
+        registry = SessionRegistry()
+        now = datetime.now(timezone.utc)
+
+        snapshot = _make_snapshot(
+            workers=[
+                {
+                    "session_id": "legacy-worker",
+                    "name": "Legacy",
+                    "project_path": "/my/project",
+                    "state": "idle",
+                    "coordinator_annotation": "Legacy note",
+                },
+            ],
+            ts=now,
+        )
+
+        registry.recover_from_events(snapshot, events=[])
+        sessions = registry.list_all()
+        assert len(sessions) == 1
+        assert sessions[0].coordinator_badge == "Legacy note"
 
     def test_snapshot_idle_state_maps_to_ready(self):
         """Idle workers in snapshot should have status READY."""

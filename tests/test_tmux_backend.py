@@ -118,7 +118,7 @@ async def test_create_session_uses_tmux_commands(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_create_session_uses_annotation_issue_id(monkeypatch):
+async def test_create_session_uses_badge_issue_id(monkeypatch):
     backend = TmuxBackend()
     calls = []
     project_path = "/Users/test/deedee-ai"
@@ -137,12 +137,40 @@ async def test_create_session_uses_annotation_issue_id(monkeypatch):
     session = await backend.create_session(
         "worker",
         project_path=project_path,
-        coordinator_annotation="Handle BEA-123 follow-up",
+        coordinator_badge="Handle BEA-123 follow-up",
     )
 
     assert calls[0] == ["has-session", "-t", session_name]
     assert session.metadata["window_name"] == "worker | deedee-ai [BEA-123]"
     assert session.metadata["issue_id"] == "BEA-123"
+
+
+@pytest.mark.asyncio
+async def test_create_session_uses_annotation_alias_issue_id(monkeypatch):
+    backend = TmuxBackend()
+    calls = []
+    project_path = "/Users/test/deedee-ai"
+    session_name = tmux_session_name_for_project(project_path)
+
+    async def fake_run(args):
+        calls.append(args)
+        if args[:2] == ["has-session", "-t"]:
+            raise subprocess.CalledProcessError(1, ["tmux"])
+        if args[:2] == ["new-session", "-d"]:
+            return "%9\t@9\t2"
+        return ""
+
+    monkeypatch.setattr(backend, "_run_tmux", fake_run)
+
+    session = await backend.create_session(
+        "worker",
+        project_path=project_path,
+        coordinator_annotation="Handle BEA-456 follow-up",
+    )
+
+    assert calls[0] == ["has-session", "-t", session_name]
+    assert session.metadata["window_name"] == "worker | deedee-ai [BEA-456]"
+    assert session.metadata["issue_id"] == "BEA-456"
 
 
 @pytest.mark.asyncio

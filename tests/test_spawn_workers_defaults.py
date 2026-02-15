@@ -21,6 +21,7 @@ class FakeBackend:
         self.started = []
         self.prompts = []
         self.sessions = []
+        self.create_calls = []
 
     async def create_session(
         self,
@@ -28,10 +29,18 @@ class FakeBackend:
         *,
         project_path: str | None = None,
         issue_id: str | None = None,
+        coordinator_badge: str | None = None,
         coordinator_annotation: str | None = None,
         profile: str | None = None,
         profile_customizations: object | None = None,
     ) -> TerminalSession:
+        self.create_calls.append({
+            "name": name,
+            "project_path": project_path,
+            "issue_id": issue_id,
+            "coordinator_badge": coordinator_badge,
+            "coordinator_annotation": coordinator_annotation,
+        })
         session = TerminalSession(
             backend_id=self.backend_id,
             native_id=f"session-{len(self.sessions)}",
@@ -228,3 +237,65 @@ async def test_spawn_workers_invalid_config_falls_back(tmp_path, monkeypatch):
     assert backend.started[0]["dangerously_skip_permissions"] is False
     assert result["sessions"]["Worker1"]["agent_type"] == "claude"
     assert prompt_calls == [True]
+
+
+@pytest.mark.asyncio
+async def test_spawn_workers_prefers_badge_over_annotation(tmp_path, monkeypatch):
+    """spawn_workers should use badge when both badge and annotation are provided."""
+    config = default_config()
+    config.defaults = DefaultsConfig(
+        agent_type="claude",
+        skip_permissions=False,
+        use_worktree=False,
+        layout="new",
+    )
+    monkeypatch.setattr(spawn_workers_module, "load_config", lambda: config)
+    monkeypatch.setattr(spawn_workers_module, "get_cli_backend", lambda *_: "cli:claude")
+    monkeypatch.setattr(spawn_workers_module, "get_worktree_tracker_dir", lambda *_: None)
+    monkeypatch.setattr(
+        spawn_workers_module,
+        "generate_worker_prompt",
+        lambda *args, **kwargs: "PROMPT",
+    )
+    monkeypatch.setattr(
+        spawn_workers_module,
+        "get_coordinator_guidance",
+        lambda *args, **kwargs: {"summary": "ok"},
+    )
+
+    async def fake_await_marker_in_jsonl(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(session_state, "await_marker_in_jsonl", fake_await_marker_in_jsonl)
+    monkeypatch.setattr(session_state, "generate_marker_message", lambda *args, **kwargs: "MARKER")
+
+    backend = FakeBackend()
+    registry = SessionRegistry()
+    app_ctx = SimpleNamespace(registry=registry, backend=backend)
+
+    async def ensure_connection(app_context):
+        return app_context.backend
+
+    mcp = FastMCP("test")
+    spawn_workers_module.register_tools(mcp, ensure_connection)
+    tool = mcp._tool_manager.get_tool("spawn_workers")
+    assert tool is not None
+
+    repo_path = tmp_path / "repo"
+    repo_path.mkdir()
+
+    ctx = SimpleNamespace(request_context=SimpleNamespace(lifespan_context=app_ctx))
+    result = await tool.run({
+        "workers": [{
+            "project_path": str(repo_path),
+            "name": "Worker1",
+            "badge": "Preferred badge",
+            "annotation": "Legacy annotation",
+        }],
+    }, context=ctx)
+
+    session = result["sessions"]["Worker1"]
+    assert session["coordinator_badge"] == "Preferred badge"
+    assert session["coordinator_annotation"] == "Preferred badge"
+    assert backend.create_calls[0]["coordinator_badge"] == "Preferred badge"
+    assert backend.create_calls[0]["coordinator_annotation"] is None

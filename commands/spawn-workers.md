@@ -19,17 +19,17 @@ Use `spawn_workers` to create worker sessions. The tool handles worktree creatio
 **Standard spawn (recommended):**
 ```python
 spawn_workers(workers=[
-    {"project_path": "/path/to/repo", "issue_id": "cic-123", "annotation": "Fix auth bug", "skip_permissions": True},
-    {"project_path": "/path/to/repo", "issue_id": "cic-456", "annotation": "Add unit tests", "skip_permissions": True},
+    {"project_path": "/path/to/repo", "issue_id": "cic-123", "badge": "Fix auth bug", "skip_permissions": True},
+    {"project_path": "/path/to/repo", "issue_id": "cic-456", "badge": "Add unit tests", "skip_permissions": True},
 ])
-# Creates .worktrees/<name>-<uuid>-<annotation>/ automatically
-# Branches isolated per worker, badges show issue ID + annotation
+# Creates .worktrees/<name>-<uuid>-<badge>/ automatically
+# Branches isolated per worker, badges show issue ID + badge
 ```
 
 **Spawn Codex workers (for OpenAI Codex CLI):**
 ```python
 spawn_workers(workers=[
-    {"project_path": "/path/to/repo", "agent_type": "codex", "issue_id": "cic-123", "annotation": "Fix auth bug", "skip_permissions": True},
+    {"project_path": "/path/to/repo", "agent_type": "codex", "issue_id": "cic-123", "badge": "Fix auth bug", "skip_permissions": True},
 ])
 # Codex workers end responses with "COMPLETED" or "BLOCKED: <reason>"
 ```
@@ -45,7 +45,8 @@ spawn_workers(workers=[
 - `project_path`: Path to the repository (required)
 - `agent_type`: `"claude"` (default) or `"codex"` for OpenAI Codex CLI. **This field should not be specified unless explicitly requested by the user.** The default agent type is used unless override is required.
 - `issue_id`: The issue ID (Beads or Pebbles; shown on badge, used in branch naming). Older examples may show `bead`.
-- `annotation`: Short task description (use the issue title for clarity)
+- `badge`: Short task description (use the issue title for clarity)
+- `annotation`: Deprecated alias for `badge` (badge takes precedence)
 - `skip_permissions`: Set `True` — without this, workers can only read files
 - `use_worktree`: Set `False` to skip worktree creation (default `True`)
 - `worktree`: Dict with optional `branch` and `base` fields for worktree control
@@ -64,14 +65,14 @@ spawn_workers(workers=[
     {
         "project_path": "/path/to/repo",
         "issue_id": "cic-101",
-        "annotation": "Add login endpoint",
+        "badge": "Add login endpoint",
         "worktree": {"base": "cic-100/auth-epic"},
         "skip_permissions": True,
     },
     {
         "project_path": "/path/to/repo",
         "issue_id": "cic-102",
-        "annotation": "Add signup endpoint",
+        "badge": "Add signup endpoint",
         "worktree": {"base": "cic-100/auth-epic"},
         "skip_permissions": True,
     },

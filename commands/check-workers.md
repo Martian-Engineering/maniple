@@ -46,5 +46,5 @@ To distinguish COMPLETED from STUCK, use `read_worker_logs` to check the worker'
 ## Notes
 
 - If no workers exist, report "No active workers" and suggest checking `discover_workers` if the user believes there should be some workers
-- The Issue/Task column comes from `coordinator_annotation` in `list_workers` output
+- The Issue/Task column comes from `coordinator_badge` in `list_workers` output
 - Flag workers that may need attention (stuck, expressing blockers)

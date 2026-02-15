@@ -38,8 +38,8 @@ A key feature of `maniple` is **git worktree support**. When spawning workers wi
 - **Shared repository history** - All worktrees share the same `.git` database, so commits are immediately visible across workers
 
 Worktree naming depends on how workers are spawned:
-- With an issue ID: `{repo}/.worktrees/{issue_id}-{annotation}/`
-- Without: `{repo}/.worktrees/{worker-name}-{uuid}-{annotation}/`
+- With an issue ID: `{repo}/.worktrees/{issue_id}-{badge}/`
+- Without: `{repo}/.worktrees/{worker-name}-{uuid}-{badge}/`
 
 The `.worktrees` directory is automatically added to `.gitignore`.
 
@@ -269,7 +269,8 @@ WorkerConfig fields:
   project_path: str         - Required. Explicit path or "auto" (uses MANIPLE_PROJECT_DIR)
   agent_type: str           - "claude" (default) or "codex"
   name: str                 - Optional worker name override (auto-picked from themed sets if omitted)
-  annotation: str           - Task description (shown in badge, used in branch names)
+  badge: str                - Task description (shown in badge, used in branch names)
+  annotation: str           - Deprecated alias for `badge` (badge takes precedence)
   issue_id: str             - Issue tracker ID (for badge, branch naming, and workflow instructions)
   prompt: str               - Additional instructions (combined with standard worker prompt)
   skip_permissions: bool    - Start with --dangerously-skip-permissions
@@ -417,7 +418,7 @@ Assign workers to issue tracker items for structured workflows:
 
 ```
 "Spawn a worker for issue cic-123"
--> spawn_workers with issue_id="cic-123", annotation="Fix auth bug"
+-> spawn_workers with issue_id="cic-123", badge="Fix auth bug"
 -> Worker automatically marks issue in_progress, implements, closes, and commits
 
 "Spawn workers for all ready issues"

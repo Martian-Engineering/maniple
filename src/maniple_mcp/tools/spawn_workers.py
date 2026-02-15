@@ -44,12 +44,21 @@ class WorkerConfig(TypedDict, total=False):
     project_path: Required[str]  # Required: Path to repo, or "auto" to use env var
     agent_type: str  # Optional: "claude" (default) or "codex". Don't specify unless user requests.
     name: str  # Optional: Worker name override. None = auto-pick from themed sets.
-    annotation: str  # Optional: Tracking label (NOT sent to worker). For badges/branches only.
+    badge: str  # Optional: Tracking label (NOT sent to worker). For badges/branches only.
+    annotation: str  # Deprecated alias for badge (badge takes precedence).
     issue_id: str  # Optional: Issue ID - THIS IS the worker's assignment if provided
     prompt: str  # Optional: Custom instructions - THIS IS the worker's task if provided
     skip_permissions: bool  # Optional: Default False
     use_worktree: bool  # Optional: Create isolated worktree (default True)
     worktree: WorktreeConfig  # Optional: Worktree settings (branch/base)
+
+
+def _worker_badge(worker: WorkerConfig) -> str | None:
+    """Resolve worker badge text, preferring badge over deprecated annotation."""
+    badge = worker.get("badge")
+    if badge is not None:
+        return badge
+    return worker.get("annotation")
 
 
 def register_tools(mcp: FastMCP, ensure_connection) -> None:
@@ -111,8 +120,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 ⚠️ **IMPORTANT**: Do not specify this field unless explicitly requested by the user.
                 The default agent type is used unless an override is required.
             use_worktree: Whether to create an isolated worktree (default True).
-                - True: Creates worktree at <repo>/.worktrees/<issue_id>-<annotation>
-                  or <repo>/.worktrees/<name>-<uuid>-<annotation>
+                - True: Creates worktree at <repo>/.worktrees/<issue_id>-<badge>
+                  or <repo>/.worktrees/<name>-<uuid>-<badge>
                 - False: Worker uses the repo directory directly (no isolation)
             worktree: Optional worktree configuration.
                 - branch: Explicit branch name for the worktree (auto-generated if omitted)
@@ -131,7 +140,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                   spawn_workers(workers=[{
                       "project_path": "auto",
                       "issue_id": "cic-456",
-                      "annotation": "Add login endpoint",
+                      "badge": "Add login endpoint",
                       "worktree": {"base": "cic-123/auth-epic"},
                       "skip_permissions": True,
                   }])
@@ -140,11 +149,12 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                   ```
             name: Optional worker name override. Leaving this empty allows us to auto-pick names
                 from themed sets (Beatles, Marx Brothers, etc.) which aids visual identification.
-            annotation: Optional task label for coordinator tracking. NOT sent to worker.
+            badge: Optional task label for coordinator tracking. NOT sent to worker.
                 Used for: badge display (2nd line), branch names, and list_workers output.
                 This is metadata for YOUR reference, not task instructions for the worker.
                 If using an issue_id, it's recommended to use the issue title as the
-                annotation for clarity. Truncated to 30 chars in badge.
+                badge for clarity. Truncated to 30 chars in badge.
+            annotation: Deprecated alias for badge (badge takes precedence).
             issue_id: Optional issue tracker issue ID. If provided, this IS the worker's assignment.
                 The worker receives issue tracker workflow instructions (mark in_progress, close,
                 commit with issue reference). Used for badge first line and branch naming.
@@ -157,7 +167,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         **Worker Assignment (how workers know what to do):**
 
         ⚠️ **IMPORTANT**: Tasks are delivered via `issue_id` and/or `prompt` parameters ONLY.
-        The `annotation` parameter is never sent to workers - it's just metadata for
+        The `badge` parameter is never sent to workers - it's just metadata for
         coordinator tracking (badges, branches, list output).
 
         The worker's task is determined by `issue_id` and/or `prompt`:
@@ -177,7 +187,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         **Badge Format:**
         ```
         <issue_id or name>
-        <annotation (truncated)>
+        <badge (truncated)>
         ```
 
         Args:
@@ -195,8 +205,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         Example (issue assignment with auto worktrees):
             spawn_workers(
                 workers=[
-                    {"project_path": "auto", "issue_id": "cic-abc", "annotation": "Fix auth bug"},
-                    {"project_path": "auto", "issue_id": "cic-xyz", "annotation": "Add unit tests"},
+                    {"project_path": "auto", "issue_id": "cic-abc", "badge": "Fix auth bug"},
+                    {"project_path": "auto", "issue_id": "cic-xyz", "badge": "Add unit tests"},
                 ],
                 layout="auto",
             )
@@ -302,7 +312,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 worktree_branch = None
                 worktree_base = None
                 issue_id = w.get("issue_id")
-                annotation = w.get("annotation")
+                badge = _worker_badge(w)
 
                 if worktree_config is not None:
                     if isinstance(worktree_config, dict):
@@ -345,7 +355,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                             repo_path=repo_path,
                             worker_name=name,
                             issue_id=issue_id,
-                            annotation=annotation,
+                            badge=badge,
                             branch=worktree_branch,
                             base=worktree_base,
                         )
@@ -396,12 +406,12 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     customization = LocalWriteOnlyProfile()
 
                     issue_id = w.get("issue_id")
-                    annotation = w.get("annotation")
+                    badge = _worker_badge(w)
                     agent_type = agent_types[i]
 
                     # Tab title
                     tab_title = format_session_title(
-                        name, issue_id=issue_id, annotation=annotation
+                        name, issue_id=issue_id, badge=badge
                     )
                     customization.set_name(tab_title)
 
@@ -410,9 +420,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     customization.set_tab_color(color)
                     customization.set_use_tab_color(True)
 
-                    # Badge (multi-line with issue_id/name, annotation, and agent type indicator)
+                    # Badge (multi-line with issue_id/name, badge text, and agent type indicator)
                     badge_text = format_badge_text(
-                        name, issue_id=issue_id, annotation=annotation, agent_type=agent_type
+                        name, issue_id=issue_id, badge=badge, agent_type=agent_type
                     )
                     customization.set_badge_text(badge_text)
 
@@ -431,7 +441,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                             name=resolved_names[i],
                             project_path=resolved_paths[i],
                             issue_id=workers[i].get("issue_id"),
-                            coordinator_annotation=workers[i].get("annotation"),
+                            coordinator_badge=_worker_badge(workers[i]),
                         )
                     )
             elif layout == "auto":
@@ -696,8 +706,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     name=resolved_names[i],
                     session_id=session_ids[i],
                 )
-                # Set annotation from worker config (if provided)
-                managed.coordinator_annotation = workers[i].get("annotation")
+                # Set badge text from worker config (if provided)
+                managed.coordinator_badge = _worker_badge(workers[i])
                 # Set agent type
                 managed.agent_type = agent_types[i]
                 # Store worktree info if applicable

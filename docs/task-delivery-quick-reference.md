@@ -7,7 +7,7 @@
 # This does NOT send the task to the worker!
 spawn_workers(workers=[{
     "project_path": "auto",
-    "annotation": "Fix the authentication bug in login.py"
+    "badge": "Fix the authentication bug in login.py"
 }])
 ```
 
@@ -17,10 +17,11 @@ spawn_workers(workers=[{
 spawn_workers(workers=[{
     "project_path": "auto",
     "issue_id": "cic-123",  # Worker gets: "Your assignment is cic-123"
-    "annotation": "Auth bug"  # Optional: for your tracking only
+    "badge": "Auth bug"  # Optional: for your tracking only
 }])
 ```
 Older examples may still show `bead`; use `issue_id` in current worker configs.
+`annotation` is still accepted as a deprecated alias for `badge`.
 
 ## Quick Comparison
 
@@ -29,7 +30,7 @@ Older examples may still show `bead`; use `issue_id` in current worker configs.
 | Assign tracked issue | `issue_id` parameter | `"issue_id": "cic-123"` |
 | Give custom instructions | `prompt` parameter | `"prompt": "Review auth.py for XSS"` |
 | Send task after spawn | `message_workers()` | `message_workers(session_ids=["Groucho"], ...)` |
-| Track what worker is doing | `annotation` parameter | `"annotation": "Auth work"` (for badges only) |
+| Track what worker is doing | `badge` parameter | `"badge": "Auth work"` (for badges only) |
 
 ## Common Patterns
 
@@ -38,7 +39,7 @@ Older examples may still show `bead`; use `issue_id` in current worker configs.
 spawn_workers(workers=[{
     "project_path": "auto",
     "issue_id": "cic-123",           # ✅ Worker receives this
-    "annotation": "Fix auth"     # ℹ️ Just for badges/branches
+    "badge": "Fix auth"     # ℹ️ Just for badges/branches
 }])
 ```
 Worker sees: "Your assignment is `cic-123`. Use `pb show cic-123` for details."
@@ -58,7 +59,7 @@ spawn_workers(workers=[{
     "project_path": "auto",
     "issue_id": "cic-123",           # ✅ Worker receives this
     "prompt": "Focus on OAuth2 flow",  # ✅ Worker receives this too
-    "annotation": "Auth - OAuth"      # ℹ️ Just for badges
+    "badge": "Auth - OAuth"      # ℹ️ Just for badges
 }])
 ```
 Worker sees both the issue assignment and your custom instructions.
@@ -75,9 +76,9 @@ message_workers(
 )
 ```
 
-## What IS `annotation` For?
+## What IS `badge` For?
 
-The `annotation` field is **coordinator metadata** for:
+The `badge` field is **coordinator metadata** for:
 
 1. **Visual identification** - Shows in iTerm badge (2nd line)
 2. **Branch naming** - Used in worktree branches
@@ -86,13 +87,13 @@ The `annotation` field is **coordinator metadata** for:
 
 It's basically a sticky note for **you**, not instructions for **them**.
 
-## How to Update Annotation Later
+## How to Update Badge Later
 
 ```python
 # Update tracking note without sending worker a message
 annotate_worker(
     session_id="Groucho",
-    annotation="Now working on tests"  # ℹ️ Just updates metadata
+    badge="Now working on tests"  # ℹ️ Just updates metadata
 )
 ```
 
