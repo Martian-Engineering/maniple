@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-02-14
+
 ### Changed
-- **Removed `annotation` compatibility layer**: Worker metadata is now badge-only. Removed deprecated `annotation` params/aliases and `coordinator_annotation` output fields across tools, session metadata, recovery, tests, and docs.
+- **Rename `annotation` → `badge`**: All user-facing parameters, session metadata fields, and docs now use `badge` / `coordinator_badge`. The `annotation` name has been fully removed (no aliases, no backward compat).
 
 ## [0.11.2]
 
