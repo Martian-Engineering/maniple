@@ -2,42 +2,51 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
   <dict>
-    <!-- LaunchAgent label must match filename -->
     <key>Label</key>
     <string>com.maniple</string>
 
-    <!-- Run Maniple in HTTP mode on port 5111 -->
+    <!--
+      Run maniple as an HTTP server on port 8766.
+      Uses uvx to always run the latest published version.
+      If you installed maniple globally (uv tool install maniple-mcp),
+      you can replace the uvx line with the path to the maniple binary.
+    -->
     <key>ProgramArguments</key>
     <array>
-      <string>/usr/bin/env</string>
-      <string>uv</string>
-      <string>run</string>
-      <string>python</string>
-      <string>-m</string>
-      <string>maniple_mcp</string>
+      <string>/opt/homebrew/bin/uvx</string>
+      <string>maniple-mcp</string>
       <string>--http</string>
       <string>--port</string>
-      <string>5111</string>
+      <string>8766</string>
     </array>
 
-    <!-- Repo root with pyproject.toml for uv run -->
     <key>WorkingDirectory</key>
-    <string>/path/to/maniple</string>
+    <string>/Users/you</string>
 
-    <!-- PATH must include uv's location -->
+    <!--
+      PATH must include the directory containing uvx.
+      Adjust if uvx is installed elsewhere (e.g. /usr/local/bin).
+    -->
     <key>EnvironmentVariables</key>
     <dict>
+      <key>HOME</key>
+      <string>/Users/you</string>
       <key>PATH</key>
-      <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+      <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     </dict>
 
-    <!-- Log files (make sure the directory exists) -->
-    <key>StandardOutPath</key>
-    <string>/Users/you/.maniple/logs/maniple.out.log</string>
-    <key>StandardErrorPath</key>
-    <string>/Users/you/.maniple/logs/maniple.err.log</string>
+    <!-- iTerm2 Python API requires an Aqua login session -->
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+    <key>ProcessType</key>
+    <string>Interactive</string>
 
-    <!-- Run on load and restart on failure -->
+    <!-- Log output (create ~/.maniple/logs/ first) -->
+    <key>StandardOutPath</key>
+    <string>/Users/you/.maniple/logs/stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/you/.maniple/logs/stderr.log</string>
+
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
