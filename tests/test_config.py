@@ -12,6 +12,7 @@ from maniple_mcp.config import (
     DefaultsConfig,
     EventsConfig,
     IssueTrackerConfig,
+    StartupConfig,
     TerminalConfig,
     default_config,
     load_config,
@@ -63,6 +64,12 @@ class TestDefaultConfig:
         config = default_config()
         assert config.issue_tracker.override is None
 
+    def test_default_startup(self):
+        """Default startup timing values."""
+        config = default_config()
+        assert config.startup.agent_ready_timeout_seconds == 30
+        assert config.startup.marker_poll_timeout_seconds == 30
+
 
 class TestSaveConfig:
     """Tests for save_config function."""
@@ -104,6 +111,10 @@ class TestSaveConfig:
             terminal=TerminalConfig(backend="tmux"),
             events=EventsConfig(max_size_mb=5, recent_hours=48, stale_threshold_minutes=15),
             issue_tracker=IssueTrackerConfig(override="beads"),
+            startup=StartupConfig(
+                agent_ready_timeout_seconds=60,
+                marker_poll_timeout_seconds=45,
+            ),
         )
         save_config(config, config_path)
         data = json.loads(config_path.read_text())
@@ -119,6 +130,8 @@ class TestSaveConfig:
         assert data["events"]["recent_hours"] == 48
         assert data["events"]["stale_threshold_minutes"] == 15
         assert data["issue_tracker"]["override"] == "beads"
+        assert data["startup"]["agent_ready_timeout_seconds"] == 60
+        assert data["startup"]["marker_poll_timeout_seconds"] == 45
 
     def test_json_is_formatted(self, tmp_path: Path):
         """Saved JSON is indented for readability."""
@@ -210,6 +223,10 @@ class TestLoadConfig:
             terminal=TerminalConfig(backend="tmux"),
             events=EventsConfig(max_size_mb=2, recent_hours=12, stale_threshold_minutes=30),
             issue_tracker=IssueTrackerConfig(override="beads"),
+            startup=StartupConfig(
+                agent_ready_timeout_seconds=75,
+                marker_poll_timeout_seconds=50,
+            ),
         )
         save_config(original, config_path)
         loaded = load_config(config_path)
@@ -225,6 +242,14 @@ class TestLoadConfig:
         assert loaded.events.recent_hours == original.events.recent_hours
         assert loaded.events.stale_threshold_minutes == original.events.stale_threshold_minutes
         assert loaded.issue_tracker.override == original.issue_tracker.override
+        assert (
+            loaded.startup.agent_ready_timeout_seconds
+            == original.startup.agent_ready_timeout_seconds
+        )
+        assert (
+            loaded.startup.marker_poll_timeout_seconds
+            == original.startup.marker_poll_timeout_seconds
+        )
 
 
 class TestJsonValidationErrors:
@@ -678,6 +703,46 @@ class TestValidLiteralValues:
         config = load_config(config_path)
         assert config.issue_tracker.override == "pebbles"
 
+    def test_startup_values_load(self, tmp_path: Path):
+        """startup values are parsed when present."""
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "startup": {
+                "agent_ready_timeout_seconds": 75,
+                "marker_poll_timeout_seconds": 55,
+            },
+        }))
+        config = load_config(config_path)
+        assert config.startup.agent_ready_timeout_seconds == 75
+        assert config.startup.marker_poll_timeout_seconds == 55
+
+    def test_startup_timeout_must_be_integer(self, tmp_path: Path):
+        """startup timeout fields must be integers."""
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "startup": {"agent_ready_timeout_seconds": "slow"},
+        }))
+        with pytest.raises(
+            ConfigError,
+            match="startup.agent_ready_timeout_seconds must be an integer",
+        ):
+            load_config(config_path)
+
+    def test_startup_timeout_must_be_positive(self, tmp_path: Path):
+        """startup timeout fields must be at least 1."""
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "startup": {"marker_poll_timeout_seconds": 0},
+        }))
+        with pytest.raises(
+            ConfigError,
+            match="startup.marker_poll_timeout_seconds must be at least 1",
+        ):
+            load_config(config_path)
+
 
 class TestIOErrors:
     """Tests for IO error handling."""
@@ -736,6 +801,12 @@ class TestDataclasses:
         config = IssueTrackerConfig()
         assert config.override is None
 
+    def test_startup_config_defaults(self):
+        """StartupConfig has correct defaults."""
+        config = StartupConfig()
+        assert config.agent_ready_timeout_seconds == 30
+        assert config.marker_poll_timeout_seconds == 30
+
     def test_claude_team_config_defaults(self):
         """ClaudeTeamConfig has correct nested defaults."""
         config = ClaudeTeamConfig()
@@ -745,3 +816,4 @@ class TestDataclasses:
         assert isinstance(config.terminal, TerminalConfig)
         assert isinstance(config.events, EventsConfig)
         assert isinstance(config.issue_tracker, IssueTrackerConfig)
+        assert isinstance(config.startup, StartupConfig)

@@ -6,7 +6,7 @@ import pytest
 from mcp.server.fastmcp import FastMCP
 
 import maniple_mcp.session_state as session_state
-from maniple_mcp.config import ConfigError, DefaultsConfig, default_config
+from maniple_mcp.config import ConfigError, DefaultsConfig, StartupConfig, default_config
 from maniple_mcp.registry import SessionRegistry
 from maniple_mcp.terminal_backends.base import TerminalSession
 from maniple_mcp.tools import spawn_workers as spawn_workers_module
@@ -64,6 +64,7 @@ class FakeBackend:
             "dangerously_skip_permissions": dangerously_skip_permissions,
             "env": env,
             "stop_hook_marker_id": stop_hook_marker_id,
+            "kwargs": kwargs,
         })
 
     async def send_prompt_for_agent(
@@ -294,3 +295,86 @@ async def test_spawn_workers_sets_badge_metadata(tmp_path, monkeypatch):
     session = result["sessions"]["Worker1"]
     assert session["coordinator_badge"] == "Preferred badge"
     assert backend.create_calls[0]["coordinator_badge"] == "Preferred badge"
+
+
+@pytest.mark.asyncio
+async def test_spawn_workers_applies_startup_timeout_and_tmux_fallback(
+    tmp_path,
+    monkeypatch,
+):
+    """spawn_workers should pass startup timeout and recover via tmux marker fallback."""
+    config = default_config()
+    config.defaults = DefaultsConfig(
+        agent_type="claude",
+        skip_permissions=False,
+        use_worktree=False,
+        layout="new",
+    )
+    config.startup = StartupConfig(
+        agent_ready_timeout_seconds=75,
+        marker_poll_timeout_seconds=5,
+    )
+    monkeypatch.setattr(spawn_workers_module, "load_config", lambda: config)
+    monkeypatch.setattr(spawn_workers_module, "get_cli_backend", lambda *_: "cli:claude")
+    monkeypatch.setattr(spawn_workers_module, "get_worktree_tracker_dir", lambda *_: None)
+    monkeypatch.setattr(
+        spawn_workers_module,
+        "generate_worker_prompt",
+        lambda *args, **kwargs: "PROMPT",
+    )
+    monkeypatch.setattr(
+        spawn_workers_module,
+        "get_coordinator_guidance",
+        lambda *args, **kwargs: {"summary": "ok"},
+    )
+
+    # Deterministic internal session id used for marker correlation.
+    class _FixedUUID:
+        def __str__(self):
+            return "12345678-1234-5678-1234-567812345678"
+
+    monkeypatch.setattr(spawn_workers_module.uuid, "uuid4", lambda: _FixedUUID())
+
+    async def fake_await_marker_in_jsonl(*args, **kwargs):
+        return None
+
+    recovered_jsonl = tmp_path / "recovered-session.jsonl"
+    recovered_jsonl.write_text("")
+
+    def fake_find_jsonl_by_tmux_id(*args, **kwargs):
+        return SimpleNamespace(
+            internal_session_id="12345678",
+            jsonl_path=recovered_jsonl,
+        )
+
+    monkeypatch.setattr(session_state, "await_marker_in_jsonl", fake_await_marker_in_jsonl)
+    monkeypatch.setattr(session_state, "find_jsonl_by_tmux_id", fake_find_jsonl_by_tmux_id)
+    monkeypatch.setattr(session_state, "generate_marker_message", lambda *args, **kwargs: "MARKER")
+
+    backend = FakeBackend()
+    registry = SessionRegistry()
+    app_ctx = SimpleNamespace(registry=registry, backend=backend)
+
+    async def ensure_connection(app_context):
+        return app_context.backend
+
+    mcp = FastMCP("test")
+    spawn_workers_module.register_tools(mcp, ensure_connection)
+    tool = mcp._tool_manager.get_tool("spawn_workers")
+    assert tool is not None
+
+    repo_path = tmp_path / "repo"
+    repo_path.mkdir()
+
+    ctx = SimpleNamespace(request_context=SimpleNamespace(lifespan_context=app_ctx))
+    result = await tool.run({
+        "workers": [{
+            "project_path": str(repo_path),
+            "name": "Worker1",
+            "agent_type": "claude",
+            "use_worktree": False,
+        }],
+    }, context=ctx)
+
+    assert backend.started[0]["kwargs"]["agent_ready_timeout"] == 75.0
+    assert result["sessions"]["Worker1"]["claude_session_id"] == "recovered-session"

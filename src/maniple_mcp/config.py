@@ -72,6 +72,14 @@ class IssueTrackerConfig:
 
 
 @dataclass
+class StartupConfig:
+    """Startup timing controls for worker boot and marker correlation."""
+
+    agent_ready_timeout_seconds: int = 30
+    marker_poll_timeout_seconds: int = 30
+
+
+@dataclass
 class ClaudeTeamConfig:
     """Top-level configuration container for claude-team."""
 
@@ -81,6 +89,7 @@ class ClaudeTeamConfig:
     terminal: TerminalConfig = field(default_factory=TerminalConfig)
     events: EventsConfig = field(default_factory=EventsConfig)
     issue_tracker: IssueTrackerConfig = field(default_factory=IssueTrackerConfig)
+    startup: StartupConfig = field(default_factory=StartupConfig)
 
 
 def default_config() -> ClaudeTeamConfig:
@@ -159,7 +168,15 @@ def _parse_config(data: dict) -> ClaudeTeamConfig:
     # Validate expected top-level keys before parsing sections.
     _validate_keys(
         data,
-        {"version", "commands", "defaults", "terminal", "events", "issue_tracker"},
+        {
+            "version",
+            "commands",
+            "defaults",
+            "terminal",
+            "events",
+            "issue_tracker",
+            "startup",
+        },
         "config",
     )
     version = _read_version(data.get("version"))
@@ -168,6 +185,7 @@ def _parse_config(data: dict) -> ClaudeTeamConfig:
     terminal = _parse_terminal(data.get("terminal"))
     events = _parse_events(data.get("events"))
     issue_tracker = _parse_issue_tracker(data.get("issue_tracker"))
+    startup = _parse_startup(data.get("startup"))
     return ClaudeTeamConfig(
         version=version,
         commands=commands,
@@ -175,6 +193,7 @@ def _parse_config(data: dict) -> ClaudeTeamConfig:
         terminal=terminal,
         events=events,
         issue_tracker=issue_tracker,
+        startup=startup,
     )
 
 
@@ -288,6 +307,30 @@ def _parse_issue_tracker(value: object) -> IssueTrackerConfig:
             "issue_tracker.override",
             None,
         )
+    )
+
+
+def _parse_startup(value: object) -> StartupConfig:
+    # Parse startup timing settings.
+    data = _ensure_dict(value, "startup")
+    _validate_keys(
+        data,
+        {"agent_ready_timeout_seconds", "marker_poll_timeout_seconds"},
+        "startup",
+    )
+    return StartupConfig(
+        agent_ready_timeout_seconds=_optional_int(
+            data.get("agent_ready_timeout_seconds"),
+            "startup.agent_ready_timeout_seconds",
+            StartupConfig.agent_ready_timeout_seconds,
+            min_value=1,
+        ),
+        marker_poll_timeout_seconds=_optional_int(
+            data.get("marker_poll_timeout_seconds"),
+            "startup.marker_poll_timeout_seconds",
+            StartupConfig.marker_poll_timeout_seconds,
+            min_value=1,
+        ),
     )
 
 

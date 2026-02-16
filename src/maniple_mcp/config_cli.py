@@ -167,6 +167,26 @@ def _apply_env_overrides(data: dict, env: Mapping[str, str]) -> None:
         if parsed is not None:
             data["events"]["stale_threshold_minutes"] = parsed
 
+    agent_ready_timeout_override = get_env_with_fallback(
+        "MANIPLE_AGENT_READY_TIMEOUT_SECONDS",
+        "CLAUDE_TEAM_AGENT_READY_TIMEOUT_SECONDS",
+        env=env,
+    )
+    if agent_ready_timeout_override:
+        parsed = _parse_int_override(agent_ready_timeout_override)
+        if parsed is not None:
+            data["startup"]["agent_ready_timeout_seconds"] = parsed
+
+    marker_poll_timeout_override = get_env_with_fallback(
+        "MANIPLE_MARKER_POLL_TIMEOUT_SECONDS",
+        "CLAUDE_TEAM_MARKER_POLL_TIMEOUT_SECONDS",
+        env=env,
+    )
+    if marker_poll_timeout_override:
+        parsed = _parse_int_override(marker_poll_timeout_override)
+        if parsed is not None:
+            data["startup"]["marker_poll_timeout_seconds"] = parsed
+
 
 def _parse_int_override(raw_value: str) -> int | None:
     # Parse env overrides as integers; invalid values are ignored.
@@ -289,6 +309,8 @@ _FIELD_PARSERS: dict[str, Callable[[str, str], object]] = {
     "events.max_size_mb": _parse_int,
     "events.recent_hours": _parse_int,
     "events.stale_threshold_minutes": _parse_int,
+    "startup.agent_ready_timeout_seconds": _parse_int,
+    "startup.marker_poll_timeout_seconds": _parse_int,
     "issue_tracker.override": lambda value, field: _parse_optional_literal(
         value,
         field,
