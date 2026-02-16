@@ -219,6 +219,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         from ..session_state import (
             await_codex_marker_in_jsonl,
             await_marker_in_jsonl,
+            find_jsonl_by_tmux_id,
             generate_marker_message,
         )
 
@@ -232,6 +233,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             logger.warning("Invalid config file; using defaults: %s", exc)
             config = default_config()
         defaults = config.defaults
+        startup = config.startup
 
         # Resolve layout from config if not explicitly provided
         if layout is None:
@@ -683,6 +685,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     dangerously_skip_permissions=skip_permissions,
                     env=env,
                     stop_hook_marker_id=stop_hook_marker_id,
+                    agent_ready_timeout=float(startup.agent_ready_timeout_seconds),
                 )
 
             await asyncio.gather(*[start_agent_for_worker(i) for i in range(worker_count)])
@@ -735,21 +738,45 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     claude_session_id = await await_marker_in_jsonl(
                         managed.project_path,
                         managed.session_id,
-                        timeout=30.0,
+                        timeout=float(startup.marker_poll_timeout_seconds),
                         poll_interval=0.1,
                     )
                     if claude_session_id:
                         managed.claude_session_id = claude_session_id
                     else:
-                        logger.warning(
-                            f"Marker polling timed out for {managed.session_id}, "
-                            "JSONL correlation unavailable"
-                        )
+                        # Fallback: recover via tmux pane marker search across project dirs.
+                        recovered = False
+                        if managed.terminal_session.backend_id == "tmux":
+                            tmux_match = find_jsonl_by_tmux_id(
+                                managed.terminal_session.native_id,
+                                max_age_seconds=max(
+                                    startup.marker_poll_timeout_seconds * 4,
+                                    300,
+                                ),
+                            )
+                            if (
+                                tmux_match
+                                and tmux_match.internal_session_id == managed.session_id
+                            ):
+                                managed.claude_session_id = tmux_match.jsonl_path.stem
+                                recovered = True
+                                logger.info(
+                                    "Recovered JSONL correlation for %s via tmux pane %s: %s",
+                                    managed.session_id,
+                                    managed.terminal_session.native_id,
+                                    tmux_match.jsonl_path,
+                                )
+
+                        if not recovered:
+                            logger.warning(
+                                "Marker polling timed out for %s, JSONL correlation unavailable",
+                                managed.session_id,
+                            )
                 elif managed.agent_type == "codex":
                     # Poll for Codex marker and cache the JSONL path
                     codex_match = await await_codex_marker_in_jsonl(
                         managed.session_id,
-                        timeout=30.0,
+                        timeout=float(startup.marker_poll_timeout_seconds),
                         poll_interval=0.5,
                     )
                     if codex_match:

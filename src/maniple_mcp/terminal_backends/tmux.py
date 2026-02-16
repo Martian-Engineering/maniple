@@ -508,10 +508,21 @@ class TmuxBackend(TerminalBackend):
             timeout_seconds=agent_ready_timeout,
         )
         if not agent_ready:
+            # Include recent pane output to make startup failures actionable.
+            excerpt = ""
+            try:
+                pane_text = await self.read_screen_text(handle)
+                tail_lines = pane_text.splitlines()[-25:]
+                if tail_lines:
+                    excerpt = "\nRecent pane output:\n" + "\n".join(tail_lines)
+            except Exception:
+                # Best-effort diagnostics only.
+                excerpt = ""
             raise RuntimeError(
                 f"{cli.engine_id} failed to start in {project_path} within "
                 f"{agent_ready_timeout}s. Check that '{cli.command()}' is "
                 "available and authentication is configured."
+                f"{excerpt}"
             )
 
     async def start_claude_in_session(

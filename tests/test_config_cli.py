@@ -83,6 +83,14 @@ class TestConfigGet:
         env = {"MANIPLE_TERMINAL_BACKEND": "tmux"}
         assert get_config_value("terminal.backend", env=env) == "tmux"
 
+    def test_get_reads_startup_value(self, config_path: Path):
+        """get_config_value supports startup timing keys."""
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "startup": {"agent_ready_timeout_seconds": 45},
+        }))
+        assert get_config_value("startup.agent_ready_timeout_seconds") == 45
+
 
 class TestConfigSet:
     """Tests for config set helper."""
@@ -108,6 +116,12 @@ class TestConfigSet:
         set_config_value("events.stale_threshold_minutes", "30")
         config = load_config()
         assert config.events.stale_threshold_minutes == 30
+
+    def test_set_startup_timeout(self, config_path: Path):
+        """set_config_value persists startup timeout settings."""
+        set_config_value("startup.agent_ready_timeout_seconds", "60")
+        config = load_config()
+        assert config.startup.agent_ready_timeout_seconds == 60
 
 
 class TestStaleThresholdEnvOverride:
@@ -150,3 +164,23 @@ class TestStaleThresholdEnvOverride:
         env = {"MANIPLE_STALE_THRESHOLD_MINUTES": "9", "CLAUDE_TEAM_STALE_THRESHOLD_MINUTES": "7"}
         data = load_effective_config_data(env=env)
         assert data["events"]["stale_threshold_minutes"] == 9
+
+
+class TestStartupTimeoutEnvOverride:
+    """Tests for startup timeout env overrides."""
+
+    def test_agent_ready_timeout_env_override(self, config_path: Path):
+        """MANIPLE_AGENT_READY_TIMEOUT_SECONDS overrides file config."""
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "startup": {"agent_ready_timeout_seconds": 30},
+        }))
+        env = {"MANIPLE_AGENT_READY_TIMEOUT_SECONDS": "75"}
+        data = load_effective_config_data(env=env)
+        assert data["startup"]["agent_ready_timeout_seconds"] == 75
+
+    def test_marker_timeout_env_override(self, config_path: Path):
+        """MANIPLE_MARKER_POLL_TIMEOUT_SECONDS overrides defaults."""
+        env = {"MANIPLE_MARKER_POLL_TIMEOUT_SECONDS": "45"}
+        data = load_effective_config_data(env=env)
+        assert data["startup"]["marker_poll_timeout_seconds"] == 45
