@@ -24,13 +24,9 @@
     <key>WorkingDirectory</key>
     <string>/path/to/maniple</string>
 
-    <!-- Environment options for indexing behavior and PATH for uv -->
+    <!-- PATH must include uv's location -->
     <key>EnvironmentVariables</key>
     <dict>
-      <key>MANIPLE_QMD_INDEXING</key>
-      <string>true</string>
-      <key>MANIPLE_INDEX_CRON</key>
-      <string>1h</string>
       <key>PATH</key>
       <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     </dict>
