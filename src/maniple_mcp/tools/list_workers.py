@@ -28,6 +28,7 @@ def register_tools(mcp: FastMCP) -> None:
         ctx: Context[ServerSession, "AppContext"],
         status_filter: str | None = None,
         project_filter: str | None = None,
+        include_closed: bool | None = False,
     ) -> dict:
         """
         List all managed Claude Code sessions.
@@ -35,9 +36,13 @@ def register_tools(mcp: FastMCP) -> None:
         Returns information about each session including its ID, name,
         project path, and current status. Results are sorted by creation time.
 
+        By default, closed recovered sessions (event_state="closed") are hidden
+        to keep output compact. Pass include_closed=True to see them.
+
         Args:
-            status_filter: Optional filter by status - "ready", "busy", "spawning", "closed"
+            status_filter: Optional filter by status - "ready", "busy", "spawning"
             project_filter: Optional filter by project path (full path, basename, or partial match)
+            include_closed: Include closed recovered sessions (default: False)
 
         Returns:
             Dict with:
@@ -81,6 +86,16 @@ def register_tools(mcp: FastMCP) -> None:
                 )
         else:
             sessions = registry.list_all()
+
+        # Hide closed recovered sessions by default to keep output compact.
+        # These are event-log ghosts that are no longer active.
+        if not include_closed:
+            from ..registry import RecoveredSession
+
+            sessions = [
+                s for s in sessions
+                if not (isinstance(s, RecoveredSession) and s.event_state == "closed")
+            ]
 
         # Filter by project path or main repo path
         if project_filter:

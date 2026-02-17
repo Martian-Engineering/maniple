@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-02-16
+
+### Fixed
+- `list_workers` now hides closed recovered sessions by default, preventing massive output that blows up agent context windows. Pass `include_closed=True` to see them.
+
 ## [0.12.0] - 2026-02-14
 
 ### Changed
