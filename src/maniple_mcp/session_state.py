@@ -425,15 +425,13 @@ def find_jsonl_by_marker(
         if now - f.stat().st_mtime > max_age_seconds:
             continue
 
-        # Search for marker in file (check last portion for efficiency)
+        # Search for marker in file (check beginning for efficiency)
         try:
-            # Read last 50KB of file (marker should be near the end)
+            # Read first 50KB of file (marker is sent at session start)
             file_size = f.stat().st_size
             read_size = min(file_size, 50000)
             with open(f, "r") as fp:
-                if file_size > read_size:
-                    fp.seek(file_size - read_size)
-                content = fp.read()
+                content = fp.read(read_size)
 
             if any(marker in content for marker in markers):
                 return f.stem
