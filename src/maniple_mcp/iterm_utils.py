@@ -637,6 +637,7 @@ async def start_agent_in_session(
     agent_ready_timeout: float = 30.0,
     stop_hook_marker_id: Optional[str] = None,
     output_capture_path: Optional[str] = None,
+    plugin_dir: Optional[str] = None,
 ) -> None:
     """
     Start an agent CLI in an existing iTerm2 session.
@@ -657,6 +658,7 @@ async def start_agent_in_session(
             (only used if cli.supports_settings_file() returns True)
         output_capture_path: If provided, capture agent's stdout/stderr to this file
             using tee. Useful for agents that output JSONL for idle detection.
+        plugin_dir: Optional path to plugin directory for --plugin-dir flag
 
     Raises:
         RuntimeError: If shell not ready or agent fails to start within timeout
@@ -678,6 +680,7 @@ async def start_agent_in_session(
     agent_cmd = cli.build_full_command(
         dangerously_skip_permissions=dangerously_skip_permissions,
         settings_file=settings_file,
+        plugin_dir=plugin_dir,
         env_vars=env,
     )
 

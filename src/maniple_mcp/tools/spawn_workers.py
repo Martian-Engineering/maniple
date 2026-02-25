@@ -50,6 +50,7 @@ class WorkerConfig(TypedDict, total=False):
     skip_permissions: bool  # Optional: Default False
     use_worktree: bool  # Optional: Create isolated worktree (default True)
     worktree: WorktreeConfig  # Optional: Worktree settings (branch/base)
+    plugin_dir: str  # Optional: Path to plugin directory for --plugin-dir
 
 
 def register_tools(mcp: FastMCP, ensure_connection) -> None:
@@ -676,6 +677,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 skip_permissions = worker_config.get("skip_permissions")
                 if skip_permissions is None:
                     skip_permissions = defaults.skip_permissions
+                plugin_dir = worker_config.get("plugin_dir")
                 await backend.start_agent_in_session(
                     handle=session,
                     cli=cli,
@@ -683,6 +685,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     dangerously_skip_permissions=skip_permissions,
                     env=env,
                     stop_hook_marker_id=stop_hook_marker_id,
+                    plugin_dir=plugin_dir,
                 )
 
             await asyncio.gather(*[start_agent_for_worker(i) for i in range(worker_count)])

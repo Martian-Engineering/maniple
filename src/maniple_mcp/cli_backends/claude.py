@@ -83,6 +83,7 @@ class ClaudeCLI(AgentCLI):
         *,
         dangerously_skip_permissions: bool = False,
         settings_file: str | None = None,
+        plugin_dir: str | None = None,
     ) -> list[str]:
         """
         Build Claude CLI arguments.
@@ -90,6 +91,7 @@ class ClaudeCLI(AgentCLI):
         Args:
             dangerously_skip_permissions: Add --dangerously-skip-permissions
             settings_file: Path to settings JSON for Stop hook injection
+            plugin_dir: Path to plugin directory for --plugin-dir
 
         Returns:
             List of CLI arguments
@@ -98,6 +100,10 @@ class ClaudeCLI(AgentCLI):
 
         if dangerously_skip_permissions:
             args.append("--dangerously-skip-permissions")
+        
+        if plugin_dir:
+            args.append("--plugin-dir")
+            args.append(plugin_dir)
 
         # Only add --settings for the default 'claude' command.
         # Custom commands like 'happy' have their own session tracking mechanisms.
