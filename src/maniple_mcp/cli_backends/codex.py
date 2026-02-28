@@ -87,6 +87,7 @@ class CodexCLI(AgentCLI):
         *,
         dangerously_skip_permissions: bool = False,
         settings_file: str | None = None,
+        plugin_dir: str | list[str] | None = None,
     ) -> list[str]:
         """
         Build Codex CLI arguments for interactive mode.
@@ -94,6 +95,7 @@ class CodexCLI(AgentCLI):
         Args:
             dangerously_skip_permissions: Maps to --dangerously-bypass-approvals-and-sandbox for Codex
             settings_file: Ignored - Codex doesn't support settings injection
+            plugin_dir: Ignored - Codex doesn't support plugin directories
 
         Returns:
             List of CLI arguments for interactive mode

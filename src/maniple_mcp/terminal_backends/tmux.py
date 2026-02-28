@@ -467,6 +467,7 @@ class TmuxBackend(TerminalBackend):
         agent_ready_timeout: float = 30.0,
         stop_hook_marker_id: str | None = None,
         output_capture_path: str | None = None,
+        plugin_dir: str | None = None,
     ) -> None:
         """Start a CLI agent in an existing tmux pane."""
         # Ensure the shell is responsive before we send the launch command.
@@ -490,6 +491,7 @@ class TmuxBackend(TerminalBackend):
         agent_cmd = cli.build_full_command(
             dangerously_skip_permissions=dangerously_skip_permissions,
             settings_file=settings_file,
+            plugin_dir=plugin_dir,
             env_vars=env,
         )
 
