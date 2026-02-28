@@ -87,7 +87,7 @@ class CodexCLI(AgentCLI):
         *,
         dangerously_skip_permissions: bool = False,
         settings_file: str | None = None,
-        plugin_dir: str | None = None,
+        plugin_dir: str | list[str] | None = None,
     ) -> list[str]:
         """
         Build Codex CLI arguments for interactive mode.

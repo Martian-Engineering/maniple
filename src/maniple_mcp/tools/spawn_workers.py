@@ -50,7 +50,7 @@ class WorkerConfig(TypedDict, total=False):
     skip_permissions: bool  # Optional: Default False
     use_worktree: bool  # Optional: Create isolated worktree (default True)
     worktree: WorktreeConfig  # Optional: Worktree settings (branch/base)
-    plugin_dir: str  # Optional: Path to plugin directory for --plugin-dir
+    plugin_dir: str | list[str]  # Optional: Path(s) to plugin directory for --plugin-dir
 
 
 def register_tools(mcp: FastMCP, ensure_connection) -> None:

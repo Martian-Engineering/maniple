@@ -46,7 +46,7 @@ class AgentCLI(Protocol):
         *,
         dangerously_skip_permissions: bool = False,
         settings_file: str | None = None,
-        plugin_dir: str | None = None,
+        plugin_dir: str | list[str] | None = None,
     ) -> list[str]:
         """
         Build the argument list for the CLI command.
@@ -54,7 +54,7 @@ class AgentCLI(Protocol):
         Args:
             dangerously_skip_permissions: If True, add flag to skip permission prompts
             settings_file: Optional path to settings file for hook injection
-            plugin_dir: Optional path to plugin directory
+            plugin_dir: Optional path(s) to plugin directory (single string or list)
 
         Returns:
             List of command-line arguments (not including the command itself)
@@ -102,7 +102,7 @@ class AgentCLI(Protocol):
         *,
         dangerously_skip_permissions: bool = False,
         settings_file: str | None = None,
-        plugin_dir: str | None = None,
+        plugin_dir: str | list[str] | None = None,
         env_vars: dict[str, str] | None = None,
     ) -> str:
         """
@@ -114,7 +114,7 @@ class AgentCLI(Protocol):
         Args:
             dangerously_skip_permissions: Skip permission prompts
             settings_file: Settings file for hook injection
-            plugin_dir: Optional path to plugin directory
+            plugin_dir: Optional path(s) to plugin directory (single string or list)
             env_vars: Environment variables to prepend
 
         Returns:
