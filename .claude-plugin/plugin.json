@@ -1,6 +1,6 @@
 {
   "name": "maniple",
-  "version": "0.11.2",
+  "version": "0.12.2",
   "description": "MCP server for spawning and orchestrating multiple Claude Code sessions via iTerm2",
   "author": {
     "name": "Josh Lehman",

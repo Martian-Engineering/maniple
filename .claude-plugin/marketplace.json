@@ -16,7 +16,7 @@
         "repo": "Martian-Engineering/maniple"
       },
       "description": "MCP server for spawning and orchestrating multiple Claude Code sessions via iTerm2",
-      "version": "0.11.2",
+      "version": "0.12.2",
       "author": {
         "name": "Josh Lehman"
       },
