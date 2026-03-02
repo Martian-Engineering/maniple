@@ -157,6 +157,7 @@ async def test_spawn_workers_uses_config_defaults(tmp_path, monkeypatch):
     assert result["layout"] == "new"
     assert seen_agent_types == ["codex"]
     assert backend.started[0]["dangerously_skip_permissions"] is True
+    assert backend.started[0]["env"] == {"CI": "1"}
     assert result["sessions"]["Worker1"]["agent_type"] == "codex"
     assert prompt_calls == [False]
 
@@ -233,8 +234,69 @@ async def test_spawn_workers_invalid_config_falls_back(tmp_path, monkeypatch):
     assert result["layout"] == "auto"
     assert seen_agent_types == ["claude"]
     assert backend.started[0]["dangerously_skip_permissions"] is False
+    assert backend.started[0]["env"] is None
     assert result["sessions"]["Worker1"]["agent_type"] == "claude"
     assert prompt_calls == [True]
+
+
+@pytest.mark.asyncio
+async def test_spawn_workers_merges_codex_ci_with_worktree_tracker_env(tmp_path, monkeypatch):
+    """Codex workers should include CI=1 alongside worktree tracker env vars."""
+    config = default_config()
+    config.defaults = DefaultsConfig(
+        agent_type="codex",
+        skip_permissions=False,
+        use_worktree=False,
+        layout="new",
+    )
+    monkeypatch.setattr(spawn_workers_module, "load_config", lambda: config)
+    monkeypatch.setattr(spawn_workers_module, "get_cli_backend", lambda *_: "cli:codex")
+    monkeypatch.setattr(
+        spawn_workers_module,
+        "get_worktree_tracker_dir",
+        lambda *_: ("MANIPLE_WORKTREE_TRACKER_DIR", "/tmp/tracker"),
+    )
+    monkeypatch.setattr(
+        spawn_workers_module,
+        "generate_worker_prompt",
+        lambda *args, **kwargs: "PROMPT",
+    )
+    monkeypatch.setattr(
+        spawn_workers_module,
+        "get_coordinator_guidance",
+        lambda *args, **kwargs: {"summary": "ok"},
+    )
+
+    async def fake_await_marker_in_jsonl(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(session_state, "await_marker_in_jsonl", fake_await_marker_in_jsonl)
+    monkeypatch.setattr(session_state, "generate_marker_message", lambda *args, **kwargs: "MARKER")
+
+    backend = FakeBackend()
+    registry = SessionRegistry()
+    app_ctx = SimpleNamespace(registry=registry, backend=backend)
+
+    async def ensure_connection(app_context):
+        return app_context.backend
+
+    mcp = FastMCP("test")
+    spawn_workers_module.register_tools(mcp, ensure_connection)
+    tool = mcp._tool_manager.get_tool("spawn_workers")
+    assert tool is not None
+
+    repo_path = tmp_path / "repo"
+    repo_path.mkdir()
+
+    ctx = SimpleNamespace(request_context=SimpleNamespace(lifespan_context=app_ctx))
+    await tool.run({
+        "workers": [{"project_path": str(repo_path), "name": "Worker1"}],
+    }, context=ctx)
+
+    assert backend.started[0]["env"] == {
+        "MANIPLE_WORKTREE_TRACKER_DIR": "/tmp/tracker",
+        "CI": "1",
+    }
 
 
 @pytest.mark.asyncio

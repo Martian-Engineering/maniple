@@ -670,6 +670,12 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 else:
                     env = None
 
+                # Codex can prompt interactively to install updates, which blocks
+                # unattended remote worker launches. Mark worker sessions as CI to
+                # suppress interactive upgrade prompts.
+                if agent_type == "codex":
+                    env = (env or {}) | {"CI": "1"}
+
                 cli = get_cli_backend(agent_type)
                 stop_hook_marker_id = marker_id if agent_type == "claude" else None
                 # Use config default when not explicitly set
