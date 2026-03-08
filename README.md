@@ -412,7 +412,8 @@ maniple config set <key> <value>  # Set and persist a value
     "layout": "auto"
   },
   "terminal": {
-    "backend": null
+    "backend": null,
+    "auto_accept_startup_prompts": false
   },
   "events": {
     "max_size_mb": 1,
@@ -430,10 +431,11 @@ maniple config set <key> <value>  # Set and persist a value
 | `commands.codex` | string | Override Codex CLI command (e.g. `"happy codex"`) |
 | `defaults.agent_type` | `"claude"` or `"codex"` | Default agent type for new workers |
 | `defaults.provider` | string or null | Default named provider preset for `spawn_workers` when a worker omits `provider` |
-| `defaults.skip_permissions` | bool | Default `--dangerously-skip-permissions` flag |
+| `defaults.skip_permissions` | bool | Default Claude permission mode (`--permission-mode bypassPermissions`) |
 | `defaults.use_worktree` | bool | Create git worktrees by default |
 | `defaults.layout` | `"auto"` or `"new"` | Default layout mode for spawn_workers |
 | `terminal.backend` | `"tmux"` or `"iterm"` | Terminal backend override (null = auto-detect) |
+| `terminal.auto_accept_startup_prompts` | bool | Auto-confirm known Claude startup prompts during worker launch |
 | `events.max_size_mb` | int | Max event log file size before rotation |
 | `events.recent_hours` | int | Hours of events to retain |
 | `issue_tracker.override` | `"beads"` or `"pebbles"` | Force a specific issue tracker |
@@ -731,11 +733,45 @@ Claude Code can still pause on local interactive confirmations. Common examples:
 
 - trusting a newly opened project folder
 - approving local `.mcp.json` servers discovered in the target repo
-- confirming the `--dangerously-skip-permissions` / bypass mode warning
+- confirming Claude permission-mode / bypass mode warnings when the CLI requires it
 
 If this happens, the worker will appear to time out during startup even though
 the tmux pane is alive. Check the pane directly and clear the confirmation once.
 After that, service-mode orchestration is much smoother.
+
+If you want unattended worker startup in a trusted local environment, set
+`terminal.auto_accept_startup_prompts` to `true`. This only auto-confirms
+known startup blockers during launch, currently:
+
+- the project `.mcp.json` trust prompt
+- the Claude bypass-permissions startup confirmation
+
+This is intentionally opt-in because it accepts security prompts on your behalf.
+
+For the same project, MCP trust is usually a one-time confirmation. After you
+accept the `.mcp.json` server for that project, future workers in the same
+project normally stop hitting that prompt. It can reappear if you reset Claude
+state, change the project's MCP config, or open a different project.
+
+The bypass-permissions warning is also a Claude-side interactive confirmation.
+After you accept it once, repeated prompts are less likely in the same local
+setup, but you should not assume that it is permanently suppressed across CLI
+upgrades, config resets, or entirely new environments.
+
+For tmux-backed workers, you can jump straight to the blocked worker pane and
+clear the prompt manually:
+
+```bash
+# Open the smoke-test worker that was blocked on the .mcp.json trust prompt
+tmux attach-session -t maniple-maniple-smoke \; select-window -t 2
+
+# Open the MolGen worker that was blocked on the bypass-permissions prompt
+tmux attach-session -t maniple-MolGen \; select-window -t 35
+```
+
+Once attached:
+- For the `.mcp.json` prompt, choose `Use this and all future MCP servers in this project` if you trust that repo's MCP config.
+- For the bypass-permissions prompt, move to `Yes, I accept` and press Enter if you intentionally launched that worker with `skip_permissions: true`.
 
 ## MCP Tools
 
@@ -795,7 +831,7 @@ WorkerConfig fields:
   badge: str                - Task description (shown in badge, used in branch names)
   issue_id: str             - Issue tracker ID (for badge, branch naming, and workflow instructions)
   prompt: str               - Additional instructions (combined with standard worker prompt)
-  skip_permissions: bool    - Start with --dangerously-skip-permissions
+  skip_permissions: bool    - Start Claude with `--permission-mode bypassPermissions`
   use_worktree: bool        - Create isolated git worktree (default: true)
   worktree: WorktreeConfig  - Optional worktree settings:
                               branch: Explicit branch name (auto-generated if omitted)
@@ -1070,6 +1106,27 @@ make install-commands
 - Enable: iTerm2 > Preferences > General > Magic > Enable Python API
 
 ### General
+
+**Worker startup timed out, but the pane is still alive**
+- Claude may be blocked on a first-run confirmation rather than actually failing to start
+- Common blockers are:
+  - the project `.mcp.json` trust prompt
+- the Claude bypass-permissions confirmation
+- For tmux sessions, attach directly to the blocked pane:
+
+```bash
+tmux attach-session -t <session-name> \; select-window -t <window-index>
+```
+
+- Example sessions from local debugging:
+
+```bash
+tmux attach-session -t maniple-maniple-smoke \; select-window -t 2
+tmux attach-session -t maniple-MolGen \; select-window -t 35
+```
+
+- After you clear the confirmation once, retry `spawn_workers`
+- For the same project, `.mcp.json` trust is usually a one-time confirmation unless Claude state or project MCP config changes
 
 **"Session not found"**
 - The worker may have been closed externally

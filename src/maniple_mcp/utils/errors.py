@@ -71,6 +71,10 @@ HINTS = {
         "The session is currently processing. Wait for it to finish, or use "
         "force=True to close it anyway (may lose work)"
     ),
+    "launch_blocked": (
+        "Open the worker terminal and complete any Claude startup confirmation "
+        "prompt, then retry spawning the worker"
+    ),
 }
 
 

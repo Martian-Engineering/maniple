@@ -20,6 +20,7 @@ from ..cli_backends import get_cli_backend
 from ..config import ConfigError, default_config, load_config
 from ..colors import generate_tab_color
 from ..formatting import format_badge_text, format_session_title
+from ..launch_blockers import AgentLaunchBlocked
 from ..names import pick_names_for_count
 from ..profile import apply_appearance_colors
 from ..registry import SessionStatus
@@ -154,7 +155,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 commit with issue reference). Used for badge first line and branch naming.
             prompt: Optional additional instructions. Combined with standard worker prompt,
                 not a replacement. Use for extra context beyond what the issue describes.
-            skip_permissions: Whether to start Claude with --dangerously-skip-permissions.
+            skip_permissions: Whether to start Claude with --permission-mode bypassPermissions.
                 Default False. Without this, workers can only read local files and will
                 struggle with most commands (writes, shell, etc.).
             provider: Optional named launch preset from config.providers. Cannot be
@@ -763,6 +764,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     stop_hook_marker_id=stop_hook_marker_id,
                     plugin_dir=plugin_dir,
                     command_override=command_override,
+                    auto_accept_startup_prompts=config.terminal.auto_accept_startup_prompts,
                 )
 
             await asyncio.gather(*[start_agent_for_worker(i) for i in range(worker_count)])
@@ -936,9 +938,18 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         except ValueError as e:
             logger.error(f"Validation error in spawn_workers: {e}")
             return error_response(str(e))
-        except Exception as e:
-            logger.error(f"Failed to spawn workers: {e}")
+        except AgentLaunchBlocked as e:
+            logger.error(f"Worker launch blocked: {e}")
             return error_response(
                 str(e),
-                hint=HINTS["iterm_connection"],
+                hint=getattr(e, "hint", HINTS["launch_blocked"]),
+            )
+        except Exception as e:
+            logger.error(f"Failed to spawn workers: {e}")
+            hint = getattr(e, "hint", None)
+            if hint is None and backend.backend_id == "iterm":
+                hint = HINTS["iterm_connection"]
+            return error_response(
+                str(e),
+                hint=hint,
             )

@@ -7,6 +7,7 @@ from mcp.server.fastmcp import FastMCP
 
 import maniple_mcp.session_state as session_state
 from maniple_mcp.config import ConfigError, DefaultsConfig, ProviderConfig, default_config
+from maniple_mcp.launch_blockers import AgentLaunchBlocked, LaunchBlocker
 from maniple_mcp.registry import SessionRegistry
 from maniple_mcp.terminal_backends.base import TerminalSession
 from maniple_mcp.tools import spawn_workers as spawn_workers_module
@@ -22,6 +23,7 @@ class FakeBackend:
         self.prompts = []
         self.sessions = []
         self.create_calls = []
+        self.raise_on_start = None
 
     async def create_session(
         self,
@@ -57,6 +59,8 @@ class FakeBackend:
         stop_hook_marker_id: str | None = None,
         **kwargs,
     ) -> None:
+        if self.raise_on_start is not None:
+            raise self.raise_on_start
         self.started.append({
             "handle": handle,
             "cli": cli,
@@ -80,6 +84,47 @@ class FakeBackend:
             "agent_type": agent_type,
             "submit": submit,
         })
+
+
+async def _run_spawn_workers_tool(tmp_path, monkeypatch, backend, workers):
+    config = default_config()
+    config.defaults = DefaultsConfig(use_worktree=False, layout="new")
+    monkeypatch.setattr(spawn_workers_module, "load_config", lambda: config)
+    monkeypatch.setattr(spawn_workers_module, "get_cli_backend", lambda agent_type: f"cli:{agent_type}")
+    monkeypatch.setattr(spawn_workers_module, "get_worktree_tracker_dir", lambda *_: None)
+    monkeypatch.setattr(
+        spawn_workers_module,
+        "generate_worker_prompt",
+        lambda *args, **kwargs: "PROMPT",
+    )
+    monkeypatch.setattr(
+        spawn_workers_module,
+        "get_coordinator_guidance",
+        lambda *args, **kwargs: {"summary": "ok"},
+    )
+    async def fake_await_marker_in_jsonl(*args, **kwargs):
+        return None
+
+    async def fake_await_codex_marker_in_jsonl(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(session_state, "await_marker_in_jsonl", fake_await_marker_in_jsonl)
+    monkeypatch.setattr(session_state, "await_codex_marker_in_jsonl", fake_await_codex_marker_in_jsonl)
+    monkeypatch.setattr(session_state, "generate_marker_message", lambda *args, **kwargs: "MARKER")
+
+    registry = SessionRegistry()
+    app_ctx = SimpleNamespace(registry=registry, backend=backend)
+
+    async def ensure_connection(app_context):
+        return app_context.backend
+
+    mcp = FastMCP("test")
+    spawn_workers_module.register_tools(mcp, ensure_connection)
+    tool = mcp._tool_manager.get_tool("spawn_workers")
+    assert tool is not None
+
+    ctx = SimpleNamespace(request_context=SimpleNamespace(lifespan_context=app_ctx))
+    return await tool.run({"workers": workers}, context=ctx)
 
 
 @pytest.mark.asyncio
@@ -169,6 +214,85 @@ async def test_spawn_workers_uses_config_defaults(tmp_path, monkeypatch):
     assert backend.started[0]["env"] == {"CI": "1"}
     assert result["sessions"]["Worker1"]["agent_type"] == "codex"
     assert prompt_calls == [False]
+
+
+@pytest.mark.asyncio
+async def test_spawn_workers_returns_launch_blocked_hint(tmp_path, monkeypatch):
+    """spawn_workers should surface launch blocker hints instead of iTerm advice."""
+    repo_path = tmp_path / "repo"
+    repo_path.mkdir()
+
+    backend = FakeBackend()
+    backend.raise_on_start = AgentLaunchBlocked(
+        LaunchBlocker(
+            slug="mcp_trust_confirmation",
+            summary="Claude launch is blocked on the project MCP trust prompt.",
+            hint="Open the worker pane and accept the .mcp.json server prompt once.",
+        )
+    )
+
+    result = await _run_spawn_workers_tool(
+        tmp_path,
+        monkeypatch,
+        backend,
+        [{"project_path": str(repo_path), "name": "Worker1"}],
+    )
+
+    assert result["error"] == "Claude launch is blocked on the project MCP trust prompt."
+    assert ".mcp.json server prompt" in result["hint"]
+
+
+@pytest.mark.asyncio
+async def test_spawn_workers_passes_auto_accept_startup_prompts(tmp_path, monkeypatch):
+    """spawn_workers should pass terminal auto-accept config to the backend."""
+    config = default_config()
+    config.defaults = DefaultsConfig(use_worktree=False, layout="new")
+    config.terminal.auto_accept_startup_prompts = True
+    monkeypatch.setattr(spawn_workers_module, "load_config", lambda: config)
+    monkeypatch.setattr(spawn_workers_module, "get_cli_backend", lambda agent_type: f"cli:{agent_type}")
+    monkeypatch.setattr(spawn_workers_module, "get_worktree_tracker_dir", lambda *_: None)
+    monkeypatch.setattr(
+        spawn_workers_module,
+        "generate_worker_prompt",
+        lambda *args, **kwargs: "PROMPT",
+    )
+    monkeypatch.setattr(
+        spawn_workers_module,
+        "get_coordinator_guidance",
+        lambda *args, **kwargs: {"summary": "ok"},
+    )
+
+    async def fake_await_marker_in_jsonl(*args, **kwargs):
+        return None
+
+    async def fake_await_codex_marker_in_jsonl(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(session_state, "await_marker_in_jsonl", fake_await_marker_in_jsonl)
+    monkeypatch.setattr(session_state, "await_codex_marker_in_jsonl", fake_await_codex_marker_in_jsonl)
+    monkeypatch.setattr(session_state, "generate_marker_message", lambda *args, **kwargs: "MARKER")
+
+    backend = FakeBackend()
+    registry = SessionRegistry()
+    app_ctx = SimpleNamespace(registry=registry, backend=backend)
+
+    async def ensure_connection(app_context):
+        return app_context.backend
+
+    mcp = FastMCP("test")
+    spawn_workers_module.register_tools(mcp, ensure_connection)
+    tool = mcp._tool_manager.get_tool("spawn_workers")
+    assert tool is not None
+
+    repo_path = tmp_path / "repo"
+    repo_path.mkdir()
+
+    ctx = SimpleNamespace(request_context=SimpleNamespace(lifespan_context=app_ctx))
+    await tool.run({
+        "workers": [{"project_path": str(repo_path), "name": "Worker1"}],
+    }, context=ctx)
+
+    assert backend.started[0]["auto_accept_startup_prompts"] is True
 
 
 @pytest.mark.asyncio

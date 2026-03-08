@@ -77,7 +77,7 @@ class ClaudeCLI(AgentCLI):
     Claude Code CLI implementation.
 
     Supports:
-    - --dangerously-skip-permissions flag
+    - --permission-mode bypassPermissions
     - --settings flag for Stop hook injection
     - Ready detection via TUI patterns (robot banner, '>' prompt, 'tokens' status)
     - Idle detection via Stop hook markers in JSONL
@@ -111,7 +111,7 @@ class ClaudeCLI(AgentCLI):
         Build Claude CLI arguments.
 
         Args:
-            dangerously_skip_permissions: Add --dangerously-skip-permissions
+            dangerously_skip_permissions: Add --permission-mode bypassPermissions
             settings_file: Path to settings JSON for Stop hook injection
             plugin_dir: Path(s) to plugin directory for --plugin-dir (single string or list)
 
@@ -121,7 +121,8 @@ class ClaudeCLI(AgentCLI):
         args: list[str] = []
 
         if dangerously_skip_permissions:
-            args.append("--dangerously-skip-permissions")
+            args.append("--permission-mode")
+            args.append("bypassPermissions")
         
         if plugin_dir:
             # Support both single string and list of strings

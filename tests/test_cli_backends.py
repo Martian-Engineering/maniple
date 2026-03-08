@@ -107,10 +107,10 @@ class TestClaudeCLI:
         assert args == []
 
     def test_build_args_skip_permissions(self):
-        """Should add --dangerously-skip-permissions flag."""
+        """Should add permission-mode bypassPermissions."""
         cli = ClaudeCLI()
         args = cli.build_args(dangerously_skip_permissions=True)
-        assert "--dangerously-skip-permissions" in args
+        assert args[:2] == ["--permission-mode", "bypassPermissions"]
 
     def test_build_args_settings_file_default_command(self):
         """Should add --settings flag for default claude command."""
@@ -185,7 +185,7 @@ class TestClaudeCLI:
             os.environ.pop("CLAUDE_TEAM_COMMAND", None)
             cli = ClaudeCLI()
             cmd = cli.build_full_command(dangerously_skip_permissions=True)
-            assert cmd == "claude --dangerously-skip-permissions"
+            assert cmd == "claude --permission-mode bypassPermissions"
 
     def test_build_full_command_with_env_vars(self):
         """build_full_command should prepend env vars."""

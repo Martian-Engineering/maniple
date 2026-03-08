@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from .cli_backends import AgentCLI
 
 from .subprocess_cache import cached_system_profiler
+from .launch_blockers import AgentLaunchBlocked, detect_launch_blocker
 
 logger = logging.getLogger("maniple.iterm_utils")
 
@@ -481,6 +482,9 @@ async def wait_for_claude_ready(
         try:
             content = await read_screen_text(session)
             lines = content.split('\n')
+            blocker = detect_launch_blocker(content, "claude")
+            if blocker is not None:
+                raise AgentLaunchBlocked(blocker)
 
             # Check if content is stable (same as last read)
             if content == last_content:
@@ -502,6 +506,8 @@ async def wait_for_claude_ready(
                         logger.debug("Claude ready: found status bar with 'tokens'")
                         return True
 
+        except AgentLaunchBlocked:
+            raise
         except Exception as e:
             # Screen read failed, retry
             logger.debug(f"Screen read failed during Claude ready check: {e}")
@@ -518,6 +524,7 @@ async def wait_for_agent_ready(
     timeout_seconds: float = 15.0,
     poll_interval: float = 0.2,
     stable_count: int = 2,
+    auto_accept_startup_prompts: bool = False,
 ) -> bool:
     """
     Wait for an agent CLI to be ready to accept input.
@@ -542,11 +549,32 @@ async def wait_for_agent_ready(
     start_time = time.monotonic()
     last_content = None
     stable_reads = 0
+    auto_accepted_blockers: set[str] = set()
 
     while (time.monotonic() - start_time) < timeout_seconds:
         try:
             content = await read_screen_text(session)
             lines = content.split('\n')
+            blocker = detect_launch_blocker(content, cli.engine_id)
+            if blocker is not None:
+                if (
+                    auto_accept_startup_prompts
+                    and blocker.auto_accept_choice
+                    and blocker.slug not in auto_accepted_blockers
+                ):
+                    logger.info(
+                        "Auto-accepting Claude startup blocker in iTerm: %s",
+                        blocker.slug,
+                    )
+                    await send_text(session, blocker.auto_accept_choice)
+                    await asyncio.sleep(0.2)
+                    await send_key(session, "enter")
+                    auto_accepted_blockers.add(blocker.slug)
+                    last_content = None
+                    stable_reads = 0
+                    await asyncio.sleep(0.5)
+                    continue
+                raise AgentLaunchBlocked(blocker)
 
             # Check if content is stable (same as last read)
             if content == last_content:
@@ -566,6 +594,8 @@ async def wait_for_agent_ready(
                             )
                             return True
 
+        except AgentLaunchBlocked:
+            raise
         except Exception as e:
             # Screen read failed, retry
             logger.debug(f"Screen read failed during agent ready check: {e}")
@@ -639,6 +669,7 @@ async def start_agent_in_session(
     output_capture_path: Optional[str] = None,
     plugin_dir: Optional[str | list[str]] = None,
     command_override: Optional[str] = None,
+    auto_accept_startup_prompts: bool = False,
 ) -> None:
     """
     Start an agent CLI in an existing iTerm2 session.
@@ -702,7 +733,10 @@ async def start_agent_in_session(
     # Wait for agent to actually start (detect ready patterns, not blind sleep)
     effective_command = command_override or cli.command()
     if not await wait_for_agent_ready(
-        session, cli, timeout_seconds=agent_ready_timeout
+        session,
+        cli,
+        timeout_seconds=agent_ready_timeout,
+        auto_accept_startup_prompts=auto_accept_startup_prompts,
     ):
         raise RuntimeError(
             f"{cli.engine_id} failed to start in {project_path} within "
@@ -883,7 +917,7 @@ async def create_multi_claude_layout(
             the expected pane names for the layout (e.g., for 'quad':
             'top_left', 'top_right', 'bottom_left', 'bottom_right')
         layout: Layout type (single, vertical, horizontal, quad, triple_vertical)
-        skip_permissions: If True, start Claude with --dangerously-skip-permissions
+        skip_permissions: If True, start Claude with --permission-mode bypassPermissions
         project_envs: Optional dict mapping pane names to env var dicts. Each
             pane can have its own environment variables set before starting Claude.
         profile: Optional profile name to use for all panes

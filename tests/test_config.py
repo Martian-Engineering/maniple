@@ -52,6 +52,7 @@ class TestDefaultConfig:
         """Default terminal backend is None (auto-detect)."""
         config = default_config()
         assert config.terminal.backend is None
+        assert config.terminal.auto_accept_startup_prompts is False
 
     def test_default_events(self):
         """Default events config values."""
@@ -109,7 +110,10 @@ class TestSaveConfig:
                 use_worktree=False,
                 layout="new",
             ),
-            terminal=TerminalConfig(backend="tmux"),
+            terminal=TerminalConfig(
+                backend="tmux",
+                auto_accept_startup_prompts=True,
+            ),
             events=EventsConfig(max_size_mb=5, recent_hours=48, stale_threshold_minutes=15),
             issue_tracker=IssueTrackerConfig(override="beads"),
             providers={
@@ -130,6 +134,7 @@ class TestSaveConfig:
         assert data["defaults"]["use_worktree"] is False
         assert data["defaults"]["layout"] == "new"
         assert data["terminal"]["backend"] == "tmux"
+        assert data["terminal"]["auto_accept_startup_prompts"] is True
         assert data["events"]["max_size_mb"] == 5
         assert data["events"]["recent_hours"] == 48
         assert data["events"]["stale_threshold_minutes"] == 15
@@ -174,7 +179,10 @@ class TestLoadConfig:
             "version": 1,
             "commands": {"claude": "/my/claude"},
             "defaults": {"agent_type": "codex"},
-            "terminal": {"backend": "iterm"},
+            "terminal": {
+                "backend": "iterm",
+                "auto_accept_startup_prompts": True,
+            },
             "events": {"max_size_mb": 10},
             "issue_tracker": {"override": "pebbles"},
             "providers": {
@@ -189,6 +197,7 @@ class TestLoadConfig:
         assert config.defaults.agent_type == "codex"
         assert config.defaults.provider is None
         assert config.terminal.backend == "iterm"
+        assert config.terminal.auto_accept_startup_prompts is True
         assert config.events.max_size_mb == 10
         assert config.issue_tracker.override == "pebbles"
         assert config.providers["local"].command == "/usr/local/bin/claude-local"
@@ -204,6 +213,7 @@ class TestLoadConfig:
         assert config.defaults.agent_type == "claude"
         assert config.defaults.provider is None
         assert config.terminal.backend is None
+        assert config.terminal.auto_accept_startup_prompts is False
         assert config.events.max_size_mb == 1
         assert config.issue_tracker.override is None
 

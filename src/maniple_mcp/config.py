@@ -54,6 +54,7 @@ class TerminalConfig:
     """Terminal backend configuration."""
 
     backend: TerminalBackend | None = None  # None = auto-detect
+    auto_accept_startup_prompts: bool = False
 
 
 @dataclass
@@ -259,13 +260,18 @@ def _parse_defaults(value: object) -> DefaultsConfig:
 def _parse_terminal(value: object) -> TerminalConfig:
     # Parse terminal backend configuration.
     data = _ensure_dict(value, "terminal")
-    _validate_keys(data, {"backend"}, "terminal")
+    _validate_keys(data, {"backend", "auto_accept_startup_prompts"}, "terminal")
     return TerminalConfig(
         backend=_optional_literal(
             data.get("backend"),
             {"iterm", "tmux"},
             "terminal.backend",
             None,
+        ),
+        auto_accept_startup_prompts=_optional_bool(
+            data.get("auto_accept_startup_prompts"),
+            "terminal.auto_accept_startup_prompts",
+            TerminalConfig.auto_accept_startup_prompts,
         ),
     )
 
