@@ -11,8 +11,18 @@ if [[ ! -f "$CLAUDE_SWITCH_SCRIPT" ]]; then
     exit 1
 fi
 
+# Import function definitions from claude-switch, but skip its top-level side
+# effects (dependency checks, tips, and automatic env loading).
 # shellcheck disable=SC1090
-source "$CLAUDE_SWITCH_SCRIPT" >/dev/null 2>&1
+source <(
+    sed \
+        -e '/^_claude_check_dependencies$/d' \
+        -e '/^_claude_init_config$/d' \
+        -e '/^_claude_ccmanager_tips$/d' \
+        -e '/^_claude_check_ralph_setup$/d' \
+        -e '/^_claude_load_env$/d' \
+        "$CLAUDE_SWITCH_SCRIPT"
+) >/dev/null 2>&1
 
 # Load maniple-specific provider credentials after claude-switch so these
 # values take precedence without requiring changes to the user's shell setup.

@@ -64,6 +64,16 @@ Workers can run either Claude Code or OpenAI Codex. Set `agent_type: "codex"` in
 
 ### HTTP Mode
 
+Minimal service command:
+
+```bash
+uv run python -m maniple_mcp \
+  --http \
+  --host 100.64.0.45 \
+  --port 8766 \
+  --allow-host 100.64.0.45:8766
+```
+
 Use `--host` to change the bind address for streamable HTTP mode:
 
 ```bash
@@ -98,7 +108,10 @@ uv run python -m maniple_mcp \
 - `uv` package manager
 - **tmux backend**: tmux installed (macOS or Linux)
 - **iTerm2 backend**: macOS with iTerm2 and Python API enabled (Preferences > General > Magic > Enable Python API)
+- **Claude workers** (optional): Claude Code CLI installed
 - **Codex workers** (optional): OpenAI Codex CLI installed
+- **Linux service mode** (optional): `systemd --user` available
+- **Provider wrapper mode** (optional): a local `claude-switch`-style wrapper installation if you want multiple Claude-compatible providers
 
 ## Installation
 
@@ -177,6 +190,55 @@ For project-scoped `.mcp.json` files, use `MANIPLE_PROJECT_DIR` so workers inher
 ```
 
 After adding the configuration, restart Claude Code for it to take effect.
+
+## Running as a Service
+
+For a persistent Linux deployment, run `maniple` under `systemd --user` and keep
+logs under `~/.maniple/logs/`.
+
+Example unit file at `~/.config/systemd/user/maniple.service`:
+
+```ini
+[Unit]
+Description=Maniple MCP Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/maniple
+Environment=MANIPLE_TERMINAL_BACKEND=tmux
+ExecStart=/path/to/uv run --project /path/to/maniple maniple --http --host 100.64.0.45 --port 8766 --allow-host 100.64.0.45:8766
+Restart=always
+RestartSec=3
+StandardOutput=append:%h/.maniple/logs/maniple.out.log
+StandardError=append:%h/.maniple/logs/maniple.err.log
+
+[Install]
+WantedBy=default.target
+```
+
+Enable and start it:
+
+```bash
+mkdir -p ~/.maniple/logs ~/.config/systemd/user
+systemctl --user daemon-reload
+systemctl --user enable --now maniple
+systemctl --user status maniple
+```
+
+To keep the service running after reboot without an active graphical login:
+
+```bash
+loginctl enable-linger "$USER"
+```
+
+Useful log commands:
+
+```bash
+journalctl --user -u maniple -n 100 --no-pager
+tail -f ~/.maniple/logs/maniple.out.log ~/.maniple/logs/maniple.err.log
+```
 
 ## Config File
 
@@ -257,6 +319,13 @@ For multiple Claude-compatible providers, keep the files separated like this:
 The wrapper can source an existing `claude-switch` installation, but it reads
 provider credentials from `~/.maniple/.env` so users do not need to depend on
 `~/.claude-switch/.env` or the repository checkout for secrets.
+
+Minimal setup:
+
+1. Put provider credentials in `~/.maniple/.env`
+2. Install `~/bin/claude-maniple-switch`
+3. Add named presets under `providers` in `~/.maniple/config.json`
+4. Call `spawn_workers` with `provider: "minimax"` or `provider: "kimi"` or `provider: "local"`
 
 Define named presets in `~/.maniple/config.json` and reference them per worker:
 
@@ -348,6 +417,34 @@ Then use either a named `provider` preset or direct `command` / `env` overrides:
   ]
 }
 ```
+
+Minimal `spawn_workers` example:
+
+```json
+{
+  "workers": [
+    {
+      "project_path": "/repo",
+      "provider": "kimi",
+      "skip_permissions": true
+    }
+  ],
+  "layout": "new"
+}
+```
+
+### First-Run Notes for Claude Workers
+
+When testing autonomous Claude workers, the MCP service itself may be healthy but
+Claude Code can still pause on local interactive confirmations. Common examples:
+
+- trusting a newly opened project folder
+- approving local `.mcp.json` servers discovered in the target repo
+- confirming the `--dangerously-skip-permissions` / bypass mode warning
+
+If this happens, the worker will appear to time out during startup even though
+the tmux pane is alive. Check the pane directly and clear the confirmation once.
+After that, service-mode orchestration is much smoother.
 
 ## MCP Tools
 
