@@ -402,7 +402,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             resolved_env_overrides: list[dict[str, str]] = []
             for i, w in enumerate(workers):
                 provider_name = w.get("provider")
-                if provider_name is None:
+                if provider_name is None and agent_types[i] != "codex":
                     provider_name = defaults.provider
                 command_override = w.get("command")
                 env_override = w.get("env")

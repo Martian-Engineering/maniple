@@ -639,6 +639,74 @@ async def test_spawn_workers_uses_default_provider_when_not_specified(tmp_path, 
 
 
 @pytest.mark.asyncio
+async def test_spawn_workers_codex_ignores_default_provider(tmp_path, monkeypatch):
+    """Codex workers should not inherit defaults.provider Claude wrappers."""
+    config = default_config()
+    config.defaults = DefaultsConfig(
+        agent_type="codex",
+        skip_permissions=False,
+        use_worktree=False,
+        layout="new",
+        provider="local",
+    )
+    config.providers = {
+        "local": ProviderConfig(
+            command="/usr/local/bin/claude-local",
+            env={"CLAUDE_PROVIDER": "local"},
+        )
+    }
+    monkeypatch.setattr(spawn_workers_module, "load_config", lambda: config)
+    monkeypatch.setattr(spawn_workers_module, "get_cli_backend", lambda *_: "cli:codex")
+    monkeypatch.setattr(spawn_workers_module, "get_worktree_tracker_dir", lambda *_: None)
+    monkeypatch.setattr(
+        spawn_workers_module,
+        "generate_worker_prompt",
+        lambda *args, **kwargs: "PROMPT",
+    )
+    monkeypatch.setattr(
+        spawn_workers_module,
+        "get_coordinator_guidance",
+        lambda *args, **kwargs: {"summary": "ok"},
+    )
+
+    async def fake_await_codex_marker_in_jsonl(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(
+        session_state,
+        "await_codex_marker_in_jsonl",
+        fake_await_codex_marker_in_jsonl,
+    )
+    monkeypatch.setattr(session_state, "generate_marker_message", lambda *args, **kwargs: "MARKER")
+
+    backend = FakeBackend()
+    registry = SessionRegistry()
+    app_ctx = SimpleNamespace(registry=registry, backend=backend)
+
+    async def ensure_connection(app_context):
+        return app_context.backend
+
+    mcp = FastMCP("test")
+    spawn_workers_module.register_tools(mcp, ensure_connection)
+    tool = mcp._tool_manager.get_tool("spawn_workers")
+    assert tool is not None
+
+    repo_path = tmp_path / "repo"
+    repo_path.mkdir()
+
+    ctx = SimpleNamespace(request_context=SimpleNamespace(lifespan_context=app_ctx))
+    await tool.run({
+        "workers": [{
+            "project_path": str(repo_path),
+            "name": "Worker1",
+        }],
+    }, context=ctx)
+
+    assert backend.started[0]["env"] == {"CI": "1"}
+    assert backend.started[0]["command_override"] is None
+
+
+@pytest.mark.asyncio
 async def test_spawn_workers_uses_direct_command_and_env_override(tmp_path, monkeypatch):
     """Workers should support direct command/env overrides without providers."""
     config = default_config()
