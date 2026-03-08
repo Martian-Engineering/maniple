@@ -115,6 +115,35 @@ uv run python -m maniple_mcp \
 
 ## Installation
 
+### Linux Quick Start
+
+For a Debian/Ubuntu-style source checkout with `systemd --user` and provider
+presets, the fastest path is:
+
+```bash
+git clone https://github.com/Martian-Engineering/maniple.git
+cd maniple
+uv sync --group dev
+
+# Install/update ~/bin/claude-maniple-switch and create starter files:
+bash scripts/setup-provider-presets.sh
+
+# Install/update ~/.config/systemd/user/maniple.service for this checkout:
+bash scripts/install-systemd-user.sh
+```
+
+Then edit:
+- `~/.maniple/config.json`
+- `~/.maniple/.env`
+
+After changing provider settings:
+
+```bash
+systemctl --user restart maniple
+```
+
+For the full Debian/Linux walkthrough, see [Running as a Service](#running-as-a-service).
+
 ### As Claude Code Plugin (recommended)
 
 ```bash
