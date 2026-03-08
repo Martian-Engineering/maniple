@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
+from mcp.server.transport_security import TransportSecuritySettings
 
 from maniple.events import get_latest_snapshot, prune_event_backups, read_events_since
 from maniple.poller import WorkerPoller
@@ -28,6 +29,9 @@ from .utils import error_response, HINTS
 logger = logging.getLogger("maniple")
 
 EVENT_BACKUP_CAP_MB = 200
+LOCAL_HTTP_HOSTS = ("127.0.0.1", "localhost", "::1")
+LOCAL_ALLOWED_HOSTS = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+LOCAL_ALLOWED_ORIGINS = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
 
 
 # =============================================================================
@@ -338,6 +342,7 @@ def create_mcp_server(
     host: str = "127.0.0.1",
     port: int = 8766,
     enable_poller: bool = False,
+    transport_security: TransportSecuritySettings | None = None,
 ) -> FastMCP:
     """Create and configure the FastMCP server instance."""
     server = FastMCP(
@@ -345,6 +350,7 @@ def create_mcp_server(
         lifespan=functools.partial(app_lifespan, enable_poller=enable_poller),
         host=host,
         port=port,
+        transport_security=transport_security,
     )
     # Register all tools from the tools package
     register_all_tools(server, ensure_connection)
@@ -474,19 +480,79 @@ async def resource_session_screen(
 # =============================================================================
 
 
-def run_server(transport: str = "stdio", port: int = 8766):
+def _dedupe_preserving_order(values: list[str]) -> list[str]:
+    """Return values with duplicates removed while keeping the first occurrence."""
+    return list(dict.fromkeys(values))
+
+
+def build_transport_security_settings(
+    *,
+    host: str,
+    allowed_hosts: list[str] | None = None,
+    allowed_origins: list[str] | None = None,
+    disable_dns_rebinding_protection: bool = False,
+) -> TransportSecuritySettings | None:
+    """
+    Build explicit transport security settings for HTTP mode.
+
+    Returns None when no explicit overrides are requested so FastMCP can keep
+    its built-in localhost defaults unchanged.
+    """
+    if not allowed_hosts and not allowed_origins and not disable_dns_rebinding_protection:
+        return None
+
+    merged_hosts = list(allowed_hosts or [])
+    merged_origins = list(allowed_origins or [])
+
+    if not disable_dns_rebinding_protection and host in LOCAL_HTTP_HOSTS:
+        merged_hosts = [*LOCAL_ALLOWED_HOSTS, *merged_hosts]
+        merged_origins = [*LOCAL_ALLOWED_ORIGINS, *merged_origins]
+
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=not disable_dns_rebinding_protection,
+        allowed_hosts=_dedupe_preserving_order(merged_hosts),
+        allowed_origins=_dedupe_preserving_order(merged_origins),
+    )
+
+
+def run_server(
+    transport: str = "stdio",
+    *,
+    host: str = "127.0.0.1",
+    port: int = 8766,
+    allowed_hosts: list[str] | None = None,
+    allowed_origins: list[str] | None = None,
+    disable_dns_rebinding_protection: bool = False,
+):
     """
     Run the MCP server.
 
     Args:
         transport: Transport mode - "stdio" or "streamable-http"
+        host: Bind address for HTTP transport
         port: Port for HTTP transport (default 8766)
     """
     log_path = configure_logging()
     if transport == "streamable-http":
-        logger.info("Starting Maniple MCP Server (HTTP on port %s). Logs: %s", port, log_path)
+        logger.info(
+            "Starting Maniple MCP Server (HTTP on %s:%s). Logs: %s",
+            host,
+            port,
+            log_path,
+        )
+        transport_security = build_transport_security_settings(
+            host=host,
+            allowed_hosts=allowed_hosts,
+            allowed_origins=allowed_origins,
+            disable_dns_rebinding_protection=disable_dns_rebinding_protection,
+        )
         # Create server with configured port for HTTP mode
-        server = create_mcp_server(host="127.0.0.1", port=port, enable_poller=True)
+        server = create_mcp_server(
+            host=host,
+            port=port,
+            enable_poller=True,
+            transport_security=transport_security,
+        )
         server.run(transport="streamable-http")
     else:
         logger.info("Starting Maniple MCP Server (stdio). Logs: %s", log_path)
@@ -506,10 +572,32 @@ def main():
         help="Run in HTTP mode (streamable-http) instead of stdio",
     )
     parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Bind address for HTTP mode (default: 127.0.0.1)",
+    )
+    parser.add_argument(
         "--port",
         type=int,
         default=8766,
         help="Port for HTTP mode (default: 8766)",
+    )
+    parser.add_argument(
+        "--allow-host",
+        action="append",
+        default=None,
+        help="Allow this HTTP Host header when DNS rebinding protection is enabled. Repeatable.",
+    )
+    parser.add_argument(
+        "--allow-origin",
+        action="append",
+        default=None,
+        help="Allow this HTTP Origin header when DNS rebinding protection is enabled. Repeatable.",
+    )
+    parser.add_argument(
+        "--disable-dns-rebinding-protection",
+        action="store_true",
+        help="Disable HTTP DNS rebinding protection for streamable-http mode.",
     )
     # Config subcommands for reading/writing ~/.maniple/config.json.
     subparsers = parser.add_subparsers(dest="command")
@@ -627,7 +715,14 @@ def main():
 
     # Default behavior: run the MCP server.
     if args.http:
-        run_server(transport="streamable-http", port=args.port)
+        run_server(
+            transport="streamable-http",
+            host=args.host,
+            port=args.port,
+            allowed_hosts=args.allow_host,
+            allowed_origins=args.allow_origin,
+            disable_dns_rebinding_protection=args.disable_dns_rebinding_protection,
+        )
     else:
         run_server(transport="stdio")
 
