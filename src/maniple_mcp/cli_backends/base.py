@@ -47,6 +47,7 @@ class AgentCLI(Protocol):
         dangerously_skip_permissions: bool = False,
         settings_file: str | None = None,
         plugin_dir: str | list[str] | None = None,
+        command_override: str | None = None,
     ) -> list[str]:
         """
         Build the argument list for the CLI command.
@@ -89,7 +90,7 @@ class AgentCLI(Protocol):
         ...
 
     @abstractmethod
-    def supports_settings_file(self) -> bool:
+    def supports_settings_file(self, command_override: str | None = None) -> bool:
         """
         Return whether this CLI supports --settings flag for hook injection.
 
@@ -104,6 +105,7 @@ class AgentCLI(Protocol):
         settings_file: str | None = None,
         plugin_dir: str | list[str] | None = None,
         env_vars: dict[str, str] | None = None,
+        command_override: str | None = None,
     ) -> str:
         """
         Build the complete command string including env vars.
@@ -120,11 +122,16 @@ class AgentCLI(Protocol):
         Returns:
             Complete command string ready for shell execution
         """
-        cmd = self.command()
+        cmd = command_override or self.command()
         args = self.build_args(
             dangerously_skip_permissions=dangerously_skip_permissions,
-            settings_file=settings_file if self.supports_settings_file() else None,
+            settings_file=(
+                settings_file
+                if self.supports_settings_file(command_override=command_override)
+                else None
+            ),
             plugin_dir=plugin_dir,
+            command_override=command_override,
         )
 
         if args:

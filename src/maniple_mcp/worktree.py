@@ -457,6 +457,64 @@ def remove_worktree(
     return True
 
 
+def get_worktree_branch(repo_path: Path, worktree_path: Path) -> Optional[str]:
+    """
+    Return the branch currently associated with a registered worktree path.
+
+    Args:
+        repo_path: Path to the main repository
+        worktree_path: Full path to the worktree
+
+    Returns:
+        Branch name if the worktree is registered and not detached, otherwise None
+    """
+    repo_path = Path(repo_path).resolve()
+    worktree_path = Path(worktree_path).resolve()
+
+    for worktree in list_git_worktrees(repo_path):
+        if Path(worktree["path"]).resolve() == worktree_path:
+            return worktree.get("branch")
+
+    return None
+
+
+def delete_worktree_branch(
+    repo_path: Path,
+    branch_name: str,
+    force: bool = True,
+) -> bool:
+    """
+    Delete a worktree branch after its worktree has been removed.
+
+    Args:
+        repo_path: Path to the main repository
+        branch_name: Branch to delete
+        force: If True, use `git branch -D`; otherwise use `-d`
+
+    Returns:
+        True if the branch was deleted or already absent
+
+    Raises:
+        WorktreeError: If the branch deletion fails
+    """
+    repo_path = Path(repo_path).resolve()
+
+    branch_flag = "-D" if force else "-d"
+    result = subprocess.run(
+        ["git", "-C", str(repo_path), "branch", branch_flag, branch_name],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        if "not found" in stderr or "branch '" in stderr and "not found" in stderr:
+            return True
+        raise WorktreeError(f"Failed to delete branch: {stderr}")
+
+    return True
+
+
 def list_git_worktrees(repo_path: Path) -> list[dict]:
     """
     List all worktrees registered with git for a repository.

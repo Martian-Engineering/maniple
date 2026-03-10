@@ -4,6 +4,8 @@ import subprocess
 
 import pytest
 
+from maniple_mcp.cli_backends import claude_cli
+from maniple_mcp.launch_blockers import AgentLaunchBlocked
 from maniple_mcp.terminal_backends.base import TerminalSession
 from maniple_mcp.terminal_backends.tmux import TmuxBackend, tmux_session_name_for_project
 
@@ -257,3 +259,77 @@ def test_tmux_session_name_fallback_for_none():
     """Test that None project path produces fallback session name."""
     session = tmux_session_name_for_project(None)
     assert session == "maniple-project"
+
+
+@pytest.mark.asyncio
+async def test_wait_for_agent_ready_raises_on_mcp_trust_prompt(monkeypatch):
+    backend = TmuxBackend()
+    session = TerminalSession("tmux", "%1", "%1")
+
+    async def fake_read_screen_text(_session):
+        return (
+            "New MCP server found in .mcp.json\n"
+            "1. Use this and all future MCP servers in this project\n"
+        )
+
+    monkeypatch.setattr(backend, "read_screen_text", fake_read_screen_text)
+
+    with pytest.raises(AgentLaunchBlocked) as excinfo:
+        await backend._wait_for_agent_ready(session, claude_cli, timeout_seconds=1.0)
+
+    assert "MCP trust prompt" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_wait_for_agent_ready_raises_on_bypass_permissions_prompt(monkeypatch):
+    backend = TmuxBackend()
+    session = TerminalSession("tmux", "%1", "%1")
+
+    async def fake_read_screen_text(_session):
+        return (
+            "WARNING: Claude Code running in Bypass Permissions mode\n"
+            "2. Yes, I accept\n"
+        )
+
+    monkeypatch.setattr(backend, "read_screen_text", fake_read_screen_text)
+
+    with pytest.raises(AgentLaunchBlocked) as excinfo:
+        await backend._wait_for_agent_ready(session, claude_cli, timeout_seconds=1.0)
+
+    assert "Bypass Permissions confirmation" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_wait_for_agent_ready_auto_accepts_bypass_permissions(monkeypatch):
+    backend = TmuxBackend()
+    session = TerminalSession("tmux", "%1", "%1")
+    responses = iter([
+        "WARNING: Claude Code running in Bypass Permissions mode\n2. Yes, I accept\n",
+        "> ",
+        "> ",
+        "> ",
+    ])
+    sent = []
+
+    async def fake_read_screen_text(_session):
+        return next(responses)
+
+    async def fake_send_text(_session, text):
+        sent.append(("text", text))
+
+    async def fake_send_key(_session, key):
+        sent.append(("key", key))
+
+    monkeypatch.setattr(backend, "read_screen_text", fake_read_screen_text)
+    monkeypatch.setattr(backend, "send_text", fake_send_text)
+    monkeypatch.setattr(backend, "send_key", fake_send_key)
+
+    ready = await backend._wait_for_agent_ready(
+        session,
+        claude_cli,
+        timeout_seconds=2.0,
+        auto_accept_startup_prompts=True,
+    )
+
+    assert ready is True
+    assert sent == [("text", "2"), ("key", "enter")]

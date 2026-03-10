@@ -5,7 +5,81 @@ from unittest.mock import patch
 
 import pytest
 
-from maniple_mcp.iterm_utils import build_stop_hook_settings_file
+from maniple_mcp.iterm_utils import build_stop_hook_settings_file, wait_for_agent_ready
+from maniple_mcp.launch_blockers import AgentLaunchBlocked
+
+
+class _FakeClaudeCLI:
+    engine_id = "claude"
+
+    def ready_patterns(self):
+        return [">", "tokens"]
+
+
+@pytest.mark.asyncio
+async def test_wait_for_agent_ready_raises_on_mcp_trust_prompt(monkeypatch):
+    async def fake_read_screen_text(_session):
+        return (
+            "New MCP server found in .mcp.json\n"
+            "1. Use this and all future MCP servers in this project\n"
+        )
+
+    monkeypatch.setattr("maniple_mcp.iterm_utils.read_screen_text", fake_read_screen_text)
+
+    with pytest.raises(AgentLaunchBlocked) as excinfo:
+        await wait_for_agent_ready(object(), _FakeClaudeCLI(), timeout_seconds=1.0)
+
+    assert "MCP trust prompt" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_wait_for_agent_ready_raises_on_bypass_permissions_prompt(monkeypatch):
+    async def fake_read_screen_text(_session):
+        return (
+            "WARNING: Claude Code running in Bypass Permissions mode\n"
+            "2. Yes, I accept\n"
+        )
+
+    monkeypatch.setattr("maniple_mcp.iterm_utils.read_screen_text", fake_read_screen_text)
+
+    with pytest.raises(AgentLaunchBlocked) as excinfo:
+        await wait_for_agent_ready(object(), _FakeClaudeCLI(), timeout_seconds=1.0)
+
+    assert "Bypass Permissions confirmation" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_wait_for_agent_ready_auto_accepts_bypass_permissions(monkeypatch):
+    responses = iter([
+        "WARNING: Claude Code running in Bypass Permissions mode\n2. Yes, I accept\n",
+        "> ",
+        "> ",
+        "> ",
+    ])
+    sent = []
+
+    async def fake_read_screen_text(_session):
+        return next(responses)
+
+    async def fake_send_text(_session, text):
+        sent.append(("text", text))
+
+    async def fake_send_key(_session, key):
+        sent.append(("key", key))
+
+    monkeypatch.setattr("maniple_mcp.iterm_utils.read_screen_text", fake_read_screen_text)
+    monkeypatch.setattr("maniple_mcp.iterm_utils.send_text", fake_send_text)
+    monkeypatch.setattr("maniple_mcp.iterm_utils.send_key", fake_send_key)
+
+    ready = await wait_for_agent_ready(
+        object(),
+        _FakeClaudeCLI(),
+        timeout_seconds=2.0,
+        auto_accept_startup_prompts=True,
+    )
+
+    assert ready is True
+    assert sent == [("text", "2"), ("key", "enter")]
 
 
 class TestClaudeCommandBuilding:
@@ -75,8 +149,8 @@ class TestClaudeCommandBuilding:
 
             assert "--settings" not in claude_cmd
 
-    def test_dangerously_skip_permissions_still_added(self):
-        """--dangerously-skip-permissions should be added regardless of command."""
+    def test_bypass_permissions_mode_still_added(self):
+        """Bypass permission mode should be added regardless of command."""
         # Test with default claude
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("MANIPLE_COMMAND", None)
@@ -84,9 +158,9 @@ class TestClaudeCommandBuilding:
 
             dangerously_skip_permissions = True
             if dangerously_skip_permissions:
-                claude_cmd += " --dangerously-skip-permissions"
+                claude_cmd += " --permission-mode bypassPermissions"
 
-            assert "--dangerously-skip-permissions" in claude_cmd
+            assert "--permission-mode bypassPermissions" in claude_cmd
 
         # Test with custom command
         with patch.dict(os.environ, {"MANIPLE_COMMAND": "happy"}):
@@ -94,10 +168,10 @@ class TestClaudeCommandBuilding:
 
             dangerously_skip_permissions = True
             if dangerously_skip_permissions:
-                claude_cmd += " --dangerously-skip-permissions"
+                claude_cmd += " --permission-mode bypassPermissions"
 
-            assert "--dangerously-skip-permissions" in claude_cmd
-            assert claude_cmd == "happy --dangerously-skip-permissions"
+            assert "--permission-mode bypassPermissions" in claude_cmd
+            assert claude_cmd == "happy --permission-mode bypassPermissions"
 
 
 class TestBuildStopHookSettingsFile:

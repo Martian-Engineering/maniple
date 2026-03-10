@@ -197,6 +197,8 @@ class ItermBackend(TerminalBackend):
         stop_hook_marker_id: Optional[str] = None,
         output_capture_path: Optional[str] = None,
         plugin_dir: Optional[str] = None,
+        command_override: Optional[str] = None,
+        auto_accept_startup_prompts: bool = False,
     ) -> None:
         """Start a CLI agent in an existing terminal session."""
         await iterm_utils.start_agent_in_session(
@@ -210,6 +212,8 @@ class ItermBackend(TerminalBackend):
             stop_hook_marker_id=stop_hook_marker_id,
             output_capture_path=output_capture_path,
             plugin_dir=plugin_dir,
+            command_override=command_override,
+            auto_accept_startup_prompts=auto_accept_startup_prompts,
         )
 
     async def find_available_window(

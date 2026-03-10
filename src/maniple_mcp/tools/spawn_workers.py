@@ -20,6 +20,7 @@ from ..cli_backends import get_cli_backend
 from ..config import ConfigError, default_config, load_config
 from ..colors import generate_tab_color
 from ..formatting import format_badge_text, format_session_title
+from ..launch_blockers import AgentLaunchBlocked
 from ..names import pick_names_for_count
 from ..profile import apply_appearance_colors
 from ..registry import SessionStatus
@@ -51,6 +52,9 @@ class WorkerConfig(TypedDict, total=False):
     use_worktree: bool  # Optional: Create isolated worktree (default True)
     worktree: WorktreeConfig  # Optional: Worktree settings (branch/base)
     plugin_dir: str | list[str]  # Optional: Path(s) to plugin directory for --plugin-dir
+    provider: str  # Optional: Named provider preset from config.providers
+    command: str  # Optional: Per-worker command override
+    env: dict[str, str]  # Optional: Per-worker environment variable overrides
 
 
 def register_tools(mcp: FastMCP, ensure_connection) -> None:
@@ -151,9 +155,15 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 commit with issue reference). Used for badge first line and branch naming.
             prompt: Optional additional instructions. Combined with standard worker prompt,
                 not a replacement. Use for extra context beyond what the issue describes.
-            skip_permissions: Whether to start Claude with --dangerously-skip-permissions.
+            skip_permissions: Whether to start Claude with --permission-mode bypassPermissions.
                 Default False. Without this, workers can only read local files and will
                 struggle with most commands (writes, shell, etc.).
+            provider: Optional named launch preset from config.providers. Cannot be
+                combined with command/env on the same worker.
+            command: Optional per-worker command override. Use this for wrapper
+                scripts like /path/to/maniple-claude-local.
+            env: Optional per-worker environment variables merged into the worker
+                launch environment. Values must be strings.
 
         **Worker Assignment (how workers know what to do):**
 
@@ -233,6 +243,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             logger.warning("Invalid config file; using defaults: %s", exc)
             config = default_config()
         defaults = config.defaults
+        providers = config.providers
 
         # Resolve layout from config if not explicitly provided
         if layout is None:
@@ -386,6 +397,61 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 if agent_type is None:
                     agent_type = defaults.agent_type
                 agent_types.append(agent_type)
+
+            resolved_commands: list[str | None] = []
+            resolved_env_overrides: list[dict[str, str]] = []
+            for i, w in enumerate(workers):
+                provider_name = w.get("provider")
+                if provider_name is None and agent_types[i] != "codex":
+                    provider_name = defaults.provider
+                command_override = w.get("command")
+                env_override = w.get("env")
+
+                if provider_name is not None and (command_override is not None or env_override is not None):
+                    return error_response(
+                        f"Worker {i} cannot combine 'provider' with 'command' or 'env'",
+                        hint="Use either a named provider preset or direct command/env overrides.",
+                    )
+
+                if provider_name is not None:
+                    if not isinstance(provider_name, str) or not provider_name.strip():
+                        return error_response(f"Worker {i} has invalid 'provider'")
+                    provider = providers.get(provider_name)
+                    if provider is None:
+                        return error_response(
+                            f"Unknown provider for worker {i}: {provider_name}",
+                            hint="Add it under config.providers or use command/env directly.",
+                        )
+                    resolved_commands.append(provider.command)
+                    resolved_env_overrides.append(dict(provider.env))
+                    continue
+
+                if command_override is not None:
+                    if not isinstance(command_override, str) or not command_override.strip():
+                        return error_response(f"Worker {i} has invalid 'command'")
+                    resolved_commands.append(command_override)
+                else:
+                    resolved_commands.append(None)
+
+                if env_override is None:
+                    resolved_env_overrides.append({})
+                elif not isinstance(env_override, dict):
+                    return error_response(f"Worker {i} has invalid 'env'")
+                else:
+                    normalized_env: dict[str, str] = {}
+                    for key, value in env_override.items():
+                        if not isinstance(key, str) or not key.strip():
+                            return error_response(
+                                f"Worker {i} has invalid env key",
+                                hint="Environment variable names must be non-empty strings.",
+                            )
+                        if not isinstance(value, str):
+                            return error_response(
+                                f"Worker {i} has invalid env value for {key}",
+                                hint="Environment variable values must be strings.",
+                            )
+                        normalized_env[key] = value
+                    resolved_env_overrides.append(normalized_env)
 
             # Build profile customizations for each worker (iTerm-only)
             profile_customizations: list[object | None] = [None] * worker_count
@@ -671,6 +737,10 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 else:
                     env = None
 
+                extra_env = resolved_env_overrides[index]
+                if extra_env:
+                    env = (env or {}) | extra_env
+
                 # Codex can prompt interactively to install updates, which blocks
                 # unattended remote worker launches. Mark worker sessions as CI to
                 # suppress interactive upgrade prompts.
@@ -684,6 +754,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 if skip_permissions is None:
                     skip_permissions = defaults.skip_permissions
                 plugin_dir = worker_config.get("plugin_dir")
+                command_override = resolved_commands[index]
                 await backend.start_agent_in_session(
                     handle=session,
                     cli=cli,
@@ -692,6 +763,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     env=env,
                     stop_hook_marker_id=stop_hook_marker_id,
                     plugin_dir=plugin_dir,
+                    command_override=command_override,
+                    auto_accept_startup_prompts=config.terminal.auto_accept_startup_prompts,
                 )
 
             await asyncio.gather(*[start_agent_for_worker(i) for i in range(worker_count)])
@@ -865,9 +938,18 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
         except ValueError as e:
             logger.error(f"Validation error in spawn_workers: {e}")
             return error_response(str(e))
-        except Exception as e:
-            logger.error(f"Failed to spawn workers: {e}")
+        except AgentLaunchBlocked as e:
+            logger.error(f"Worker launch blocked: {e}")
             return error_response(
                 str(e),
-                hint=HINTS["iterm_connection"],
+                hint=getattr(e, "hint", HINTS["launch_blocked"]),
+            )
+        except Exception as e:
+            logger.error(f"Failed to spawn workers: {e}")
+            hint = getattr(e, "hint", None)
+            if hint is None and backend.backend_id == "iterm":
+                hint = HINTS["iterm_connection"]
+            return error_response(
+                str(e),
+                hint=hint,
             )

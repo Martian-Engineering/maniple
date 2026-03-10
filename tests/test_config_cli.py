@@ -109,6 +109,12 @@ class TestConfigSet:
         config = load_config()
         assert config.events.stale_threshold_minutes == 30
 
+    def test_set_default_provider(self, config_path: Path):
+        """set_config_value persists defaults.provider."""
+        set_config_value("defaults.provider", "local")
+        config = load_config()
+        assert config.defaults.provider == "local"
+
 
 class TestStaleThresholdEnvOverride:
     """Tests for stale_threshold_minutes env override."""

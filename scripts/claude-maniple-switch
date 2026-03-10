@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CLAUDE_SWITCH_DIR="${CLAUDE_SWITCH_DIR:-$HOME/.local/bin/claude-switch}"
+CLAUDE_SWITCH_SCRIPT="${CLAUDE_SWITCH_SCRIPT:-$CLAUDE_SWITCH_DIR/claude-providers-v3.sh}"
+MANIPLE_PROVIDER_ENV_FILE="${MANIPLE_PROVIDER_ENV_FILE:-$HOME/.maniple/.env}"
+provider="${CLAUDE_SWITCH_PROVIDER:-official}"
+
+if [[ ! -f "$CLAUDE_SWITCH_SCRIPT" ]]; then
+    echo "claude-maniple-switch: missing claude-switch script: $CLAUDE_SWITCH_SCRIPT" >&2
+    exit 1
+fi
+
+# Import function definitions from claude-switch, but skip its top-level side
+# effects (dependency checks, tips, and automatic env loading).
+# shellcheck disable=SC1090
+source <(
+    sed \
+        -e '/^_claude_check_dependencies$/d' \
+        -e '/^_claude_init_config$/d' \
+        -e '/^_claude_ccmanager_tips$/d' \
+        -e '/^_claude_check_ralph_setup$/d' \
+        -e '/^_claude_load_env$/d' \
+        "$CLAUDE_SWITCH_SCRIPT"
+) >/dev/null 2>&1
+
+# Load maniple-specific provider credentials after claude-switch so these
+# values take precedence without requiring changes to the user's shell setup.
+if [[ -f "$MANIPLE_PROVIDER_ENV_FILE" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$MANIPLE_PROVIDER_ENV_FILE" >/dev/null 2>&1
+    set +a
+fi
+
+_provider_env_prefix() {
+    printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_'
+}
+
+_apply_provider_env_convention() {
+    local provider_prefix shell_prefix suffix source_var target_var value
+
+    provider_prefix="$(_provider_env_prefix "$provider")"
+
+    for suffix in API_KEY AUTH_TOKEN BASE_URL MODEL; do
+        source_var="MANIPLE_PROVIDER_${provider_prefix}_${suffix}"
+        target_var="${provider_prefix}_${suffix}"
+        value="${!source_var:-}"
+        if [[ -n "$value" && -z "${!target_var:-}" ]]; then
+            export "${target_var}=${value}"
+        fi
+    done
+}
+
+_apply_provider_env_convention
+
+case "$provider" in
+    official) claude-official "$@" ;;
+    local) claude-local "$@" ;;
+    local2) claude-local2 "$@" ;;
+    local3) claude-local3 "$@" ;;
+    kimi) claude-kimi "$@" ;;
+    ckimi) claude-ckimi "$@" ;;
+    glm) claude-glm "$@" ;;
+    minimax) claude-minimax "$@" ;;
+    aliyun) claude-aliyun "$@" ;;
+    kat) claude-kat "$@" ;;
+    greverse) claude-greverse "$@" ;;
+    gcs) claude-gcs "$@" ;;
+    *)
+        echo "claude-maniple-switch: unknown CLAUDE_SWITCH_PROVIDER: $provider" >&2
+        exit 1
+        ;;
+esac

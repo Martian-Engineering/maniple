@@ -4,7 +4,12 @@ Error response helpers for Claude Team MCP tools.
 Provides standardized error formatting and common hints for recovery.
 """
 
-from ..registry import SessionRegistry, ManagedSession
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..registry import ManagedSession, SessionRegistry
 
 
 def error_response(
@@ -65,6 +70,10 @@ HINTS = {
     "session_busy": (
         "The session is currently processing. Wait for it to finish, or use "
         "force=True to close it anyway (may lose work)"
+    ),
+    "launch_blocked": (
+        "Open the worker terminal and complete any Claude startup confirmation "
+        "prompt, then retry spawning the worker"
     ),
 }
 

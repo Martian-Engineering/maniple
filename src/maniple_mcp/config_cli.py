@@ -274,6 +274,7 @@ _FIELD_PARSERS: dict[str, Callable[[str, str], object]] = {
         field,
         _ALLOWED_AGENT_TYPES,
     ),
+    "defaults.provider": _parse_optional_string,
     "defaults.skip_permissions": _parse_bool,
     "defaults.use_worktree": _parse_bool,
     "defaults.layout": lambda value, field: _parse_literal(

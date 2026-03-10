@@ -12,6 +12,7 @@ from maniple_mcp.config import (
     DefaultsConfig,
     EventsConfig,
     IssueTrackerConfig,
+    ProviderConfig,
     TerminalConfig,
     default_config,
     load_config,
@@ -42,6 +43,7 @@ class TestDefaultConfig:
         """Default spawn_workers defaults."""
         config = default_config()
         assert config.defaults.agent_type == "claude"
+        assert config.defaults.provider is None
         assert config.defaults.skip_permissions is False
         assert config.defaults.use_worktree is True
         assert config.defaults.layout == "auto"
@@ -50,6 +52,7 @@ class TestDefaultConfig:
         """Default terminal backend is None (auto-detect)."""
         config = default_config()
         assert config.terminal.backend is None
+        assert config.terminal.auto_accept_startup_prompts is False
 
     def test_default_events(self):
         """Default events config values."""
@@ -62,6 +65,11 @@ class TestDefaultConfig:
         """Default issue tracker override is None."""
         config = default_config()
         assert config.issue_tracker.override is None
+
+    def test_default_providers(self):
+        """Default provider presets should be empty."""
+        config = default_config()
+        assert config.providers == {}
 
 
 class TestSaveConfig:
@@ -97,13 +105,23 @@ class TestSaveConfig:
             commands=CommandsConfig(claude="/custom/claude", codex="/custom/codex"),
             defaults=DefaultsConfig(
                 agent_type="codex",
+                provider="local",
                 skip_permissions=True,
                 use_worktree=False,
                 layout="new",
             ),
-            terminal=TerminalConfig(backend="tmux"),
+            terminal=TerminalConfig(
+                backend="tmux",
+                auto_accept_startup_prompts=True,
+            ),
             events=EventsConfig(max_size_mb=5, recent_hours=48, stale_threshold_minutes=15),
             issue_tracker=IssueTrackerConfig(override="beads"),
+            providers={
+                "local": ProviderConfig(
+                    command="/usr/local/bin/claude-local",
+                    env={"CLAUDE_PROVIDER": "local"},
+                )
+            },
         )
         save_config(config, config_path)
         data = json.loads(config_path.read_text())
@@ -111,14 +129,18 @@ class TestSaveConfig:
         assert data["commands"]["claude"] == "/custom/claude"
         assert data["commands"]["codex"] == "/custom/codex"
         assert data["defaults"]["agent_type"] == "codex"
+        assert data["defaults"]["provider"] == "local"
         assert data["defaults"]["skip_permissions"] is True
         assert data["defaults"]["use_worktree"] is False
         assert data["defaults"]["layout"] == "new"
         assert data["terminal"]["backend"] == "tmux"
+        assert data["terminal"]["auto_accept_startup_prompts"] is True
         assert data["events"]["max_size_mb"] == 5
         assert data["events"]["recent_hours"] == 48
         assert data["events"]["stale_threshold_minutes"] == 15
         assert data["issue_tracker"]["override"] == "beads"
+        assert data["providers"]["local"]["command"] == "/usr/local/bin/claude-local"
+        assert data["providers"]["local"]["env"] == {"CLAUDE_PROVIDER": "local"}
 
     def test_json_is_formatted(self, tmp_path: Path):
         """Saved JSON is indented for readability."""
@@ -157,16 +179,29 @@ class TestLoadConfig:
             "version": 1,
             "commands": {"claude": "/my/claude"},
             "defaults": {"agent_type": "codex"},
-            "terminal": {"backend": "iterm"},
+            "terminal": {
+                "backend": "iterm",
+                "auto_accept_startup_prompts": True,
+            },
             "events": {"max_size_mb": 10},
             "issue_tracker": {"override": "pebbles"},
+            "providers": {
+                "local": {
+                    "command": "/usr/local/bin/claude-local",
+                    "env": {"CLAUDE_PROVIDER": "local"},
+                }
+            },
         }))
         config = load_config(config_path)
         assert config.commands.claude == "/my/claude"
         assert config.defaults.agent_type == "codex"
+        assert config.defaults.provider is None
         assert config.terminal.backend == "iterm"
+        assert config.terminal.auto_accept_startup_prompts is True
         assert config.events.max_size_mb == 10
         assert config.issue_tracker.override == "pebbles"
+        assert config.providers["local"].command == "/usr/local/bin/claude-local"
+        assert config.providers["local"].env == {"CLAUDE_PROVIDER": "local"}
 
     def test_partial_config_uses_defaults(self, tmp_path: Path):
         """Missing sections use default values."""
@@ -176,7 +211,9 @@ class TestLoadConfig:
         # All other fields should have defaults
         assert config.commands.claude is None
         assert config.defaults.agent_type == "claude"
+        assert config.defaults.provider is None
         assert config.terminal.backend is None
+        assert config.terminal.auto_accept_startup_prompts is False
         assert config.events.max_size_mb == 1
         assert config.issue_tracker.override is None
 
@@ -203,6 +240,7 @@ class TestLoadConfig:
             commands=CommandsConfig(claude="/bin/claude", codex="/bin/codex"),
             defaults=DefaultsConfig(
                 agent_type="codex",
+                provider="local",
                 skip_permissions=True,
                 use_worktree=False,
                 layout="new",
@@ -210,6 +248,7 @@ class TestLoadConfig:
             terminal=TerminalConfig(backend="tmux"),
             events=EventsConfig(max_size_mb=2, recent_hours=12, stale_threshold_minutes=30),
             issue_tracker=IssueTrackerConfig(override="beads"),
+            providers={"local": ProviderConfig(env={"CLAUDE_PROVIDER": "local"})},
         )
         save_config(original, config_path)
         loaded = load_config(config_path)
@@ -217,6 +256,7 @@ class TestLoadConfig:
         assert loaded.commands.claude == original.commands.claude
         assert loaded.commands.codex == original.commands.codex
         assert loaded.defaults.agent_type == original.defaults.agent_type
+        assert loaded.defaults.provider == original.defaults.provider
         assert loaded.defaults.skip_permissions == original.defaults.skip_permissions
         assert loaded.defaults.use_worktree == original.defaults.use_worktree
         assert loaded.defaults.layout == original.defaults.layout
@@ -225,6 +265,7 @@ class TestLoadConfig:
         assert loaded.events.recent_hours == original.events.recent_hours
         assert loaded.events.stale_threshold_minutes == original.events.stale_threshold_minutes
         assert loaded.issue_tracker.override == original.issue_tracker.override
+        assert loaded.providers == original.providers
 
 
 class TestJsonValidationErrors:
@@ -442,6 +483,26 @@ class TestFieldTypeValidation:
             "defaults": {"skip_permissions": "yes"},
         }))
         with pytest.raises(ConfigError, match="defaults.skip_permissions must be a boolean"):
+            load_config(config_path)
+
+    def test_defaults_provider_not_string(self, tmp_path: Path):
+        """Non-string provider raises ConfigError."""
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "defaults": {"provider": True},
+        }))
+        with pytest.raises(ConfigError, match="defaults.provider must be a string"):
+            load_config(config_path)
+
+    def test_defaults_provider_empty_string_raises(self, tmp_path: Path):
+        """Empty default provider raises ConfigError."""
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({
+            "version": 1,
+            "defaults": {"provider": ""},
+        }))
+        with pytest.raises(ConfigError, match="defaults.provider cannot be empty"):
             load_config(config_path)
 
     def test_defaults_use_worktree_not_bool(self, tmp_path: Path):

@@ -16,7 +16,12 @@ if TYPE_CHECKING:
 
 from ..iterm_utils import CODEX_PRE_ENTER_DELAY
 from ..registry import SessionRegistry, SessionStatus
-from ..worktree import WorktreeError, remove_worktree
+from ..worktree import (
+    WorktreeError,
+    delete_worktree_branch,
+    get_worktree_branch,
+    remove_worktree,
+)
 from ..utils import error_response, HINTS
 
 logger = logging.getLogger("maniple")
@@ -48,6 +53,7 @@ async def _close_single_worker(
     session_id: str,
     registry: "SessionRegistry",
     force: bool = False,
+    delete_branch: bool = False,
 ) -> dict:
     """
     Close a single worker session.
@@ -63,7 +69,7 @@ async def _close_single_worker(
         force: If True, force close even if session is busy
 
     Returns:
-        Dict with success status and worktree_cleaned flag
+        Dict with success status and cleanup flags
     """
     # Check if busy
     if session.status == SessionStatus.BUSY and not force:
@@ -72,6 +78,7 @@ async def _close_single_worker(
             "error": "Session is busy",
             "hint": HINTS["session_busy"],
             "worktree_cleaned": False,
+            "branch_deleted": False,
         }
 
     try:
@@ -91,10 +98,17 @@ async def _close_single_worker(
             # TODO(rabsef-bicrym): Programmatically time these actions
             await asyncio.sleep(1.0)
 
-        # Clean up worktree if exists (keeps branch alive for cherry-picking)
+        # Capture the branch before removing the worktree so optional branch
+        # cleanup can still happen after git unregisters the worktree.
         worktree_cleaned = False
+        branch_deleted = False
         if session.worktree_path and session.main_repo_path:
+            worktree_branch = None
             try:
+                worktree_branch = get_worktree_branch(
+                    repo_path=session.main_repo_path,
+                    worktree_path=session.worktree_path,
+                )
                 remove_worktree(
                     repo_path=session.main_repo_path,
                     worktree_path=session.worktree_path,
@@ -103,6 +117,16 @@ async def _close_single_worker(
             except WorktreeError as e:
                 # Log but don't fail the close
                 logger.warning(f"Failed to clean up worktree for {session_id}: {e}")
+
+            if delete_branch and worktree_cleaned and worktree_branch:
+                try:
+                    delete_worktree_branch(
+                        repo_path=session.main_repo_path,
+                        branch_name=worktree_branch,
+                    )
+                    branch_deleted = True
+                except WorktreeError as e:
+                    logger.warning(f"Failed to delete branch for {session_id}: {e}")
 
         # Close the terminal pane/window
         await backend.close_session(session.terminal_session, force=force)
@@ -113,6 +137,7 @@ async def _close_single_worker(
         return {
             "success": True,
             "worktree_cleaned": worktree_cleaned,
+            "branch_deleted": branch_deleted,
         }
 
     except Exception as e:
@@ -123,6 +148,7 @@ async def _close_single_worker(
             "success": True,
             "warning": f"Session removed but cleanup may be incomplete: {e}",
             "worktree_cleaned": False,
+            "branch_deleted": False,
         }
 
 
@@ -134,6 +160,7 @@ def register_tools(mcp: FastMCP) -> None:
         ctx: Context[ServerSession, "AppContext"],
         session_ids: list[str],
         force: bool | None = False,
+        delete_branch: bool | None = False,
     ) -> dict:
         """
         Close one or more managed Claude Code sessions.
@@ -144,7 +171,8 @@ def register_tools(mcp: FastMCP) -> None:
         ⚠️ **NOTE: WORKTREE CLEANUP**
         Workers with worktrees commit to ephemeral branches. When closed:
         - The worktree directory is removed
-        - The branch is KEPT for cherry-picking/merging
+        - The branch is kept by default for cherry-picking/merging
+        - Set delete_branch=True to also delete the worker branch immediately
 
         **AFTER closing workers with worktrees:**
         1. Review commits on the worker's branch
@@ -155,6 +183,8 @@ def register_tools(mcp: FastMCP) -> None:
             session_ids: List of session IDs to close (1 or more required).
                 Accepts internal IDs, terminal IDs, or worker names.
             force: If True, force close even if sessions are busy
+            delete_branch: If True, also delete the worker branch after the
+                worktree is removed
 
         Returns:
             Dict with:
@@ -165,6 +195,7 @@ def register_tools(mcp: FastMCP) -> None:
         """
         # Handle None values from MCP clients that send explicit null for omitted params
         force = force if force is not None else False
+        delete_branch = delete_branch if delete_branch is not None else False
 
         app_ctx = ctx.request_context.lifespan_context
         registry = app_ctx.registry
@@ -198,7 +229,14 @@ def register_tools(mcp: FastMCP) -> None:
 
         # Close all sessions in parallel
         async def close_one(sid: str, session) -> tuple[str, dict]:
-            result = await _close_single_worker(backend, session, sid, registry, force)
+            result = await _close_single_worker(
+                backend,
+                session,
+                sid,
+                registry,
+                force,
+                delete_branch,
+            )
             return (sid, result)
 
         tasks = [close_one(sid, session) for sid, session in sessions_to_close]
