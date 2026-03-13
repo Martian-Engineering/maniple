@@ -7,6 +7,7 @@ from the original primitives.py for use in the MCP server.
 
 import logging
 import re
+import shlex
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -687,11 +688,11 @@ async def start_agent_in_session(
     # Add output capture via tee if requested
     # This pipes stdout/stderr to both the terminal and a file (for JSONL parsing)
     if output_capture_path:
-        agent_cmd = f"{agent_cmd} 2>&1 | tee {output_capture_path}"
+        agent_cmd = f"{agent_cmd} 2>&1 | tee {shlex.quote(output_capture_path)}"
 
     # Combine cd and agent into atomic command to avoid race condition.
     # Shell executes "cd /path && agent" as a unit - if cd fails, agent won't run.
-    cmd = f"cd {project_path} && {agent_cmd}"
+    cmd = f"cd {shlex.quote(project_path)} && {agent_cmd}"
     
     logger.info(f"start_agent_in_session: Running command: {cmd[:200]}...")
 

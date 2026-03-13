@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import shlex
 import subprocess
 import uuid
 from pathlib import Path
@@ -497,10 +498,10 @@ class TmuxBackend(TerminalBackend):
 
         # Capture stdout/stderr if requested (useful for JSONL idle detection).
         if output_capture_path:
-            agent_cmd = f"{agent_cmd} 2>&1 | tee {output_capture_path}"
+            agent_cmd = f"{agent_cmd} 2>&1 | tee {shlex.quote(output_capture_path)}"
 
         # Launch in one atomic command to avoid races between cd and exec.
-        cmd = f"cd {project_path} && {agent_cmd}"
+        cmd = f"cd {shlex.quote(project_path)} && {agent_cmd}"
         await self.send_prompt(handle, cmd, submit=True)
 
         # Wait for the agent to become ready before returning.

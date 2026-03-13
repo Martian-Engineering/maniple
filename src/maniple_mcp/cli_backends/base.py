@@ -5,6 +5,7 @@ Defines the interface that all CLI backends (Claude, Codex, etc.) must implement
 This abstraction allows claude-team to orchestrate different agent CLIs.
 """
 
+import shlex
 from abc import abstractmethod
 from typing import Literal, Protocol, runtime_checkable
 
@@ -128,10 +129,10 @@ class AgentCLI(Protocol):
         )
 
         if args:
-            cmd = f"{cmd} {' '.join(args)}"
+            cmd = f"{cmd} {' '.join(shlex.quote(a) for a in args)}"
 
         if env_vars:
-            env_exports = " ".join(f"{k}={v}" for k, v in env_vars.items())
+            env_exports = " ".join(f"{shlex.quote(k)}={shlex.quote(v)}" for k, v in env_vars.items())
             cmd = f"{env_exports} {cmd}"
 
         return cmd
