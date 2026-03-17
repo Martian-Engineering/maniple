@@ -786,13 +786,23 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                             "JSONL correlation unavailable"
                         )
 
-            # Send worker prompts - always use generate_worker_prompt with issue_id/custom_prompt
+            # Send worker prompts - use generate_worker_prompt with issue_id/custom_prompt
+            # unless skip_worker_prompt is set (for workers that use SessionStart hooks
+            # to inject their own instructions as system context).
             workers_awaiting_task: list[str] = []  # Workers with no issue_id and no prompt
             for i, managed in enumerate(managed_sessions):
                 worker_config = workers[i]
+                skip_worker_prompt = worker_config.get("skip_worker_prompt", False)
                 issue_id = worker_config.get("issue_id")
                 custom_prompt = worker_config.get("prompt")
                 use_worktree = i in worktree_paths
+
+                if skip_worker_prompt:
+                    logger.info(
+                        "Skipping worker prompt for %s (skip_worker_prompt=True)",
+                        managed.name,
+                    )
+                    continue
 
                 # Track workers that need immediate attention (case 4: no issue_id, no prompt)
                 if not issue_id and not custom_prompt:
