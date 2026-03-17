@@ -48,6 +48,7 @@ class WorkerConfig(TypedDict, total=False):
     issue_id: str  # Optional: Issue ID - THIS IS the worker's assignment if provided
     prompt: str  # Optional: Custom instructions - THIS IS the worker's task if provided
     skip_permissions: bool  # Optional: Default False
+    skip_worker_prompt: bool  # Optional: Skip THE DEAL prompt (use SessionStart hooks instead)
     use_worktree: bool  # Optional: Create isolated worktree (default True)
     worktree: WorktreeConfig  # Optional: Worktree settings (branch/base)
     plugin_dir: str | list[str]  # Optional: Path(s) to plugin directory for --plugin-dir
