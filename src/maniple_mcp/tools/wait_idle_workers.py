@@ -17,7 +17,7 @@ from ..idle_detection import (
     wait_for_any_idle as wait_for_any_idle_impl,
     SessionInfo,
 )
-from ..registry import SessionStatus
+from ..registry import ManagedSession, RecoveredSession, SessionStatus
 from ..utils import error_response, HINTS
 
 
@@ -78,15 +78,23 @@ def register_tools(mcp: FastMCP) -> None:
             )
 
         # Look up sessions and build SessionInfo list
-        # Uses resolve() to accept internal ID, terminal ID, or name
+        # Uses resolve_any() to find both live and recovered sessions
         session_infos = []
         missing_sessions = []
         missing_jsonl = []
+        recovered_idle = []  # RecoveredSessions report idle from snapshot
 
         for session_id in session_ids:
-            session = registry.resolve(session_id)
+            session = registry.resolve_any(session_id)
             if not session:
                 missing_sessions.append(session_id)
+                continue
+
+            # RecoveredSessions have no terminal handle — use snapshot state
+            if isinstance(session, RecoveredSession):
+                if session.is_idle():
+                    recovered_idle.append(session.session_id)
+                # Skip JSONL-based detection for recovered sessions
                 continue
 
             jsonl_path = session.get_jsonl_path()
@@ -113,15 +121,42 @@ def register_tools(mcp: FastMCP) -> None:
                 hint=HINTS["no_jsonl_file"],
             )
 
+        # If all requested sessions are recovered (no live sessions to poll),
+        # return immediately with snapshot-based idle state
+        if not session_infos:
+            return {
+                "session_ids": session_ids,
+                "idle_session_ids": recovered_idle,
+                "all_idle": len(recovered_idle) == len(session_ids),
+                "waiting_on": [s for s in session_ids if s not in recovered_idle],
+                "mode": mode,
+                "waited_seconds": 0.0,
+                "timed_out": False,
+            }
+
         # Wait based on mode
         if mode == "any":
+            # If any recovered session is already idle, return immediately
+            if recovered_idle:
+                return {
+                    "session_ids": session_ids,
+                    "idle_session_ids": recovered_idle,
+                    "all_idle": len(recovered_idle) == len(session_ids),
+                    "waiting_on": [s for s in session_ids if s not in recovered_idle],
+                    "mode": mode,
+                    "waited_seconds": 0.0,
+                    "timed_out": False,
+                }
+
             result = await wait_for_any_idle_impl(
                 sessions=session_infos,
                 timeout=timeout,
                 poll_interval=poll_interval,
             )
-            # Convert to common format
-            idle_session_ids = [result["idle_session_id"]] if result["idle_session_id"] else []
+            # Convert to common format, merge with recovered idle
+            idle_session_ids = list(recovered_idle)
+            if result["idle_session_id"]:
+                idle_session_ids.append(result["idle_session_id"])
             return {
                 "session_ids": session_ids,
                 "idle_session_ids": idle_session_ids,
@@ -139,15 +174,18 @@ def register_tools(mcp: FastMCP) -> None:
                 poll_interval=poll_interval,
             )
 
+            # Merge recovered idle with polled idle
+            all_idle_ids = list(recovered_idle) + result["idle_session_ids"]
+
             # Update statuses for idle sessions
             for session_id in result["idle_session_ids"]:
                 registry.update_status(session_id, SessionStatus.READY)
 
             return {
                 "session_ids": session_ids,
-                "idle_session_ids": result["idle_session_ids"],
-                "all_idle": result["all_idle"],
-                "waiting_on": result["waiting_on"],
+                "idle_session_ids": all_idle_ids,
+                "all_idle": len(all_idle_ids) == len(session_ids),
+                "waiting_on": [s for s in session_ids if s not in all_idle_ids],
                 "mode": mode,
                 "waited_seconds": result["waited_seconds"],
                 "timed_out": result["timed_out"],

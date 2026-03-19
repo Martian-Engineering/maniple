@@ -368,6 +368,30 @@ class ManagedSession:
             if not self.claude_session_id:
                 self.discover_claude_session_by_marker()
 
+            if self.claude_session_id:
+                # Validate cached path — if the JSONL hasn't been modified in 5 min
+                # but the session has recent activity, it may be stale (session
+                # restarted via /resume, creating a new JSONL file).
+                cached_path = get_project_dir(self.project_path) / f"{self.claude_session_id}.jsonl"
+                if cached_path.exists():
+                    import time
+                    try:
+                        file_age = time.time() - cached_path.stat().st_mtime
+                        session_age = (datetime.now() - self.last_activity).total_seconds()
+                        # If file is stale (>5 min old) but session was active recently (<5 min),
+                        # the cached JSONL is likely from a previous session. Re-discover.
+                        if file_age > 300 and session_age < 300:
+                            new_id = self.discover_claude_session_by_marker(max_age_seconds=86400)
+                            if new_id and new_id != self.claude_session_id:
+                                return get_project_dir(self.project_path) / f"{new_id}.jsonl"
+                    except OSError:
+                        pass
+                    return cached_path
+                else:
+                    # Cached file doesn't exist — re-discover
+                    self.claude_session_id = None
+                    self.discover_claude_session_by_marker(max_age_seconds=86400)
+
             if not self.claude_session_id:
                 return None
             return get_project_dir(self.project_path) / f"{self.claude_session_id}.jsonl"

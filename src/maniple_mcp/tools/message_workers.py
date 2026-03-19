@@ -123,6 +123,68 @@ async def _wait_for_sessions_idle(
     }
 
 
+async def _wait_for_message_flush(
+    sessions: list[tuple[str, object]],
+    timeout: float = 10.0,
+    poll_interval: float = 0.5,
+) -> None:
+    """
+    Wait until the JSONL files reflect a new user message after sending.
+
+    After message_workers sends text to a terminal, Claude Code hasn't flushed
+    the new user message to JSONL yet. If we poll idle immediately, the old
+    stop_hook_summary is still the last entry → is_session_stopped() returns True.
+
+    This function polls until at least one JSONL shows the message was received
+    (file mtime changed), or until timeout. Falls back to a fixed delay on timeout
+    to avoid blocking indefinitely.
+
+    Args:
+        sessions: List of (session_id, ManagedSession) tuples
+        timeout: Maximum seconds to wait for flush
+        poll_interval: Seconds between checks
+    """
+    import time
+    from pathlib import Path
+
+    # Snapshot current JSONL mtimes before the message was written
+    mtimes_before: dict[str, float] = {}
+    for sid, session in sessions:
+        jsonl_path = session.get_jsonl_path()
+        if jsonl_path and jsonl_path.exists():
+            try:
+                mtimes_before[sid] = jsonl_path.stat().st_mtime
+            except OSError:
+                pass
+
+    if not mtimes_before:
+        # No JSONL files to check — fall back to fixed delay
+        await asyncio.sleep(2.0)
+        return
+
+    start = time.time()
+    while time.time() - start < timeout:
+        await asyncio.sleep(poll_interval)
+
+        # Check if ANY session's JSONL has been updated
+        for sid, session in sessions:
+            if sid not in mtimes_before:
+                continue
+            jsonl_path = session.get_jsonl_path()
+            if not jsonl_path:
+                continue
+            try:
+                current_mtime = jsonl_path.stat().st_mtime
+                if current_mtime > mtimes_before[sid]:
+                    # JSONL was updated — message has been flushed
+                    return
+            except OSError:
+                continue
+
+    # Timeout — proceed anyway (better than blocking forever)
+    logger.debug("_wait_for_message_flush timed out after %.1fs", timeout)
+
+
 def register_tools(mcp: FastMCP) -> None:
     """Register message_workers tool on the MCP server."""
 
@@ -288,11 +350,10 @@ def register_tools(mcp: FastMCP) -> None:
 
         # Handle waiting if requested
         if wait_mode != "none" and valid_sessions:
-            # TODO(rabsef-bicrym): Figure a way to delay this polling without a hard wait.
-            # Race condition: We poll for idle immediately after sending, but the JSONL
-            # may not have been updated yet with the new user message. The session still
-            # appears idle from the previous stop hook, causing us to return prematurely.
-            await asyncio.sleep(0.5)
+            # Wait for the JSONL to reflect the new user message before polling idle.
+            # Without this, the old stop_hook_summary is still the last entry and
+            # is_session_stopped() returns True (stale idle).
+            await _wait_for_message_flush(valid_sessions, timeout=10.0)
 
             # Separate sessions by agent type for different idle detection methods
             claude_sessions = []
