@@ -493,12 +493,127 @@ class SessionRegistry:
 
     Also tracks RecoveredSession objects from event log recovery, which
     represent sessions discovered from persisted events after MCP restart.
+
+    When persist_path is set, the registry writes a snapshot to disk after
+    every mutation (add, remove, update_status). On startup, this file is
+    loaded into _recovered_sessions so reconnect_recovered_sessions() can
+    promote them to live sessions with terminal handles.
     """
 
-    def __init__(self):
-        """Initialize an empty registry."""
+    def __init__(self, persist_path: Optional[Path] = None):
+        """Initialize an empty registry with optional disk persistence."""
         self._sessions: dict[str, ManagedSession] = {}
         self._recovered_sessions: dict[str, RecoveredSession] = {}
+        self._persist_path = persist_path
+
+    def _persist(self) -> None:
+        """Write current live sessions to disk for crash recovery."""
+        if not self._persist_path:
+            return
+        try:
+            data = {
+                "version": 1,
+                "saved_at": datetime.now(timezone.utc).isoformat(),
+                "sessions": {},
+            }
+            for sid, session in self._sessions.items():
+                data["sessions"][sid] = {
+                    "session_id": session.session_id,
+                    "terminal_id": str(session.terminal_id) if session.terminal_id else None,
+                    "name": session.name,
+                    "project_path": session.project_path,
+                    "claude_session_id": session.claude_session_id,
+                    "status": session.status.value,
+                    "agent_type": session.agent_type,
+                    "created_at": session.created_at.isoformat(),
+                    "last_activity": session.last_activity.isoformat(),
+                    "coordinator_badge": session.coordinator_badge,
+                    "worktree_path": str(session.worktree_path) if session.worktree_path else None,
+                    "main_repo_path": str(session.main_repo_path) if session.main_repo_path else None,
+                    "codex_jsonl_path": str(session.codex_jsonl_path) if session.codex_jsonl_path else None,
+                }
+            import json
+            self._persist_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self._persist_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data, indent=2) + "\n")
+            tmp.rename(self._persist_path)
+        except Exception:
+            import logging
+            logging.getLogger("maniple").warning(
+                "Failed to persist registry to %s", self._persist_path, exc_info=True
+            )
+
+    def load_persisted(self) -> int:
+        """
+        Load persisted sessions into _recovered_sessions for reconnection.
+
+        Call this before reconnect_recovered_sessions() at startup.
+        Sessions are loaded as RecoveredSession objects — they need
+        terminal handle matching before becoming live ManagedSessions.
+
+        Returns:
+            Number of sessions loaded
+        """
+        if not self._persist_path or not self._persist_path.exists():
+            return 0
+        try:
+            import json
+            data = json.loads(self._persist_path.read_text())
+            sessions = data.get("sessions", {})
+            loaded = 0
+            for sid, s in sessions.items():
+                if sid in self._sessions or sid in self._recovered_sessions:
+                    continue
+                # Parse terminal_id back to TerminalId
+                terminal_id = None
+                tid_str = s.get("terminal_id")
+                if tid_str and ":" in tid_str:
+                    backend_id, native_id = tid_str.split(":", 1)
+                    terminal_id = TerminalId(backend_id, native_id)
+
+                status_str = s.get("status", "ready")
+                event_state = "idle" if status_str == "ready" else "active"
+
+                recovered = RecoveredSession(
+                    session_id=sid,
+                    name=s.get("name", sid),
+                    project_path=s.get("project_path", ""),
+                    terminal_id=terminal_id,
+                    agent_type=s.get("agent_type", "claude"),
+                    status=RecoveredSession.map_event_state_to_status(event_state),
+                    last_activity=self._parse_ts(s.get("last_activity")),
+                    created_at=self._parse_ts(s.get("created_at")),
+                    event_state=event_state,
+                    recovered_at=datetime.now(timezone.utc),
+                    last_event_ts=self._parse_ts(s.get("last_activity")),
+                    claude_session_id=s.get("claude_session_id"),
+                    coordinator_badge=s.get("coordinator_badge"),
+                    worktree_path=s.get("worktree_path"),
+                    main_repo_path=s.get("main_repo_path"),
+                    codex_jsonl_path=s.get("codex_jsonl_path"),
+                )
+                self._recovered_sessions[sid] = recovered
+                loaded += 1
+            return loaded
+        except Exception:
+            import logging
+            logging.getLogger("maniple").warning(
+                "Failed to load persisted registry from %s", self._persist_path, exc_info=True
+            )
+            return 0
+
+    @staticmethod
+    def _parse_ts(ts_str: Optional[str]) -> datetime:
+        """Parse an ISO timestamp, falling back to now(utc)."""
+        if not ts_str:
+            return datetime.now(timezone.utc)
+        try:
+            parsed = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=timezone.utc)
+            return parsed
+        except (ValueError, AttributeError):
+            return datetime.now(timezone.utc)
 
     def _generate_id(self) -> str:
         """Generate a unique session ID as short UUID."""
@@ -533,6 +648,7 @@ class SessionRegistry:
             name=name,
         )
         self._sessions[session_id] = session
+        self._persist()
         return session
 
     def get(self, session_id: str) -> Optional[ManagedSession]:
@@ -672,7 +788,10 @@ class SessionRegistry:
         """
         session = self.resolve(session_id)
         if session:
-            return self._sessions.pop(session.session_id, None)
+            removed = self._sessions.pop(session.session_id, None)
+            if removed:
+                self._persist()
+            return removed
         return None
 
     def update_status(self, session_id: str, status: SessionStatus) -> bool:
@@ -691,6 +810,7 @@ class SessionRegistry:
         if session:
             session.status = status
             session.update_activity()
+            self._persist()
             return True
         return False
 

@@ -43,8 +43,10 @@ def get_global_registry() -> SessionRegistry:
     """Get or create the global singleton registry."""
     global _global_registry
     if _global_registry is None:
-        _global_registry = SessionRegistry()
-        logger.info("Created global singleton registry")
+        from maniple.paths import resolve_data_dir
+        persist_path = resolve_data_dir() / "registry.json"
+        _global_registry = SessionRegistry(persist_path=persist_path)
+        logger.info("Created global singleton registry (persist_path=%s)", persist_path)
     return _global_registry
 
 
@@ -73,6 +75,12 @@ def recover_registry(registry: SessionRegistry) -> RecoveryReport | None:
     """
     global _recovery_attempted
     _recovery_attempted = True
+
+    # Load persisted registry snapshot (write-through file from last run).
+    # This is faster and more reliable than event log recovery for common cases.
+    persisted_count = registry.load_persisted()
+    if persisted_count:
+        logger.info("Loaded %d sessions from persisted registry", persisted_count)
 
     # Best-effort pruning of rotated backup shards so ~/.maniple doesn't grow
     # without bound. Never touches the live events.jsonl.

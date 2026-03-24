@@ -721,8 +721,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
 
             await asyncio.gather(*[start_agent_for_worker(i) for i in range(worker_count)])
 
-            # Register all sessions
+            # Register all sessions and emit events immediately
             managed_sessions = []
+            spawn_events = []
             for i in range(worker_count):
                 managed = registry.add(
                     terminal_session=pane_sessions[i],
@@ -739,6 +740,32 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     managed.worktree_path = worktree_paths[i]
                     managed.main_repo_path = main_repo_paths[i]
                 managed_sessions.append(managed)
+
+                # Build worker_started event for immediate persistence
+                from maniple.events import WorkerEvent as _WE
+                spawn_events.append(_WE(
+                    ts=managed.created_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    type="worker_started",
+                    worker_id=managed.session_id,
+                    data={
+                        "name": managed.name,
+                        "project_path": managed.project_path,
+                        "agent_type": managed.agent_type,
+                        "terminal_id": str(managed.terminal_id) if managed.terminal_id else None,
+                        "state": "active",
+                    },
+                ))
+
+            # Emit events immediately — don't wait for poller
+            if spawn_events:
+                try:
+                    from maniple.events import append_events
+                    append_events(spawn_events)
+                except Exception:
+                    logger.warning("Failed to emit spawn events", exc_info=True)
+
+            # Re-persist registry now that metadata (badge, worktree) is set
+            registry._persist()
 
             # Send marker messages for JSONL correlation (Claude + Codex)
             for i, managed in enumerate(managed_sessions):
