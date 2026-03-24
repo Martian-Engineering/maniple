@@ -105,6 +105,7 @@ class AgentCLI(Protocol):
         settings_file: str | None = None,
         plugin_dir: str | list[str] | None = None,
         session_name: str | None = None,
+        resume_session: str | None = None,
         env_vars: dict[str, str] | None = None,
     ) -> str:
         """
@@ -118,6 +119,7 @@ class AgentCLI(Protocol):
             settings_file: Settings file for hook injection
             plugin_dir: Optional path(s) to plugin directory (single string or list)
             session_name: Optional session display name (--name flag)
+            resume_session: Optional session name/ID to resume (--resume flag)
             env_vars: Environment variables to prepend
 
         Returns:
@@ -129,6 +131,7 @@ class AgentCLI(Protocol):
             settings_file=settings_file if self.supports_settings_file() else None,
             plugin_dir=plugin_dir,
             session_name=session_name,
+            resume_session=resume_session,
         )
 
         if args:

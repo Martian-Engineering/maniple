@@ -640,6 +640,7 @@ async def start_agent_in_session(
     output_capture_path: Optional[str] = None,
     plugin_dir: Optional[str | list[str]] = None,
     session_name: Optional[str] = None,
+    resume_session: Optional[str] = None,
 ) -> None:
     """
     Start an agent CLI in an existing iTerm2 session.
@@ -684,6 +685,7 @@ async def start_agent_in_session(
         settings_file=settings_file,
         plugin_dir=plugin_dir,
         session_name=session_name,
+        resume_session=resume_session,
         env_vars=env,
     )
 

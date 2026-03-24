@@ -85,6 +85,7 @@ class ClaudeCLI(AgentCLI):
         settings_file: str | None = None,
         plugin_dir: str | list[str] | None = None,
         session_name: str | None = None,
+        resume_session: str | None = None,
     ) -> list[str]:
         """
         Build Claude CLI arguments.
@@ -94,6 +95,7 @@ class ClaudeCLI(AgentCLI):
             settings_file: Path to settings JSON for Stop hook injection
             plugin_dir: Path(s) to plugin directory for --plugin-dir (single string or list)
             session_name: Optional session display name (--name flag, requires Claude Code 2.1.76+)
+            resume_session: Optional session name/ID to resume (--resume flag, requires Claude Code 2.1.76+)
 
         Returns:
             List of CLI arguments
@@ -103,7 +105,11 @@ class ClaudeCLI(AgentCLI):
         if dangerously_skip_permissions:
             args.append("--dangerously-skip-permissions")
 
-        if session_name:
+        if resume_session:
+            args.append("--resume")
+            args.append(resume_session)
+        elif session_name:
+            # Only use --name when not resuming (--resume already targets a named session)
             args.append("--name")
             args.append(session_name)
         

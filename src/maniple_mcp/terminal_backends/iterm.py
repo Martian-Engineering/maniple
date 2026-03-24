@@ -198,6 +198,7 @@ class ItermBackend(TerminalBackend):
         output_capture_path: Optional[str] = None,
         plugin_dir: Optional[str] = None,
         session_name: Optional[str] = None,
+        resume_session: Optional[str] = None,
     ) -> None:
         """Start a CLI agent in an existing terminal session."""
         await iterm_utils.start_agent_in_session(
@@ -212,6 +213,7 @@ class ItermBackend(TerminalBackend):
             output_capture_path=output_capture_path,
             plugin_dir=plugin_dir,
             session_name=session_name,
+            resume_session=resume_session,
         )
 
     async def find_available_window(

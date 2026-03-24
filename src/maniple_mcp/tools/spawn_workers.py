@@ -49,6 +49,7 @@ class WorkerConfig(TypedDict, total=False):
     prompt: str  # Optional: Custom instructions - THIS IS the worker's task if provided
     skip_permissions: bool  # Optional: Default False
     skip_worker_prompt: bool  # Optional: Skip THE DEAL prompt (use SessionStart hooks instead)
+    resume: str  # Optional: Resume a named session (--resume flag). Skips --name if set.
     use_worktree: bool  # Optional: Create isolated worktree (default True)
     worktree: WorktreeConfig  # Optional: Worktree settings (branch/base)
     plugin_dir: str | list[str]  # Optional: Path(s) to plugin directory for --plugin-dir
@@ -698,6 +699,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                 if skip_permissions is None:
                     skip_permissions = defaults.skip_permissions
                 plugin_dir = worker_config.get("plugin_dir")
+                resume_session = worker_config.get("resume")
                 await backend.start_agent_in_session(
                     handle=session,
                     cli=cli,
@@ -707,6 +709,7 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     stop_hook_marker_id=stop_hook_marker_id,
                     plugin_dir=plugin_dir,
                     session_name=resolved_names[index],
+                    resume_session=resume_session,
                 )
 
             await asyncio.gather(*[start_agent_for_worker(i) for i in range(worker_count)])

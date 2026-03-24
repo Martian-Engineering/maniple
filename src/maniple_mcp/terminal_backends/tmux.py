@@ -469,6 +469,8 @@ class TmuxBackend(TerminalBackend):
         stop_hook_marker_id: str | None = None,
         output_capture_path: str | None = None,
         plugin_dir: str | None = None,
+        session_name: str | None = None,
+        resume_session: str | None = None,
     ) -> None:
         """Start a CLI agent in an existing tmux pane."""
         # Ensure the shell is responsive before we send the launch command.
@@ -493,6 +495,8 @@ class TmuxBackend(TerminalBackend):
             dangerously_skip_permissions=dangerously_skip_permissions,
             settings_file=settings_file,
             plugin_dir=plugin_dir,
+            session_name=session_name,
+            resume_session=resume_session,
             env_vars=env,
         )
 
