@@ -602,34 +602,52 @@ class TmuxBackend(TerminalBackend):
         cli: "AgentCLI",
         *,
         timeout_seconds: float = 15.0,
-        poll_interval: float = 0.2,
+        poll_interval: float = 0.5,
         stable_count: int = 2,
     ) -> bool:
-        """Wait for an agent CLI to show its ready patterns."""
+        """Wait for an agent CLI to start in the pane.
+
+        Uses process-based detection: polls ``pane_current_command`` to check
+        whether the shell has been replaced by the agent process.  This is more
+        reliable than TUI pattern matching which breaks on resumed sessions
+        (loading output never stabilises) and prompt-injection warnings (ready
+        patterns never appear).
+
+        Falls back to the legacy TUI pattern scan if the process check is
+        inconclusive (e.g. the agent binary name matches a common shell name).
+        """
         import time
 
-        patterns = cli.ready_patterns()
+        pane_id = self.unwrap_session(session)
+        shells = {"zsh", "bash", "sh", "fish", "dash", "tcsh", "csh"}
         start_time = time.monotonic()
-        last_content = None
-        stable_reads = 0
 
         while (time.monotonic() - start_time) < timeout_seconds:
-            # Read the pane content and only check once output stabilizes.
-            content = await self.read_screen_text(session)
-            if content == last_content:
-                stable_reads += 1
-            else:
-                stable_reads = 0
-                last_content = content
-
-            if stable_reads >= stable_count:
-                for line in content.splitlines():
-                    stripped = line.strip()
-                    for pattern in patterns:
-                        if pattern in stripped:
-                            return True
+            try:
+                cmd_output = await self._run_tmux(
+                    ["display-message", "-p", "-t", pane_id, "#{pane_current_command}"]
+                )
+                current_cmd = cmd_output.strip()
+                # If the pane command is no longer a shell, the agent launched.
+                if current_cmd and current_cmd not in shells:
+                    return True
+            except subprocess.CalledProcessError:
+                pass  # pane may not exist yet; keep polling
 
             await asyncio.sleep(poll_interval)
+
+        # Timeout reached — fall back to a single TUI pattern check on the
+        # current screen content so that non-tmux edge-cases still work.
+        patterns = cli.ready_patterns()
+        try:
+            content = await self.read_screen_text(session)
+            for line in content.splitlines():
+                stripped = line.strip()
+                for pattern in patterns:
+                    if pattern in stripped:
+                        return True
+        except subprocess.CalledProcessError:
+            pass
 
         return False
 
