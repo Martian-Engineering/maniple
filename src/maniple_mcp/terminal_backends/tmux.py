@@ -208,8 +208,18 @@ class TmuxBackend(TerminalBackend):
         # window/tab so the session is visible. First worker for a
         # project gets a new window; subsequent workers get tabs.
         # Skip for nexus — it already runs in an attached tmux session.
+        #
+        # Use issue_id prefix to determine project grouping for iTerm windows.
+        # This ensures DEV-26 workers in ~/cognitive-cache still group under
+        # the dev-ops window with the dev-reviewer.
         if name and "nexus" not in name.lower():
-            await self._open_iterm_for_session(session_name, project_name)
+            window_group = project_name
+            if resolved_issue_id:
+                prefix = resolved_issue_id.split("-")[0].lower() if "-" in resolved_issue_id else None
+                prefix_to_project = {"sie": "sieve", "pra": "prakasha", "tre": "trendiculosa", "dev": "dev-ops"}
+                if prefix and prefix in prefix_to_project:
+                    window_group = prefix_to_project[prefix]
+            await self._open_iterm_for_session(session_name, window_group)
 
         metadata = {
             "session_name": session_name,
@@ -233,14 +243,47 @@ class TmuxBackend(TerminalBackend):
     # in the same window as the reviewer.
     _iterm_windows: dict[str, str] = {}
 
+    async def _find_iterm_window_with_session(self, tmux_session_pattern: str) -> str | None:
+        """Find an iTerm window that has a tab attached to a tmux session matching the pattern.
+
+        Searches iTerm tab/session names for the pattern string.
+        Returns the window ID or None. Survives maniple restarts.
+        """
+        script = (
+            'tell application "iTerm2"\n'
+            "    repeat with w in windows\n"
+            "        repeat with t in tabs of w\n"
+            "            repeat with s in sessions of t\n"
+            f'                if name of s contains "{tmux_session_pattern}" then\n'
+            "                    return id of w as text\n"
+            "                end if\n"
+            "            end repeat\n"
+            "        end repeat\n"
+            "    end repeat\n"
+            '    return ""\n'
+            "end tell"
+        )
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "osascript", "-e", script,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            window_id = stdout.decode().strip() if stdout else ""
+            return window_id if window_id else None
+        except (OSError, asyncio.TimeoutError):
+            return None
+
     async def _open_iterm_for_session(
         self, session_name: str, project_name: str | None = None,
     ) -> None:
         """Open an iTerm2 window/tab attached to a tmux session.
 
-        First session for a project creates a new iTerm window.
-        Subsequent sessions for the same project open as tabs in
-        that window. Falls back to new window if project unknown.
+        First checks in-memory cache for project window ID. If not cached,
+        searches iTerm for an existing window with a tab for this project
+        (survives maniple restarts). If no existing window found, creates
+        a new one. Subsequent sessions open as tabs.
 
         Only runs on macOS when iTerm2 is available. Fails silently.
         """
@@ -249,6 +292,23 @@ class TmuxBackend(TerminalBackend):
 
         project_key = project_name or "_default"
         existing_window = self._iterm_windows.get(project_key)
+
+        # If not in cache, search iTerm for an existing window with any
+        # maniple session for this project (survives maniple restarts).
+        # Try multiple patterns: reviewer session name, project slug variants.
+        if not existing_window and project_name:
+            slug = _tmux_safe_slug(project_name)
+            # Extract short prefix for reviewer name matching (dev-ops → dev, sieve-calendar → sie)
+            short = slug.split("-")[0][:3]
+            for pattern in [
+                f"{short}-reviewer",     # dev-reviewer, sie-reviewer
+                f"maniple-{slug}",       # maniple-dev-ops, maniple-sieve-calendar
+                slug,                    # dev-ops, sieve-calendar
+            ]:
+                existing_window = await self._find_iterm_window_with_session(pattern)
+                if existing_window:
+                    self._iterm_windows[project_key] = existing_window
+                    break
 
         if existing_window:
             # Open as tab in existing project window
