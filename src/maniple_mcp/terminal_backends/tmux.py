@@ -7,6 +7,7 @@ Provides a TerminalBackend implementation backed by tmux CLI commands.
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 import shlex
 import subprocess
@@ -203,6 +204,12 @@ class TmuxBackend(TerminalBackend):
         if not pane_id:
             raise RuntimeError("Failed to determine tmux pane id for new window")
 
+        # For named workers with their own session, open an iTerm
+        # window/tab so the session is visible. First worker for a
+        # project gets a new window; subsequent workers get tabs.
+        if name:
+            await self._open_iterm_for_session(session_name, project_name)
+
         metadata = {
             "session_name": session_name,
             "window_id": window_id,
@@ -220,6 +227,66 @@ class TmuxBackend(TerminalBackend):
             handle=pane_id,
             metadata=metadata,
         )
+
+    # Track iTerm window IDs per project so workers open as tabs
+    # in the same window as the reviewer.
+    _iterm_windows: dict[str, str] = {}
+
+    async def _open_iterm_for_session(
+        self, session_name: str, project_name: str | None = None,
+    ) -> None:
+        """Open an iTerm2 window/tab attached to a tmux session.
+
+        First session for a project creates a new iTerm window.
+        Subsequent sessions for the same project open as tabs in
+        that window. Falls back to new window if project unknown.
+
+        Only runs on macOS when iTerm2 is available. Fails silently.
+        """
+        if os.uname().sysname != "Darwin":
+            return
+
+        project_key = project_name or "_default"
+        existing_window = self._iterm_windows.get(project_key)
+
+        if existing_window:
+            # Open as tab in existing project window
+            script = (
+                'tell application "iTerm2"\n'
+                f'    tell window id {existing_window}\n'
+                "        create tab with default profile\n"
+                "        tell current session of current tab\n"
+                f'            write text "tmux attach -t {session_name}"\n'
+                "        end tell\n"
+                "    end tell\n"
+                "end tell"
+            )
+        else:
+            # Create new window for this project
+            script = (
+                'tell application "iTerm2"\n'
+                "    set newWindow to (create window with default profile)\n"
+                "    tell current session of current tab of newWindow\n"
+                f'        write text "tmux attach -t {session_name}"\n'
+                "    end tell\n"
+                '    return id of newWindow as text\n'
+                "end tell"
+            )
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "osascript", "-e", script,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            # If we created a new window, capture its ID for future tabs
+            if not existing_window and stdout:
+                window_id = stdout.decode().strip()
+                if window_id:
+                    self._iterm_windows[project_key] = window_id
+        except (OSError, asyncio.TimeoutError):
+            pass  # Best effort — session still works via manual attach
 
     async def send_text(self, session: TerminalSession, text: str) -> None:
         """Send raw text to a tmux pane."""
