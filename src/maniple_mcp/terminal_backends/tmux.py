@@ -207,7 +207,8 @@ class TmuxBackend(TerminalBackend):
         # For named workers with their own session, open an iTerm
         # window/tab so the session is visible. First worker for a
         # project gets a new window; subsequent workers get tabs.
-        if name:
+        # Skip for nexus — it already runs in an attached tmux session.
+        if name and "nexus" not in name.lower():
             await self._open_iterm_for_session(session_name, project_name)
 
         metadata = {
