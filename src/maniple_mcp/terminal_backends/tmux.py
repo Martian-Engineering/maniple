@@ -297,13 +297,15 @@ class TmuxBackend(TerminalBackend):
         # maniple session for this project (survives maniple restarts).
         # Try multiple patterns: reviewer session name, project slug variants.
         if not existing_window and project_name:
-            slug = _tmux_safe_slug(project_name)
+            slug = _tmux_safe_slug(project_name).lower()
             # Extract short prefix for reviewer name matching (dev-ops → dev, sieve-calendar → sie)
+            # Lowercase is critical — AppleScript contains is case-sensitive,
+            # and project dirs may have capital letters (e.g., Trendiculosa)
             short = slug.split("-")[0][:3]
             for pattern in [
-                f"{short}-reviewer",     # dev-reviewer, sie-reviewer
-                f"maniple-{slug}",       # maniple-dev-ops, maniple-sieve-calendar
-                slug,                    # dev-ops, sieve-calendar
+                f"{short}-reviewer",     # dev-reviewer, sie-reviewer, tre-reviewer
+                f"maniple-{slug}",       # maniple-dev-ops, maniple-trendiculosa
+                slug,                    # dev-ops, trendiculosa
             ]:
                 existing_window = await self._find_iterm_window_with_session(pattern)
                 if existing_window:
