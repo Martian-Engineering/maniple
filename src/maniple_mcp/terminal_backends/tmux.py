@@ -154,7 +154,7 @@ class TmuxBackend(TerminalBackend):
 
         base_name = name or self._generate_window_name()
         project_name = project_name_from_path(project_path)
-        resolved_issue_id = self._resolve_issue_id(issue_id, coordinator_badge)
+        resolved_issue_id = self._resolve_issue_id(issue_id, coordinator_badge, name)
         window_name = self._format_window_name(base_name, project_name, resolved_issue_id)
         # Named workers get their own tmux session so each can have an
         # independent iTerm window.  Unnamed workers share a per-project session.
@@ -798,14 +798,20 @@ class TmuxBackend(TerminalBackend):
 
         return False
 
-    # Resolve an issue id from explicit input or coordinator badge text.
+    # Resolve an issue id from explicit input, worker name, or coordinator badge text.
     def _resolve_issue_id(
         self,
         issue_id: str | None,
         coordinator_badge: str | None,
+        name: str | None = None,
     ) -> str | None:
         if issue_id:
             return issue_id
+        # Check worker name — Nexus names workers after their issue ID (e.g., "DEV-30")
+        if name:
+            match = ISSUE_ID_PATTERN.search(name)
+            if match:
+                return match.group(0)
         if not coordinator_badge:
             return None
         match = ISSUE_ID_PATTERN.search(coordinator_badge)
