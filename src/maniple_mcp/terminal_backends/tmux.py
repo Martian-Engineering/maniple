@@ -221,11 +221,28 @@ class TmuxBackend(TerminalBackend):
                     window_group = prefix_to_project[prefix]
             await self._open_iterm_for_session(session_name, window_group)
 
+        # Register pane-exited hook for crash detection.
+        # When the process in the pane exits (crash, OOM, manual kill),
+        # write a sentinel file that the idle detector and registry can check.
+        sentinel_dir = Path.home() / ".maniple" / "sentinels"
+        sentinel_dir.mkdir(parents=True, exist_ok=True)
+        safe_pane_id = pane_id.replace("%", "pane")
+        sentinel_path = sentinel_dir / f"{safe_pane_id}.exited"
+        try:
+            await self._run_tmux([
+                "set-hook", "-t", session_name,
+                "pane-exited",
+                f"run-shell 'touch {sentinel_path}'",
+            ])
+        except subprocess.CalledProcessError:
+            logger.debug("Failed to set pane-exited hook for %s — non-fatal", pane_id)
+
         metadata = {
             "session_name": session_name,
             "window_id": window_id,
             "window_index": window_index,
             "window_name": window_name,
+            "sentinel_path": str(sentinel_path),
         }
         if project_name:
             metadata["project_name"] = project_name

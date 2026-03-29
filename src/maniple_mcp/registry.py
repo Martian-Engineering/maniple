@@ -435,6 +435,16 @@ class ManagedSession:
         Returns:
             True if idle, False if working or session file not available
         """
+        # Check crash sentinel first — if the pane process exited (crash, OOM),
+        # the pane-exited hook wrote a sentinel file. Treat as idle (dead, not working).
+        sentinel_path = (
+            self.terminal_session.metadata.get("sentinel_path")
+            if self.terminal_session.metadata
+            else None
+        )
+        if sentinel_path and Path(sentinel_path).exists():
+            return True
+
         if self.agent_type == "codex":
             from .idle_detection import is_codex_idle
 
