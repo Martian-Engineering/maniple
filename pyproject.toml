@@ -1,6 +1,6 @@
 [project]
 name = "maniple-mcp"
-version = "0.13.0"
+version = "0.14.0-fork"
 description = "MCP server for managing multiple Claude Code sessions via iTerm2"
 readme = "README.md"
 requires-python = ">=3.11"
