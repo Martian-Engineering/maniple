@@ -34,6 +34,10 @@ def _isoformat_zulu(value: datetime) -> str:
 class TestEventLogPersistence:
     """Event log persistence behaviors."""
 
+    def setup_method(self):
+        """Clear rotation config cache between tests."""
+        events._clear_rotation_config_cache()
+
     def test_append_event_creates_file(self, tmp_path, monkeypatch):
         """append_event should create the log file if missing."""
         path = tmp_path / "events.jsonl"

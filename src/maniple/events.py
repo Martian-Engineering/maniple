@@ -30,6 +30,12 @@ logger = logging.getLogger("maniple")
 _rotation_config_cache: tuple[float, EventsConfig] | None = None
 _ROTATION_CONFIG_TTL = 60.0  # seconds
 
+
+def _clear_rotation_config_cache() -> None:
+    """Clear the cached rotation config. Used by tests."""
+    global _rotation_config_cache
+    _rotation_config_cache = None
+
 EventType = Literal[
     "snapshot",
     "worker_started",
