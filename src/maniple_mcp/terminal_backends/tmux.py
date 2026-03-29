@@ -7,6 +7,7 @@ Provides a TerminalBackend implementation backed by tmux CLI commands.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import shlex
@@ -257,8 +258,30 @@ class TmuxBackend(TerminalBackend):
         )
 
     # Track iTerm window IDs per project so workers open as tabs
-    # in the same window as the reviewer.
+    # in the same window as the reviewer. Persisted to disk so IDs
+    # survive maniple restarts without fragile AppleScript title search.
     _iterm_windows: dict[str, str] = {}
+    _ITERM_WINDOWS_PATH = Path.home() / ".maniple" / "iterm-windows.json"
+
+    @classmethod
+    def _load_iterm_windows(cls) -> None:
+        """Load persisted window IDs from disk."""
+        if cls._ITERM_WINDOWS_PATH.exists():
+            try:
+                data = json.loads(cls._ITERM_WINDOWS_PATH.read_text())
+                if isinstance(data, dict):
+                    cls._iterm_windows = data
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    @classmethod
+    def _save_iterm_windows(cls) -> None:
+        """Persist window IDs to disk."""
+        try:
+            cls._ITERM_WINDOWS_PATH.parent.mkdir(parents=True, exist_ok=True)
+            cls._ITERM_WINDOWS_PATH.write_text(json.dumps(cls._iterm_windows, indent=2))
+        except OSError:
+            pass
 
     async def _find_iterm_window_with_session(self, tmux_session_pattern: str) -> str | None:
         """Find an iTerm window that has a tab attached to a tmux session matching the pattern.
@@ -308,11 +331,15 @@ class TmuxBackend(TerminalBackend):
             return
 
         project_key = project_name or "_default"
+
+        # Load persisted window IDs on first access
+        if not self._iterm_windows:
+            self._load_iterm_windows()
+
         existing_window = self._iterm_windows.get(project_key)
 
-        # If not in cache, search iTerm for an existing window with any
-        # maniple session for this project (survives maniple restarts).
-        # Try multiple patterns: reviewer session name, project slug variants.
+        # If not in persisted cache, search iTerm for an existing window.
+        # This is the fallback for fresh installs or after iTerm restart.
         if not existing_window and project_name:
             slug = _tmux_safe_slug(project_name).lower()
             # Extract short prefix for reviewer name matching (dev-ops → dev, sieve-calendar → sie)
@@ -327,6 +354,7 @@ class TmuxBackend(TerminalBackend):
                 existing_window = await self._find_iterm_window_with_session(pattern)
                 if existing_window:
                     self._iterm_windows[project_key] = existing_window
+                    self._save_iterm_windows()
                     break
 
         if existing_window:
@@ -365,6 +393,7 @@ class TmuxBackend(TerminalBackend):
                 window_id = stdout.decode().strip()
                 if window_id:
                     self._iterm_windows[project_key] = window_id
+                    self._save_iterm_windows()
         except (OSError, asyncio.TimeoutError):
             pass  # Best effort — session still works via manual attach
 
