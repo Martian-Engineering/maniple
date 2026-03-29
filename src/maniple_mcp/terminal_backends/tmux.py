@@ -656,10 +656,13 @@ class TmuxBackend(TerminalBackend):
         await self.send_prompt(handle, cmd, submit=True)
 
         # Wait for the agent to become ready before returning.
+        # Use shorter timeout for resume attempts — if the session is expired,
+        # Claude Code falls back to fresh start quickly. No need to wait 30s.
+        effective_timeout = min(agent_ready_timeout, 15.0) if resume_session else agent_ready_timeout
         agent_ready = await self._wait_for_agent_ready(
             handle,
             cli,
-            timeout_seconds=agent_ready_timeout,
+            timeout_seconds=effective_timeout,
         )
         if not agent_ready:
             raise RuntimeError(
