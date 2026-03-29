@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 import logging
@@ -25,6 +26,9 @@ except ImportError:  # pragma: no cover - platform-specific
 
 logger = logging.getLogger("maniple")
 
+# Cache rotation config to avoid re-reading config.json on every append_events call.
+_rotation_config_cache: tuple[float, EventsConfig] | None = None
+_ROTATION_CONFIG_TTL = 60.0  # seconds
 
 EventType = Literal[
     "snapshot",
@@ -37,6 +41,17 @@ EventType = Literal[
 
 def _load_rotation_config() -> EventsConfig:
     # Resolve rotation defaults from config, applying env overrides.
+    # Cached for _ROTATION_CONFIG_TTL seconds to avoid re-reading config.json
+    # on every append_events call (hot write path).
+    import time
+
+    global _rotation_config_cache
+    now = time.monotonic()
+    if _rotation_config_cache is not None:
+        cached_at, cached_config = _rotation_config_cache
+        if now - cached_at < _ROTATION_CONFIG_TTL:
+            return cached_config
+
     try:
         config = load_config()
         events_config = config.events
@@ -45,7 +60,7 @@ def _load_rotation_config() -> EventsConfig:
             "Invalid config file; using default event rotation config: %s", exc
         )
         events_config = EventsConfig()
-    return EventsConfig(
+    result = EventsConfig(
         max_size_mb=get_int_env_with_fallback(
             "MANIPLE_EVENTS_MAX_SIZE_MB",
             "CLAUDE_TEAM_EVENTS_MAX_SIZE_MB",
@@ -57,6 +72,8 @@ def _load_rotation_config() -> EventsConfig:
             default=events_config.recent_hours,
         ),
     )
+    _rotation_config_cache = (now, result)
+    return result
 
 
 @dataclass
@@ -142,7 +159,8 @@ def read_events_since(
         return []
 
     normalized_since = _normalize_since(since)
-    events: list[WorkerEvent] = []
+    # Use deque with maxlen for O(1) eviction instead of list.pop(0) which is O(n).
+    events: deque[WorkerEvent] = deque(maxlen=limit)
 
     with path.open("r", encoding="utf-8") as handle:
         # Stream the file so we don't load the entire log into memory.
@@ -159,11 +177,8 @@ def read_events_since(
                     continue
 
             events.append(event)
-            # Keep only the most recent events within the requested limit.
-            if len(events) > limit:
-                events.pop(0)
 
-    return events
+    return list(events)
 
 
 def get_latest_snapshot() -> dict | None:
@@ -361,6 +376,9 @@ def _rotate_events_log_locked(
     )
 
     # Reset the log to only retained events.
+    # Truncate+rewrite is safe here: flock prevents concurrent writers, and
+    # the backup file was already created above. If the process dies mid-write,
+    # the backup has the full history for recovery.
     handle.seek(0)
     handle.truncate(0)
     if retained_lines:
