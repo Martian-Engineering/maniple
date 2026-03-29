@@ -1194,7 +1194,20 @@ class SessionRegistry:
                         session_id=session_id,
                     )
                     managed.agent_type = recovered.agent_type
-                    managed.claude_session_id = recovered.claude_session_id
+                    # Don't blindly inherit claude_session_id — the cached path may
+                    # be stale if Claude Code restarted or the session expired between
+                    # maniple restarts. Let get_jsonl_path() re-discover via marker.
+                    # Only inherit if the JSONL file still exists at the cached path.
+                    if recovered.claude_session_id:
+                        from .session_state import get_project_dir
+                        cached = get_project_dir(recovered.project_path) / f"{recovered.claude_session_id}.jsonl"
+                        if cached.exists():
+                            managed.claude_session_id = recovered.claude_session_id
+                        else:
+                            logger.debug(
+                                "Stale claude_session_id for %s — JSONL not found, will re-discover",
+                                session_id,
+                            )
                     managed.coordinator_badge = recovered.coordinator_badge
                     managed.worktree_path = (
                         Path(recovered.worktree_path) if recovered.worktree_path else None
