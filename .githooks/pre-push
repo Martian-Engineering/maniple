@@ -1,0 +1,18 @@
+#!/bin/bash
+# Block pushes to main from worktrees.
+# Workers must push to their feature branch and create a PR.
+
+MAIN_WORKTREE=$(git worktree list --porcelain | head -1 | sed 's/^worktree //')
+CURRENT_ROOT=$(git rev-parse --show-toplevel)
+
+if [ "$CURRENT_ROOT" != "$MAIN_WORKTREE" ]; then
+    # We're in a worktree — check if pushing to main
+    while read local_ref local_oid remote_ref remote_oid; do
+        if echo "$remote_ref" | grep -qE 'refs/heads/main$'; then
+            echo "ERROR: Cannot push to main from a worktree."
+            echo "Push to your feature branch instead:"
+            echo "  git push -u origin $(git branch --show-current)"
+            exit 1
+        fi
+    done
+fi
