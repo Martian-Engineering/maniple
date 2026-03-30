@@ -411,15 +411,16 @@ class TmuxBackend(TerminalBackend):
 
         For named workers with their own tmux session and a -CC gateway,
         also cleans up the gateway tab via ItermManager.
+
+        Order matters: kill tmux first (which disconnects -CC and unburies
+        the gateway tab), then close the gateway. Closing gateway first
+        doesn't work because iTerm unburies it when -CC disconnects.
         """
         pane_id = self.unwrap_session(session)
         _ = force
-
-        # Clean up -CC gateway tab for named workers (best-effort)
         session_name = session.metadata.get("session_name")
-        if session_name:
-            await self._iterm.close_session(session_name)
 
+        # Kill tmux window/pane first
         window_id = session.metadata.get("window_id")
         if not window_id:
             window_id = await self._window_id_for_pane(pane_id)
@@ -427,6 +428,13 @@ class TmuxBackend(TerminalBackend):
             await self._run_tmux(["kill-window", "-t", window_id])
         else:
             await self._run_tmux(["kill-pane", "-t", pane_id])
+
+        # Clean up -CC gateway tab AFTER tmux kill (best-effort).
+        # Must be after kill because killing tmux disconnects -CC, which
+        # causes iTerm to unbury the gateway tab. We close it post-unbury.
+        if session_name:
+            await asyncio.sleep(0.5)  # allow iTerm to process -CC disconnect
+            await self._iterm.close_session(session_name)
 
     async def create_multi_pane_layout(
         self,
