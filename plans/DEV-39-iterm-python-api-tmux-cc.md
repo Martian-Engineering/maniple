@@ -2,7 +2,7 @@
 
 **Issue:** DEV-39
 **Date:** 2026-03-29
-**Status:** Implementation Complete — Pending Live Verification
+**Status:** Done — Live verified, DEV-39 closed. Follow-ups tracked in DEV-50.
 
 ## Approach
 
