@@ -231,6 +231,24 @@ def register_tools(mcp: FastMCP) -> None:
         registry = app_ctx.registry
         backend = app_ctx.terminal_backend
 
+        # Lazy recovery: if registry is empty, recover from event log.
+        # message_workers may be called before list_workers (which has
+        # its own lazy recovery). Without this, sessions appear missing
+        # after a maniple restart.
+        from ..server import is_recovery_attempted, recover_registry
+
+        if not is_recovery_attempted() and len(registry.list_all()) == 0:
+            logger.info("Registry empty on message_workers call, attempting lazy recovery...")
+            recover_registry(registry)
+            try:
+                await registry.prune_stale_recovered_sessions(backend)
+            except Exception:
+                pass
+            try:
+                await registry.reconnect_recovered_sessions(backend)
+            except Exception:
+                pass
+
         # Validate wait_mode
         if wait_mode not in ("none", "any", "all"):
             return error_response(
