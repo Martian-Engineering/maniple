@@ -313,9 +313,16 @@ class ItermManager:
         """Find existing iTerm window for project via Python API traversal.
 
         Searches for windows containing tabs with -CC controlled sessions
-        whose names match the project pattern.
+        whose names match the project pattern. Forces an app refresh to
+        ensure newly created windows (from other -CC connections) are visible.
         """
-        if not project or self._app is None:
+        if not project:
+            return None
+
+        # Force fresh app state — other spawn calls may have created windows
+        # that our cached _app doesn't know about yet
+        app = await self.ensure_connected()
+        if app is None:
             return None
 
         slug = project.lower().replace(" ", "-")
@@ -326,7 +333,7 @@ class ItermManager:
             slug,
         ]
 
-        for w in self._app.terminal_windows:
+        for w in app.terminal_windows:
             for t in w.tabs:
                 for s in t.sessions:
                     try:
