@@ -7,12 +7,15 @@ our session IDs, terminal session handles, and Claude JSONL session IDs.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Optional, Union
+
+logger = logging.getLogger("maniple")
 
 if TYPE_CHECKING:
     from maniple.events import WorkerEvent
