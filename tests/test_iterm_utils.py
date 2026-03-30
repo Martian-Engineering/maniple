@@ -1,11 +1,11 @@
-"""Tests for iterm_utils module."""
+"""Tests for stop hook settings file and command building logic."""
 
 import os
 from unittest.mock import patch
 
 import pytest
 
-from maniple_mcp.iterm_utils import build_stop_hook_settings_file
+from maniple_mcp.terminal_backends.tmux import build_stop_hook_settings_file
 
 
 class TestClaudeCommandBuilding:

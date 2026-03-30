@@ -8,7 +8,6 @@ Allows a "manager" Claude Code session to spawn and coordinate multiple
 
 import functools
 import logging
-import shutil
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -21,7 +20,7 @@ from maniple.poller import WorkerPoller
 
 from .logging_setup import configure_logging
 from .registry import RecoveryReport, SessionRegistry
-from .terminal_backends import ItermBackend, TerminalBackend, TmuxBackend, select_backend
+from .terminal_backends import TerminalBackend, TmuxBackend
 from .tools import register_all_tools
 from .utils import error_response, HINTS
 
@@ -151,78 +150,10 @@ class AppContext:
 # =============================================================================
 
 
-async def refresh_iterm_connection() -> ItermBackend:
-    """
-    Create a fresh iTerm2 connection and backend.
-
-    The iTerm2 Python API uses websockets with ping_interval=None, meaning
-    connections can go stale without any keepalive mechanism. This function
-    creates a new connection when needed.
-
-    Returns:
-        ItermBackend with a fresh connection and app
-
-    Raises:
-        RuntimeError: If connection fails
-    """
-    from iterm2.app import async_get_app
-    from iterm2.connection import Connection
-
-    logger.debug("Creating fresh iTerm2 connection...")
-    try:
-        connection = await Connection.async_create()
-        app = await async_get_app(connection)
-        if app is None:
-            raise RuntimeError("Could not get iTerm2 app")
-        logger.debug("Fresh iTerm2 connection established")
-        return ItermBackend(connection, app)
-    except Exception as e:
-        logger.error(f"Failed to refresh iTerm2 connection: {e}")
-        raise RuntimeError("Could not connect to iTerm2") from e
-
-
 async def ensure_connection(app_ctx: "AppContext") -> TerminalBackend:
-    """
-    Ensure we have a working terminal backend, refreshing if stale.
-
-    The iTerm2 websocket connection can go stale due to lack of keepalive
-    (ping_interval=None in the iterm2 library). This function tests the
-    connection and refreshes it if needed.
-
-    For non-iTerm backends (e.g., tmux), this simply returns the backend.
-
-    Args:
-        app_ctx: The application context containing the backend
-
-    Returns:
-        TerminalBackend - either existing or refreshed
-    """
-    backend = app_ctx.terminal_backend
-    if not isinstance(backend, ItermBackend):
-        return backend
-
-    from iterm2.app import async_get_app
-
-    connection = backend.connection
-    app = backend.app
-
-    # Test if connection is still alive by trying a simple operation
-    try:
-        # async_get_app is a lightweight call that tests the connection
-        refreshed_app = await async_get_app(connection)
-        if refreshed_app is not None:
-            if refreshed_app is not app:
-                backend = ItermBackend(connection, refreshed_app)
-                app_ctx.terminal_backend = backend
-            return backend
-        # App is None, need to refresh
-        raise RuntimeError("App is None, refreshing connection")
-    except Exception as e:
-        logger.warning(f"iTerm2 connection appears stale ({e}), refreshing...")
-        # Connection is dead, create a new one
-        backend = await refresh_iterm_connection()
-        app_ctx.terminal_backend = backend
-        return backend
+    """Return the terminal backend. iTerm2 connection management is handled
+    by ItermManager (lazy-init inside TmuxBackend)."""
+    return app_ctx.terminal_backend
 
 
 @asynccontextmanager
@@ -243,51 +174,10 @@ async def app_lifespan(
     """
     logger.info("Maniple MCP Server starting...")
 
-    selection = select_backend()
-    backend_id = selection.backend_id
-    logger.info("Selecting terminal backend: %s", backend_id)
-
-    if backend_id == "tmux":
-        backend: TerminalBackend = TmuxBackend()
-    elif backend_id == "iterm":
-        # Import iterm2 here to fail fast if not available
-        try:
-            from iterm2.app import async_get_app
-            from iterm2.connection import Connection
-        except ImportError as e:
-            if not selection.explicit and shutil.which("tmux"):
-                logger.warning("iTerm2 backend unavailable (%s); falling back to tmux", e)
-                backend = TmuxBackend()
-            else:
-                logger.error(
-                    "iterm2 package not found. Install with: uv add iterm2\n"
-                    "Also enable: iTerm2 → Preferences → General → Magic → Enable Python API"
-                )
-                raise RuntimeError("iterm2 package required") from e
-        else:
-            # Connect to iTerm2
-            logger.info("Connecting to iTerm2...")
-            try:
-                connection = await Connection.async_create()
-                app = await async_get_app(connection)
-                if app is None:
-                    raise RuntimeError("Could not get iTerm2 app")
-                logger.info("Connected to iTerm2 successfully")
-            except Exception as e:
-                if not selection.explicit and shutil.which("tmux"):
-                    logger.warning(
-                        "Failed to connect to iTerm2 (%s); falling back to tmux", e
-                    )
-                    backend = TmuxBackend()
-                else:
-                    logger.error(f"Failed to connect to iTerm2: {e}")
-                    logger.error("Make sure iTerm2 is running and Python API is enabled")
-                    raise RuntimeError("Could not connect to iTerm2") from e
-            else:
-                backend = ItermBackend(connection, app)
-
-    else:
-        raise RuntimeError(f"Unknown terminal backend: {backend_id}")
+    # Always use tmux backend. iTerm2 window management is handled by
+    # ItermManager (lazy-initialized inside TmuxBackend on first use).
+    backend: TerminalBackend = TmuxBackend()
+    logger.info("Terminal backend: tmux (iTerm2 windows via ItermManager)")
 
     # Create application context with singleton registry (persists across sessions).
     ctx = AppContext(

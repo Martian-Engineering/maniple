@@ -18,12 +18,10 @@ if TYPE_CHECKING:
 
 from ..cli_backends import get_cli_backend
 from ..config import ConfigError, default_config, load_config
-from ..colors import generate_tab_color
 from ..formatting import format_badge_text, format_session_title
 from ..names import pick_names_for_count
-from ..profile import apply_appearance_colors
 from ..registry import SessionStatus
-from ..terminal_backends import ItermBackend, MAX_PANES_PER_TAB
+from ..terminal_backends import MAX_PANES_PER_TAB
 from ..utils import HINTS, error_response, get_env_with_fallback, get_worktree_tracker_dir
 from ..worker_prompt import generate_worker_prompt, get_coordinator_guidance
 from ..worktree import WorktreeError, create_local_worktree
@@ -242,8 +240,6 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             logger.warning("Invalid config file; using defaults: %s", exc)
             config = default_config()
         defaults = config.defaults
-        iterm_profile = config.terminal.iterm_profile
-
         # Resolve layout from config if not explicitly provided
         if layout is None:
             layout = defaults.layout
@@ -397,43 +393,6 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     agent_type = defaults.agent_type
                 agent_types.append(agent_type)
 
-            # Build profile customizations for each worker (iTerm-only)
-            profile_customizations: list[object | None] = [None] * worker_count
-            if isinstance(backend, ItermBackend):
-                from iterm2.profile import LocalWriteOnlyProfile
-
-                profile_customizations = []
-                for i, (w, name) in enumerate(zip(workers, resolved_names)):
-                    customization = LocalWriteOnlyProfile()
-
-                    issue_id = w.get("issue_id")
-                    badge = w.get("badge")
-                    agent_type = agent_types[i]
-
-                    # Tab title
-                    tab_title = format_session_title(
-                        name, issue_id=issue_id, badge=badge
-                    )
-                    customization.set_name(tab_title)
-
-                    # Tab color (unique per worker)
-                    color = generate_tab_color(base_index + i)
-                    customization.set_tab_color(color)
-                    customization.set_use_tab_color(True)
-
-                    # Badge (multi-line with issue_id/name, badge text, and agent type indicator)
-                    badge_text = format_badge_text(
-                        name, issue_id=issue_id, badge=badge, agent_type=agent_type
-                    )
-                    customization.set_badge_text(badge_text)
-
-                    # Apply appearance mode colors only if no custom profile
-                    # (custom profiles already have their own color scheme)
-                    if not iterm_profile:
-                        await apply_appearance_colors(customization, backend.connection)
-
-                    profile_customizations.append(customization)
-
             # Create panes based on layout mode
             pane_sessions: list = []  # list of terminal handles
 
@@ -466,39 +425,6 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                         and session.metadata.get("window_index") == window_index
                     )
 
-                # Prefer the coordinator's window when running inside iTerm2,
-                # unless target_window is specified (which explicitly targets a
-                # different window).
-                # ITERM_SESSION_ID format is "wXtYpZ:UUID" - extract just the UUID.
-                iterm_session_env = os.environ.get("ITERM_SESSION_ID")
-                coordinator_session_id = None
-                if iterm_session_env and ":" in iterm_session_env:
-                    coordinator_session_id = iterm_session_env.split(":", 1)[1]
-                if coordinator_session_id and isinstance(backend, ItermBackend) and target_window is None:
-                    coordinator_handle = None
-                    for session_handle in await backend.list_sessions():
-                        if session_handle.native_id == coordinator_session_id:
-                            coordinator_handle = session_handle
-                            break
-
-                    if coordinator_handle:
-                        coordinator_window = await backend.get_window_for_handle(
-                            coordinator_handle
-                        )
-                        if coordinator_window is not None:
-                            native_session = backend.unwrap_session(coordinator_handle)
-                            coordinator_tab = native_session.tab
-                            if coordinator_tab is not None:
-                                initial_pane_count = len(coordinator_tab.sessions)
-                                available_slots = MAX_PANES_PER_TAB - initial_pane_count
-                                if worker_count <= available_slots:
-                                    reuse_window = True
-                                    first_session = coordinator_handle
-                                    logger.debug(
-                                        "Using coordinator window "
-                                        f"({initial_pane_count} panes, {available_slots} slots)"
-                                    )
-
                 if not reuse_window:
                     managed_session_ids = {
                         s.terminal_session.native_id
@@ -516,12 +442,9 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     if result:
                         _, tab_or_window, existing_session = result
                         first_session = existing_session
-                        if isinstance(backend, ItermBackend):
-                            initial_pane_count = len(tab_or_window.sessions)
-                        else:
-                            initial_pane_count = _count_tmux_panes(
-                                existing_session, await backend.list_sessions()
-                            )
+                        initial_pane_count = _count_tmux_panes(
+                            existing_session, await backend.list_sessions()
+                        )
                         available_slots = MAX_PANES_PER_TAB - initial_pane_count
 
                         if worker_count <= available_slots:
@@ -553,8 +476,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                                     first_session,
                                     vertical=True,
                                     before=False,
-                                    profile=iterm_profile,
-                                    profile_customizations=profile_customizations[i],
+                                    profile=None,
+                                    profile_customizations=None,
                                 )
                             else:
                                 # Second split: horizontal from first worker (stack on right)
@@ -565,8 +488,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                                     split_target,
                                     vertical=False,
                                     before=False,
-                                    profile=iterm_profile,
-                                    profile_customizations=profile_customizations[i],
+                                    profile=None,
+                                    profile_customizations=None,
                                 )
                         else:
                             # Quad pattern: TL→TR(vsplit)→BL(hsplit)→BR(hsplit)
@@ -576,8 +499,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                                     first_session,
                                     vertical=True,
                                     before=False,
-                                    profile=iterm_profile,
-                                    profile_customizations=profile_customizations[i],
+                                    profile=None,
+                                    profile_customizations=None,
                                 )
                             elif local_pane_count == 2:
                                 # Second split: horizontal from left pane (bottom-left)
@@ -585,8 +508,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                                     first_session,
                                     vertical=False,
                                     before=False,
-                                    profile=iterm_profile,
-                                    profile_customizations=profile_customizations[i],
+                                    profile=None,
+                                    profile_customizations=None,
                                 )
                             else:  # local_pane_count == 3
                                 # Third split: horizontal from right pane (bottom-right)
@@ -597,8 +520,8 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                                     tr_session,
                                     vertical=False,
                                     before=False,
-                                    profile=iterm_profile,
-                                    profile_customizations=profile_customizations[i],
+                                    profile=None,
+                                    profile_customizations=None,
                                 )
 
                         pane_sessions.append(new_session)
@@ -623,17 +546,10 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                         window_layout = "quad"
                         pane_names = ["top_left", "top_right", "bottom_left", "bottom_right"]
 
-                    customizations_dict = None
-                    if isinstance(backend, ItermBackend):
-                        customizations_dict = {
-                            pane_names[i]: profile_customizations[i]
-                            for i in range(worker_count)
-                        }
-
                     panes = await backend.create_multi_pane_layout(
                         window_layout,
-                        profile=iterm_profile,
-                        profile_customizations=customizations_dict,
+                        profile=None,
+                        profile_customizations=None,
                     )
 
                     pane_sessions = [panes[name] for name in pane_names[:worker_count]]
@@ -653,18 +569,10 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                     window_layout = "quad"
                     pane_names = ["top_left", "top_right", "bottom_left", "bottom_right"]
 
-                # Build customizations dict for layout
-                customizations_dict = None
-                if isinstance(backend, ItermBackend):
-                    customizations_dict = {
-                        pane_names[i]: profile_customizations[i]
-                        for i in range(worker_count)
-                    }
-
                 panes = await backend.create_multi_pane_layout(
                     window_layout,
-                    profile=iterm_profile,
-                    profile_customizations=customizations_dict,
+                    profile=None,
+                    profile_customizations=None,
                 )
 
                 pane_sessions = [panes[name] for name in pane_names[:worker_count]]
@@ -899,15 +807,6 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
             for managed in managed_sessions:
                 registry.update_status(managed.session_id, SessionStatus.READY)
                 result_sessions[managed.name] = managed.to_dict()
-
-            # Re-activate the window to bring it to focus
-            if isinstance(backend, ItermBackend):
-                try:
-                    await backend.activate_app()
-                    if pane_sessions:
-                        await backend.activate_window_for_handle(pane_sessions[0])
-                except Exception as e:
-                    logger.debug(f"Failed to re-activate window: {e}")
 
             # Build worker summaries for coordinator guidance
             worker_summaries = []

@@ -20,9 +20,8 @@ from ..idle_detection import (
     SessionInfo,
 )
 from ..issue_tracker import detect_issue_tracker
-from ..iterm_utils import CODEX_PRE_ENTER_DELAY
+from ..terminal_backends.tmux import CODEX_PRE_ENTER_DELAY
 from ..registry import SessionStatus
-from ..terminal_backends import ItermBackend
 from ..utils import build_worker_message_hint, error_response, HINTS
 
 logger = logging.getLogger("maniple")
@@ -43,17 +42,12 @@ def _compute_prompt_delay(text: str, agent_type: str) -> float:
 
 async def _send_prompt_for_agent(backend, session, text: str, agent_type: str) -> None:
     """Send a prompt through the active terminal backend."""
-    if isinstance(backend, ItermBackend):
-        await backend.send_prompt_for_agent(
-            session,
-            text,
-            agent_type=agent_type,
-            submit=True,
-        )
-        return
-    await backend.send_text(session, text)
-    await asyncio.sleep(_compute_prompt_delay(text, agent_type))
-    await backend.send_key(session, "enter")
+    await backend.send_prompt_for_agent(
+        session,
+        text,
+        agent_type=agent_type,
+        submit=True,
+    )
 
 
 async def _wait_for_sessions_idle(

@@ -111,6 +111,41 @@ def _is_managed_session_name(session_name: str) -> bool:
     return session_name.startswith(MANAGED_TMUX_SESSION_PREFIXES)
 
 
+def build_stop_hook_settings_file(marker_id: str) -> str:
+    """Build a settings file for Stop hook injection.
+
+    The hook embeds a marker in the command text itself, which gets logged
+    to the JSONL in the stop_hook_summary's hookInfos array. This provides
+    reliable completion detection without needing stderr or exit code hacks.
+
+    Args:
+        marker_id: Unique ID to embed in the marker (typically session_id)
+
+    Returns:
+        Path to the settings file (suitable for --settings flag)
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    settings_dir = _Path.home() / ".claude" / "claude-team-settings"
+    settings_dir.mkdir(parents=True, exist_ok=True)
+
+    settings = {
+        "hooks": {
+            "Stop": [{
+                "hooks": [{
+                    "type": "command",
+                    "command": f"echo [worker-done:{marker_id}]"
+                }]
+            }]
+        }
+    }
+
+    settings_file = settings_dir / f"worker-{marker_id}.json"
+    settings_file.write_text(_json.dumps(settings, indent=2))
+    return str(settings_file)
+
+
 class TmuxBackend(TerminalBackend):
     """Terminal backend adapter for tmux."""
 
@@ -569,8 +604,6 @@ class TmuxBackend(TerminalBackend):
         # Optionally inject a Stop hook using a settings file (Claude only).
         settings_file = None
         if stop_hook_marker_id and cli.supports_settings_file():
-            from ..iterm_utils import build_stop_hook_settings_file
-
             settings_file = build_stop_hook_settings_file(stop_hook_marker_id)
 
         # Build the CLI command (with env vars and settings) for this agent.

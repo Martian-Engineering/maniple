@@ -14,7 +14,7 @@ from mcp.server.session import ServerSession
 if TYPE_CHECKING:
     from ..server import AppContext
 
-from ..iterm_utils import CODEX_PRE_ENTER_DELAY
+from ..terminal_backends.tmux import CODEX_PRE_ENTER_DELAY
 from ..registry import SessionRegistry, SessionStatus
 from ..worktree import WorktreeError, remove_worktree
 from ..utils import error_response, HINTS
