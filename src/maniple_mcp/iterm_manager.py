@@ -129,6 +129,10 @@ class ItermManager:
 
         if not window_id:
             window_id = await self._find_window_for_project(project)
+            if window_id:
+                logger.info("Found existing window %s for project %s", window_id, project)
+            else:
+                logger.info("No existing window found for project %s — creating new", project)
 
         await self._bootstrap_cc(window_id, tmux_session)
 
