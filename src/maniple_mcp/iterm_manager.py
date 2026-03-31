@@ -144,18 +144,9 @@ class ItermManager:
                 self._save_window_ids()
                 logger.debug("Cached new window %s for project %s", window_id, project_key)
 
-        # Apply tab appearance after -CC creates native tabs
-        if tab_title or tab_badge or tab_color_index is not None:
-            color = generate_tab_color_rgb(tab_color_index) if tab_color_index is not None else None
-            # Find the native tab for our tmux session's window
-            tmux_tab_session_id = await self._find_tmux_tab_session()
-            if tmux_tab_session_id:
-                await self.set_tab_appearance(
-                    tmux_tab_session_id,
-                    color=color,
-                    title=tab_title,
-                    badge=tab_badge,
-                )
+        # Tab appearance (color/title/badge) is disabled until DEV-50 fixes
+        # _find_tmux_tab_session to scope by gateway. Without scoping, it
+        # applies appearance to the wrong tab in concurrent spawns.
 
     def next_color_index(self) -> int:
         """Return and increment the color counter for tab color generation."""
