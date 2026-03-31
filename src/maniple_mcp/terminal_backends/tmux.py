@@ -241,6 +241,16 @@ class TmuxBackend(TerminalBackend):
         if not pane_id:
             raise RuntimeError("Failed to determine tmux pane id for new window")
 
+        # Lock the window name so tmux doesn't auto-rename it based on
+        # the running process. Without this, -CC tab titles drift to
+        # whatever command is running (e.g., "node" instead of the worker name).
+        try:
+            await self._run_tmux([
+                "set-option", "-t", session_name, "automatic-rename", "off",
+            ])
+        except subprocess.CalledProcessError:
+            pass  # non-fatal
+
         # For named workers with their own session, open an iTerm
         # window/tab so the session is visible. First worker for a
         # project gets a new window; subsequent workers get tabs.
