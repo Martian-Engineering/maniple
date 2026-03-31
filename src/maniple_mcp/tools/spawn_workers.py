@@ -710,9 +710,13 @@ def register_tools(mcp: FastMCP, ensure_connection) -> None:
                         poll_interval=0.1,
                     )
                     if not claude_session_id:
-                        # Retry: send Enter again in case the first one didn't submit
-                        logger.info(
-                            "Marker not found for %s after 15s — retrying Enter",
+                        # Retry: send Enter again in case the first one didn't submit.
+                        # DEV-27: This retry path should fire rarely after the root-cause
+                        # fixes (stable_count, CLAUDE_PRE_ENTER_DELAY, POST_READY_DELAY).
+                        # If it fires, the root-cause fixes are insufficient — investigate.
+                        logger.warning(
+                            "DEV-27 retry: Marker not found for %s after 15s — "
+                            "retrying Enter (root-cause fixes may be insufficient)",
                             managed.session_id,
                         )
                         await backend.send_key(pane_sessions[i], "enter")

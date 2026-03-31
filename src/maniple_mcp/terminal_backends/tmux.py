@@ -50,6 +50,12 @@ ISSUE_ID_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z0-9]*-[A-Za-z0-9]*\d[A-Za-z0-9]
 
 SHELL_READY_MARKER = "MANIPLE_READY_7f3a9c"
 CODEX_PRE_ENTER_DELAY = 0.5
+CLAUDE_PRE_ENTER_DELAY = 0.3   # minimum pre-Enter delay for Claude agents
+# Settling delay after agent process detected, before first prompt send.
+# Bounded compromise: tmux provides no signal for "TUI is accepting input" —
+# only "process is running." This floor bridges the gap. The actual root cause
+# (no TUI-readiness signal in tmux) has no direct fix.
+POST_READY_DELAY = 1.0
 TMUX_SESSION_PREFIX = "maniple"
 LEGACY_TMUX_SESSION_PREFIX = "claude-team"
 TMUX_SESSION_SLUG_MAX = 32
@@ -371,10 +377,12 @@ class TmuxBackend(TerminalBackend):
         await self.send_text(session, text)
         if not submit:
             return
-        # Codex needs a longer pre-Enter delay; use the max of paste vs minimum.
+        # Apply agent-specific minimum pre-Enter delay floors.
         delay = self._compute_paste_delay(text)
         if agent_type == "codex":
             delay = max(CODEX_PRE_ENTER_DELAY, delay)
+        else:
+            delay = max(CLAUDE_PRE_ENTER_DELAY, delay)
         await asyncio.sleep(delay)
         await self.send_key(session, "enter")
 
@@ -671,6 +679,10 @@ class TmuxBackend(TerminalBackend):
                 "available and authentication is configured."
             )
 
+        # Post-ready settling delay: let the TUI finish initializing before
+        # the first prompt is sent.  See POST_READY_DELAY docstring.
+        await asyncio.sleep(POST_READY_DELAY)
+
     async def start_claude_in_session(
         self,
         handle: TerminalSession,
@@ -772,17 +784,22 @@ class TmuxBackend(TerminalBackend):
         shells = {"zsh", "bash", "sh", "fish", "dash", "tcsh", "csh"}
         start_time = time.monotonic()
 
+        consecutive_stable = 0
         while (time.monotonic() - start_time) < timeout_seconds:
             try:
                 cmd_output = await self._run_tmux(
                     ["display-message", "-p", "-t", pane_id, "#{pane_current_command}"]
                 )
                 current_cmd = cmd_output.strip()
-                # If the pane command is no longer a shell, the agent launched.
+                # If the pane command is no longer a shell, count toward stability.
                 if current_cmd and current_cmd not in shells:
-                    return True
+                    consecutive_stable += 1
+                    if consecutive_stable >= stable_count:
+                        return True
+                else:
+                    consecutive_stable = 0
             except subprocess.CalledProcessError:
-                pass  # pane may not exist yet; keep polling
+                consecutive_stable = 0  # pane may not exist yet; reset and keep polling
 
             await asyncio.sleep(poll_interval)
 
