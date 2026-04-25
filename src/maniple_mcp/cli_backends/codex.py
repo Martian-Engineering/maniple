@@ -126,6 +126,11 @@ class CodexCLI(AgentCLI):
             "What can I help you with?",  # Legacy prompt (older versions)
             "codex>",  # Alternative prompt pattern
             "»",  # Codex uses this prompt symbol
+            "›",  # Codex v0.124+ prompt symbol
+            ">_ OpenAI Codex",  # Codex v0.124+ startup banner
+            "OpenAI Codex (v",  # Codex v0.124+ boxed banner
+            "model:",  # Codex v0.124+ ready screen metadata
+            "permissions:",  # Codex v0.124+ ready screen metadata
             "Waiting for messages",  # Happy codex wrapper
             "Codex Agent Running",  # Happy codex status bar
         ]

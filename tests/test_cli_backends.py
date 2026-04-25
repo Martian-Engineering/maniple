@@ -265,6 +265,14 @@ class TestCodexCLI:
         patterns = cli.ready_patterns()
         assert len(patterns) > 0
 
+    def test_ready_patterns_include_codex_0124_tui(self):
+        """Ready detection should recognize Codex v0.124's boxed TUI."""
+        cli = CodexCLI()
+        patterns = cli.ready_patterns()
+        assert "›" in patterns
+        assert ">_ OpenAI Codex" in patterns
+        assert "OpenAI Codex (v" in patterns
+
     def test_idle_detection_method(self):
         """Idle detection should use JSONL streaming (captures output via tee)."""
         cli = CodexCLI()
