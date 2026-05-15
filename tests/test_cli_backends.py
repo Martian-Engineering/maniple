@@ -107,10 +107,10 @@ class TestClaudeCLI:
         assert args == []
 
     def test_build_args_skip_permissions(self):
-        """Should add --dangerously-skip-permissions flag."""
+        """Should add permission-mode bypassPermissions."""
         cli = ClaudeCLI()
         args = cli.build_args(dangerously_skip_permissions=True)
-        assert "--dangerously-skip-permissions" in args
+        assert args[:2] == ["--permission-mode", "bypassPermissions"]
 
     def test_build_args_settings_file_default_command(self):
         """Should add --settings flag for default claude command."""
@@ -160,6 +160,24 @@ class TestClaudeCLI:
             cli = ClaudeCLI()
             assert cli.supports_settings_file() is False
 
+    def test_supports_settings_file_claude_wrapper_command(self):
+        """Wrapper commands named like claude-* should keep --settings support."""
+        with patch.dict(os.environ, {"MANIPLE_COMMAND": "/usr/local/bin/claude-local"}):
+            cli = ClaudeCLI()
+            assert cli.supports_settings_file() is True
+
+    def test_supports_settings_file_env_opt_in_for_wrapper(self):
+        """Custom wrappers can opt in explicitly to preserve stop-hook injection."""
+        with patch.dict(
+            os.environ,
+            {
+                "MANIPLE_COMMAND": "/opt/bin/provider-wrapper",
+                "MANIPLE_CLAUDE_SUPPORTS_SETTINGS": "true",
+            },
+        ):
+            cli = ClaudeCLI()
+            assert cli.supports_settings_file() is True
+
     def test_build_full_command_simple(self):
         """build_full_command should combine command and args."""
         with patch.dict(os.environ, {}, clear=True):
@@ -167,7 +185,7 @@ class TestClaudeCLI:
             os.environ.pop("CLAUDE_TEAM_COMMAND", None)
             cli = ClaudeCLI()
             cmd = cli.build_full_command(dangerously_skip_permissions=True)
-            assert cmd == "claude --dangerously-skip-permissions"
+            assert cmd == "claude --permission-mode bypassPermissions"
 
     def test_build_full_command_with_env_vars(self):
         """build_full_command should prepend env vars."""
@@ -179,6 +197,14 @@ class TestClaudeCLI:
             assert "FOO=bar" in cmd
             assert "BAZ=qux" in cmd
             assert cmd.endswith("claude")
+
+    def test_build_args_settings_file_supported_for_wrapper(self):
+        """Wrapper commands that pass through to Claude should still get --settings."""
+        with patch.dict(os.environ, {"MANIPLE_COMMAND": "/usr/local/bin/claude-local"}):
+            cli = ClaudeCLI()
+            args = cli.build_args(settings_file="/path/to/settings.json")
+            assert "--settings" in args
+            assert "/path/to/settings.json" in args
 
 
 class TestCodexCLI:

@@ -88,6 +88,7 @@ class CodexCLI(AgentCLI):
         dangerously_skip_permissions: bool = False,
         settings_file: str | None = None,
         plugin_dir: str | list[str] | None = None,
+        command_override: str | None = None,
     ) -> list[str]:
         """
         Build Codex CLI arguments for interactive mode.
@@ -145,7 +146,7 @@ class CodexCLI(AgentCLI):
         """
         return "jsonl_stream"
 
-    def supports_settings_file(self) -> bool:
+    def supports_settings_file(self, command_override: str | None = None) -> bool:
         """
         Codex doesn't support --settings for hook injection.
 

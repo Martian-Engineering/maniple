@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from .base import TerminalBackend, TerminalSession
+from ..launch_blockers import AgentLaunchBlocked, detect_launch_blocker
 
 if TYPE_CHECKING:
     from ..cli_backends import AgentCLI
@@ -468,6 +469,8 @@ class TmuxBackend(TerminalBackend):
         stop_hook_marker_id: str | None = None,
         output_capture_path: str | None = None,
         plugin_dir: str | None = None,
+        command_override: str | None = None,
+        auto_accept_startup_prompts: bool = False,
     ) -> None:
         """Start a CLI agent in an existing tmux pane."""
         # Ensure the shell is responsive before we send the launch command.
@@ -482,7 +485,7 @@ class TmuxBackend(TerminalBackend):
 
         # Optionally inject a Stop hook using a settings file (Claude only).
         settings_file = None
-        if stop_hook_marker_id and cli.supports_settings_file():
+        if stop_hook_marker_id and cli.supports_settings_file(command_override=command_override):
             from ..iterm_utils import build_stop_hook_settings_file
 
             settings_file = build_stop_hook_settings_file(stop_hook_marker_id)
@@ -493,6 +496,7 @@ class TmuxBackend(TerminalBackend):
             settings_file=settings_file,
             plugin_dir=plugin_dir,
             env_vars=env,
+            command_override=command_override,
         )
 
         # Capture stdout/stderr if requested (useful for JSONL idle detection).
@@ -508,11 +512,13 @@ class TmuxBackend(TerminalBackend):
             handle,
             cli,
             timeout_seconds=agent_ready_timeout,
+            auto_accept_startup_prompts=auto_accept_startup_prompts,
         )
+        effective_command = command_override or cli.command()
         if not agent_ready:
             raise RuntimeError(
                 f"{cli.engine_id} failed to start in {project_path} within "
-                f"{agent_ready_timeout}s. Check that '{cli.command()}' is "
+                f"{agent_ready_timeout}s. Check that '{effective_command}' is "
                 "available and authentication is configured."
             )
 
@@ -599,6 +605,7 @@ class TmuxBackend(TerminalBackend):
         timeout_seconds: float = 15.0,
         poll_interval: float = 0.2,
         stable_count: int = 2,
+        auto_accept_startup_prompts: bool = False,
     ) -> bool:
         """Wait for an agent CLI to show its ready patterns."""
         import time
@@ -607,10 +614,27 @@ class TmuxBackend(TerminalBackend):
         start_time = time.monotonic()
         last_content = None
         stable_reads = 0
+        auto_accepted_blockers: set[str] = set()
 
         while (time.monotonic() - start_time) < timeout_seconds:
             # Read the pane content and only check once output stabilizes.
             content = await self.read_screen_text(session)
+            blocker = detect_launch_blocker(content, cli.engine_id)
+            if blocker is not None:
+                if (
+                    auto_accept_startup_prompts
+                    and blocker.auto_accept_choice
+                    and blocker.slug not in auto_accepted_blockers
+                ):
+                    await self.send_text(session, blocker.auto_accept_choice)
+                    await asyncio.sleep(0.2)
+                    await self.send_key(session, "enter")
+                    auto_accepted_blockers.add(blocker.slug)
+                    last_content = None
+                    stable_reads = 0
+                    await asyncio.sleep(0.5)
+                    continue
+                raise AgentLaunchBlocked(blocker)
             if content == last_content:
                 stable_reads += 1
             else:
